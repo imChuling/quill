@@ -16,6 +16,10 @@ Most tools that turn a recording into something you can play are really just sam
 
 The part I'm most excited about is that it also picks up *how* a sound is played. Overlap two keys and it slides between them; the harder you press, the faster the slide. So you can put a guitar's phrasing on a human voice — a voice that slides like a guitar.
 
+## Why I built it
+
+For a producer, the hardest part is often finding the right sound. You can hear it in your head, or in an old record, or in the room around you, and still lose hours digging through sample libraries for something close. Quill turns that around: instead of hunting for a sound, you capture it. I recorded forty seconds of a friend's guitar, and minutes later I was playing it from my keyboard, with the slides landing just like his. Quill had caught his tone, and a little of his musicianship too.
+
 ## What it does right now
 
 - Capture a sound by recording it, dropping in a file, or pulling one instrument out of a whole song
