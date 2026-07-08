@@ -1,29 +1,34 @@
+<div align="center">
+
 # Quill
 
-Record a sound, play it back as an instrument.
+### Record a sound. Play it as an instrument.
 
-Quill is a small desktop tool that takes a few seconds of almost any pitched sound — your voice, a wine glass, a bowed string, a synth pad — and turns it into something you can play across a MIDI keyboard.
+<a href="https://youtu.be/_brryUulZTs"><img src="hero.jpg" alt="Quill — watch the demo" width="840"></a>
 
-It's not a sampler. Instead of looping the clip, it pulls the sound apart into its harmonics, its noise, its breath, and rebuilds it note by note. So you can play it at any pitch and hold it for as long as you want, and it still sounds like itself. It also picks up *how* the original was played — the slides, the legato, the way a phrase moves — and lets you put that phrasing on a different sound. A voice that slides like a guitar, if that's what you're after.
+**▶ [Watch the demo](https://youtu.be/_brryUulZTs)**
 
-It's still a work in progress. A proper walkthrough video and a downloadable macOS build are coming soon.
+</div>
 
-## What works right now
+---
 
-- Capture any pitched sound in a few seconds and play it on the keyboard.
-- Notes stay in the right register — no chipmunk effect when you play high up.
-- Overlap keys for legato and slides; how hard you press sets how fast it slides; chords strum.
-- Pull one instrument out of a full song and capture that.
-- A built-in piano roll — record a phrase, swap the sound underneath it, keep the performance. Export to MIDI or audio.
-- Works with any standard MIDI keyboard (pitch bend, mod wheel, sustain), and sits fine next to a DAW.
-- There's a texture mode too, for unpitched things — rain, wind, machines.
+Most tools that turn a recording into something you can play are really just samplers — they replay the exact clip you fed them. Quill tries to do something different: point it at a few seconds of any pitched sound — your voice, a wine glass, an instrument, a synth — and it works out the recipe behind that sound and rebuilds it, so you can actually play it on a keyboard. Any pitch, any length, and it still sounds like itself.
 
-All of it runs in real time on a laptop.
+The part I'm most excited about is that it also picks up *how* a sound is played. Overlap two keys and it slides between them; the harder you press, the faster the slide. So you can put a guitar's phrasing on a human voice — a voice that slides like a guitar.
+
+## What it does right now
+
+- Capture a sound by recording it, dropping in a file, or pulling one instrument out of a whole song
+- Play it across your whole keyboard, and it still sounds like itself — no chipmunk effect
+- It learns how a sound is played — legato, slides, strums — from a single clip
+- A built-in piano roll: record a phrase, swap the sound underneath, keep the performance
+- Plain MIDI in and out, so it sits next to whatever DAW you already use
+- A texture mode for unpitched sounds — rain, wind, machines
 
 ## Where it's headed
 
-- A plug-in version, so it lives inside your DAW instead of on its own.
-- Per-note expression (MPE) — independent bend and vibrato per finger.
-- Better neural capture, to close the last bit of distance to the real thing.
-- A way to share not just sounds, but ways of playing them.
-- Real-time capture of plucked and percussive sounds, which it doesn't handle well yet.
+It's still early. Next up: a plug-in version, per-note expression (MPE), better neural capture, and a way to share playing styles — not just sounds. A downloadable macOS build is on the way.
+
+---
+
+My entry for the 2026 MIDI Innovation Awards (Category B · Software).
