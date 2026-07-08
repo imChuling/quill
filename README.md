@@ -28,7 +28,3 @@ The part I'm most excited about is that it also picks up *how* a sound is played
 ## Where it's headed
 
 It's still early. Next up: a plug-in version, per-note expression (MPE), better neural capture, and a way to share playing styles — not just sounds. A downloadable macOS build is on the way.
-
----
-
-My entry for the 2026 MIDI Innovation Awards (Category B · Software).
