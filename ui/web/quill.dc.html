@@ -1,0 +1,1553 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<template id="__bundler_thumbnail" data-bg-color="#16140f">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#16140f"/>
+    <g transform="translate(600 400)" fill="none" stroke="#c9a86a" stroke-width="14" stroke-linecap="round">
+      <circle cx="24" cy="0" r="150"/>
+      <line x1="0" y1="-200" x2="0" y2="200"/>
+      <path d="M-44 6 L24 -250 L40 -230 Z" fill="#c9a86a" stroke="none"/>
+      <path d="M-70 180 q66 70 150 26"/>
+    </g>
+  </svg>
+</template>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&amp;family=Cormorant+SC:wght@400;500;600&amp;family=Italianno&amp;family=Spline+Sans+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #15130e; }
+  body { display: flex; align-items: center; justify-content: center; overflow: hidden; font-family: 'Cormorant Garamond', serif; }
+  input[type=range] { -webkit-appearance: none; appearance: none; background: transparent; }
+  ::-webkit-scrollbar { height: 6px; width: 6px; }
+  ::-webkit-scrollbar-thumb { background: rgba(176,141,79,.35); border-radius: 3px; }
+  @keyframes recring { 0% { box-shadow: 0 0 0 0 rgba(180,70,60,.45); } 100% { box-shadow: 0 0 0 22px rgba(180,70,60,0); } }
+  /* button micro-interactions */
+  .qbtn { transition: transform .13s ease, box-shadow .13s ease, filter .13s ease; will-change: transform; }
+  .qbtn:hover { transform: translateY(-1.5px); filter: brightness(1.08); }
+  .qbtn:active { transform: translateY(1px) scale(.96); filter: brightness(.98); }
+  .qshine { position: relative; overflow: hidden; isolation: isolate; }
+  .qshine::after { content: ""; position: absolute; top: 0; left: 0; height: 100%; width: 55%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.4), transparent); transform: translateX(-200%) skewX(-18deg); pointer-events: none; z-index: -1; }
+  .qshine:hover::after { animation: qsweep .8s ease; }
+  @keyframes qsweep { from { transform: translateX(-200%) skewX(-18deg); } to { transform: translateX(260%) skewX(-18deg); } }
+  /* ── CAPTURE 列动效语言(统一缓动 --qe,呼吸 4.5s / 入场 .4s / 换色 .5s)── */
+  :root { --qe: cubic-bezier(.22,.61,.36,1); }
+  @keyframes quillBreath { 0%,100% { box-shadow: 0 8px 20px rgba(0,0,0,.5), 0 0 0 0 rgba(224,192,137,0), inset 0 2px 4px rgba(255,240,200,.4), inset 0 -5px 9px rgba(60,40,15,.55); }
+                           50%     { box-shadow: 0 9px 26px rgba(0,0,0,.46), 0 0 24px 5px rgba(224,192,137,.22), inset 0 2px 4px rgba(255,240,200,.45), inset 0 -5px 9px rgba(60,40,15,.5); } }
+  .quillBreathe { animation: quillBreath 4.5s ease-in-out infinite; }
+  .sealbtn::before { content: ""; position: absolute; inset: -8px; border-radius: 50%;
+                     border: 1.5px solid rgba(201,168,106,.38);
+                     transition: border-color .2s, box-shadow .2s; }         /* 印章边缘环=可按暗示 */
+  .sealbtn:hover::before { border-color: #e0c089; box-shadow: 0 0 14px rgba(201,168,106,.28); }
+  .sealbtn.capturing::before { border-color: #e0c089;
+                               animation: sealBreath 2.8s ease-in-out infinite; }   /* 录音中=光环呼吸,不旋转不晃眼 */
+  @keyframes sealBreath {
+    0%,100% { box-shadow: 0 0 8px rgba(224,192,137,.28); border-color: rgba(224,192,137,.55); transform: scale(1); }
+    50%     { box-shadow: 0 0 20px rgba(224,192,137,.6); border-color: rgba(224,192,137,.95); transform: scale(1.045); } }
+  @keyframes quillCardIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .tonecard { position: relative; animation: quillCardIn .4s var(--qe) both; transition: transform .18s var(--qe), filter .18s; }
+  .tonecard:hover { transform: translateY(-2px); filter: brightness(1.07); }
+  .tact { position: absolute; top: 3px; right: 3px; display: flex; gap: 3px; opacity: 0;
+          transition: opacity .15s; z-index: 2; }
+  .tonecard:hover .tact { opacity: 1; }
+  .ta { width: 16px; height: 16px; border-radius: 4px; background: rgba(12,10,7,.72); color: #cdc3a8;
+        font-size: 10px; line-height: 15px; text-align: center; cursor: pointer;
+        border: 1px solid rgba(201,168,106,.35); font-family: 'Spline Sans Mono', monospace; }
+  .ta:hover { background: rgba(40,34,24,.92); color: #f0e6cc; }
+  .ta.tdel.armed { background: #a13a2b; color: #fff; border-color: #7e2d20; }
+  .tonewrap { display: flex; flex-wrap: wrap; gap: 9px; max-height: 152px; overflow-y: auto;
+              padding: 2px 2px 4px 0; }
+  .tonewrap::-webkit-scrollbar { width: 6px; }
+  .tonewrap::-webkit-scrollbar-thumb { background: rgba(176,141,79,.35); border-radius: 3px; }
+  .tonewrap::-webkit-scrollbar-thumb:hover { background: rgba(176,141,79,.55); }
+  .tonewrap::-webkit-scrollbar-track { background: rgba(232,224,205,.04); border-radius: 3px; }
+  .tonecard > div:first-child { transition: border-color .25s var(--qe), box-shadow .25s var(--qe); }
+  @keyframes quillNameIn { from { opacity: 0; transform: translateY(5px); letter-spacing: .06em; } to { opacity: 1; transform: none; } }
+  #quillToneName.nameSwap { animation: quillNameIn .5s var(--qe); }
+  #quillToneCard { position: relative; overflow: hidden; }
+  #quillToneCard::after { content: ""; position: absolute; top: 0; left: 0; height: 100%; width: 45%; z-index: 2;
+    background: linear-gradient(100deg, transparent, rgba(255,250,235,.35), transparent);
+    transform: translateX(-220%) skewX(-16deg); pointer-events: none; }
+  #quillToneCard.sweepGo::after { animation: qsweep .9s var(--qe); }
+</style>
+</helmet>
+
+<div ref="{{ scalerRef }}" style="width:1440px;height:900px;transform-origin:center center;position:relative;">
+  <div style="position:absolute;inset:0;background:#dedbd2;border-radius:10px;overflow:hidden;box-shadow:0 40px 120px rgba(0,0,0,.55);display:flex;flex-direction:column;font-family:'Cormorant Garamond',serif;color:#23201a;">
+
+    <!-- ================= TOP BAR ================= -->
+    <div style="height:62px;flex:none;display:flex;align-items:center;gap:18px;padding:0 22px;background:#16140f;color:#e8e0cd;border-bottom:1px solid rgba(176,141,79,.22);">
+      <div style="display:flex;align-items:center;gap:13px;">
+        <div style="width:34px;height:34px;position:relative;display:flex;align-items:center;justify-content:center;">
+          <img src="assets/q_gold.png" width="30" height="30" style="display:block;" alt="Q">
+        </div>
+        <div style="font-family:'Cormorant SC',serif;font-size:21px;letter-spacing:.42em;font-weight:500;color:#e8e0cd;padding-left:4px;">QUILL</div>
+      </div>
+      <div style="width:1px;height:26px;background:rgba(176,141,79,.25);"></div>
+      <div style="display:flex;align-items:center;gap:9px;background:rgba(232,224,205,.05);border:1px solid rgba(176,141,79,.22);border-radius:6px;padding:6px 14px 5px;min-width:240px;">
+        <span style="font-size:10px;letter-spacing:.18em;color:#9a8a63;font-family:'Spline Sans Mono',monospace;">PRESET</span>
+        <span id="quillPresetName" style="font-size:18px;color:#e8e0cd;flex:1;">Synth Pad</span>
+        <span style="font-family:'Spline Sans Mono',monospace;font-size:13px;color:#7d7259;">◂ 014 ▸</span>
+      </div>
+      <div style="flex:1;"></div>
+      <div style="font-family:'Italianno',cursive;font-size:24px;color:#c9a86a;line-height:1;padding-bottom:4px;">Capture · Preserve · Transform</div>
+      <div style="flex:1;"></div>
+      <div class="qbtn qshine" onClick="{{ openSettings }}" title="MIDI / Audio devices" style="display:flex;align-items:center;gap:7px;cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:11px;color:#9a8a63;">
+        <span ref="{{ midiDotRef }}" style="width:7px;height:7px;border-radius:50%;background:#6fae7a;box-shadow:0 0 7px #6fae7a;"></span>
+        <span>MIDI · LIVE</span>
+      </div>
+      <div style="width:1px;height:24px;background:rgba(176,141,79,.25);margin-left:4px;"></div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="qbtn qshine" onClick="{{ openLibrary }}" title="Library" style="width:32px;height:32px;border-radius:7px;border:1px solid rgba(176,141,79,.28);display:none;align-items:center;justify-content:center;cursor:pointer;" style-hover="background:rgba(232,224,205,.07);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c9a86a" stroke-width="1.6" stroke-linecap="round"><path d="M4 5h16M4 12h16M4 19h16"></path></svg>
+        </div>
+        <div class="qbtn qshine" onClick="{{ openExport }}" title="Export" style="width:32px;height:32px;border-radius:7px;border:1px solid rgba(176,141,79,.28);display:none;align-items:center;justify-content:center;cursor:pointer;" style-hover="background:rgba(232,224,205,.07);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c9a86a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"></path></svg>
+        </div>
+        <div class="qbtn qshine" onClick="{{ openSettings }}" title="Settings" style="width:32px;height:32px;border-radius:7px;border:1px solid rgba(176,141,79,.28);display:flex;align-items:center;justify-content:center;cursor:pointer;" style-hover="background:rgba(232,224,205,.07);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c9a86a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"></path></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= BODY ================= -->
+    <sc-if value="{{ isPlay }}" hint-placeholder-val="{{ true }}">
+    <div style="flex:1;display:flex;flex-direction:column;min-height:0;">
+    <div style="flex:1;display:flex;min-height:0;">
+
+      <!-- ---------- LEFT : CAPTURE (dark) ---------- -->
+      <div style="width:312px;flex:none;background:linear-gradient(176deg,#16140f,#1d1a12);color:#e8e0cd;display:flex;flex-direction:column;border-right:1px solid rgba(176,141,79,.18);">
+        <div style="padding:16px 20px 0;display:flex;align-items:baseline;justify-content:space-between;">
+          <div style="font-family:'Cormorant SC',serif;letter-spacing:.26em;font-size:13px;color:#c9a86a;">CAPTURE</div>
+          <div style="font-size:13px;font-style:italic;color:#7d7259;">the colour-pick</div>
+        </div>
+        <div style="padding:4px 20px 0;font-size:14px;color:#897f66;line-height:1.35;">Draw any sound. Quill keeps its colour.</div>
+
+        <!-- wax-seal record -->
+        <div style="display:flex;flex-direction:column;align-items:center;padding:18px 0 12px;">
+          <div class="qbtn quillBreathe sealbtn" ref="{{ recBtnRef }}" onClick="{{ toggleCapture }}" style="width:96px;height:96px;border-radius:50%;cursor:pointer;position:relative;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 38% 32%,#caa86b,#9a7c40 62%,#6f5a2e);box-shadow:0 8px 20px rgba(0,0,0,.5),inset 0 2px 4px rgba(255,240,200,.4),inset 0 -5px 9px rgba(60,40,15,.55);">
+            <img src="assets/q_ink.png" width="58" height="58" style="display:block;opacity:.92;" alt="Q">
+          </div>
+          <div ref="{{ recLabelRef }}" style="margin-top:13px;font-family:'Spline Sans Mono',monospace;font-size:11px;letter-spacing:.12em;color:#9a8a63;">PRESS TO CAPTURE · ≤ 60 s</div>
+          <div style="margin-top:5px;font-size:13px;color:#7d7259;">drag a file · or pick below</div>
+        </div>
+
+        <!-- source waveform -->
+        <div style="margin:2px 20px 0;">
+          <div style="display:flex;justify-content:space-between;font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.1em;color:#7d7259;margin-bottom:5px;">
+            <span>SOURCE</span><span id="quillSrcF0" ref="{{ f0Ref }}">f₀ — · —</span>
+          </div>
+          <canvas ref="{{ srcCanvasRef }}" width="544" height="120" style="width:100%;height:60px;display:block;background:rgba(0,0,0,.22);border:1px solid rgba(176,141,79,.16);border-radius:4px;"></canvas>
+        </div>
+
+        <!-- harmonic / noise read -->
+
+        <!-- tone colour card -->
+        <div style="margin:16px 20px 0;">
+          <div style="font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.1em;color:#7d7259;margin-bottom:6px;">TONE · COLOUR</div>
+          <div id="quillToneCard" style="position:relative;border-radius:6px;overflow:hidden;border:1px solid rgba(176,141,79,.25);">
+            <canvas ref="{{ toneCanvasRef }}" width="544" height="150" style="width:100%;height:76px;display:block;"></canvas>
+            <div id="quillToneName" style="position:absolute;left:11px;bottom:8px;font-family:'Cormorant Garamond',serif;font-style:italic;font-size:20px;color:rgba(255,250,238,.94);text-shadow:0 1px 5px rgba(0,0,0,.6);">Synth Pad</div>
+          </div>
+        </div>
+
+        <!-- capture entries: refine last take / pull from a song(大圆钮=唯一"录新的"入口) -->
+        <div style="margin:14px 20px 0;display:flex;gap:9px;">
+          <div class="qbtn qshine" onClick="{{ goRefine }}" title="Refine the last capture — octave, band focus, wave span" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;background:rgba(232,224,205,.06);border:1px solid rgba(176,141,79,.28);border-radius:7px;padding:9px 0;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#c9a86a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path><path d="M21 3v6h-6"></path></svg>
+            <span style="font-family:'Spline Sans Mono',monospace;font-size:11px;letter-spacing:.08em;color:#cdc3a8;">REFINE</span>
+          </div>
+          <div class="qbtn qshine" onClick="{{ goSong }}" title="Pull one instrument out of a full song" style="flex:1.15;display:flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;background:radial-gradient(circle at 40% 30%,#caa86b,#9a7c40 70%);border-radius:7px;padding:9px 0;box-shadow:0 3px 9px rgba(0,0,0,.4),inset 0 1px 1px rgba(255,240,200,.4);">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1a1208" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+            <span style="font-family:'Spline Sans Mono',monospace;font-size:11px;letter-spacing:.08em;color:#1a1208;font-weight:500;">FROM A SONG</span>
+          </div>
+        </div>
+
+        <div style="flex:1;"></div>
+
+        <!-- saved tones library (音色库:默认 + 用户保存的取色音色) -->
+        <div style="padding:12px 20px 16px;border-top:1px solid rgba(176,141,79,.14);">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;">
+            <span style="font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.1em;color:#7d7259;">SAVED TONES</span>
+            <div style="flex:1;"></div>
+            <input id="quillToneInput" ref="{{ toneNameRef }}" placeholder="name…" style="width:90px;background:rgba(232,224,205,.06);border:1px solid rgba(176,141,79,.28);border-radius:5px;padding:4px 8px;color:#e8e0d0;font-size:11px;font-family:'Spline Sans Mono',monospace;outline:none;" />
+            <span class="qbtn qshine" onClick="{{ saveTone }}" title="Save the captured tone" style="cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:10px;color:#1a1208;background:radial-gradient(circle at 40% 30%,#caa86b,#9a7c40 70%);padding:5px 11px;border-radius:5px;">+ Save</span>
+          </div>
+          <div class="tonewrap">
+            <sc-for list="{{ palette }}" as="c" hint-placeholder-count="3">
+              <div class="tonecard" onClick="{{ pickTone }}" data-tname="{{ c.tname }}" title="Click: load" style="flex:none;width:66px;cursor:pointer;text-align:center;animation-delay:{{ c.dly }};">
+                <div class="tact" style="display:{{ c.actDisp }};">
+                  <span class="ta" onClick="{{ renTone }}" data-tname="{{ c.tname }}" title="Rename">✎</span>
+                  <span class="ta tdel" onClick="{{ delTone }}" data-tname="{{ c.tname }}" title="Delete (click twice)">×</span>
+                </div>
+                <div style="width:66px;height:40px;border-radius:6px;background:{{ c.css }};border:{{ c.bw }} solid {{ c.bcol }};box-shadow:inset 0 1px 1px rgba(255,255,255,.55),inset 0 -3px 6px rgba(0,0,0,.22),0 2px 6px rgba(0,0,0,.42);"></div>
+                <div style="margin-top:4px;font-size:10px;color:{{ c.lcol }};font-weight:500;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word;">{{ c.label }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------- CENTER : SYNTH (cream) ---------- -->
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;padding:13px 18px 8px;gap:11px;">
+
+        <!-- TRANSPORT (cream bar) -->
+        <div style="flex:none;height:54px;display:flex;align-items:center;gap:16px;padding:0 14px;background:#ece8df;border:1px solid rgba(40,34,24,.16);border-radius:7px;box-shadow:0 1px 2px rgba(0,0,0,.05);">
+          <!-- transport buttons -->
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="qbtn" onClick="{{ tRec }}" title="Record take" style="width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 50% 32%,#3a352c,#211e17);box-shadow:0 0 0 1px #0c0a07,0 0 0 2px rgba(120,110,92,.4),0 2px 5px rgba(0,0,0,.35),inset 0 1px 2px rgba(255,240,210,.18);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="{{ recCol }}"></circle></svg>
+            </div>
+            <div class="qbtn" onClick="{{ tPlay }}" title="Play" style="width:40px;height:40px;border-radius:50%;background:radial-gradient(circle at 50% 32%,#caa86b,#9a7c40 70%);box-shadow:0 0 0 1px #0c0a07,0 0 0 2px #5e4a26,0 2px 6px rgba(0,0,0,.4),inset 0 1px 2px rgba(255,240,210,.5);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <svg width="15" height="15" viewBox="0 0 24 24"><path d="M7 4 L20 12 L7 20 Z" fill="{{ playCol }}"></path></svg>
+            </div>
+            <div class="qbtn" onClick="{{ tStop }}" title="Stop" style="width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 50% 32%,#3a352c,#211e17);box-shadow:0 0 0 1px #0c0a07,0 0 0 2px rgba(120,110,92,.4),0 2px 5px rgba(0,0,0,.35),inset 0 1px 2px rgba(255,240,210,.18);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <svg width="12" height="12" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2" fill="#d8cdb1"></rect></svg>
+            </div>
+          </div>
+          <div style="width:1px;height:26px;background:rgba(40,34,24,.14);"></div>
+          <!-- tempo -->
+          <div style="display:flex;align-items:center;gap:9px;">
+            <span style="font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.14em;color:#8a7c5a;">TEMPO</span>
+            <span class="qbtn" onClick="{{ tempoDown }}" style="font-family:'Spline Sans Mono',monospace;font-size:16px;color:#9a7c40;cursor:pointer;padding:2px 4px;">◂</span>
+            <span style="font-family:'Cormorant Garamond',serif;font-size:22px;color:#23201a;line-height:1;min-width:62px;text-align:center;">{{ tempoStr }}</span>
+            <span class="qbtn" onClick="{{ tempoUp }}" style="font-family:'Spline Sans Mono',monospace;font-size:16px;color:#9a7c40;cursor:pointer;padding:2px 4px;">▸</span>
+            <span style="font-family:'Spline Sans Mono',monospace;font-size:9px;color:#8a7c5a;">BPM</span>
+          </div>
+          <div style="width:1px;height:26px;background:rgba(40,34,24,.14);"></div>
+          <!-- time signature -->
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.14em;color:#8a7c5a;">TIME</span>
+            <span class="qbtn qshine" onClick="{{ cycleSig }}" title="Time signature (click to cycle)" style="cursor:pointer;font-family:'Cormorant Garamond',serif;font-size:19px;color:#23201a;line-height:1;padding:3px 9px;border:1px solid rgba(40,34,24,.22);border-radius:6px;">{{ tsigStr }}</span>
+          </div>
+          <div style="width:1px;height:26px;background:rgba(40,34,24,.14);"></div>
+          <!-- toggles -->
+          <div style="display:flex;align-items:center;gap:7px;font-family:'Spline Sans Mono',monospace;font-size:10px;letter-spacing:.06em;">
+            <span class="qbtn qshine" onClick="{{ toggleMetro }}" style="cursor:pointer;padding:5px 11px;border-radius:6px;border:1px solid rgba(40,34,24,.2);color:{{ metroCol }};">METRO</span>
+            <span class="qbtn qshine" onClick="{{ toggleCountin }}" style="cursor:pointer;padding:5px 11px;border-radius:6px;border:1px solid rgba(40,34,24,.2);color:{{ countinCol }};">COUNT-IN</span>
+            <span class="qbtn qshine" onClick="{{ toggleLoop }}" style="cursor:pointer;padding:5px 11px;border-radius:6px;border:1px solid rgba(40,34,24,.2);color:{{ loopCol }};">LOOP</span>
+          </div>
+          <div style="flex:1;"></div>
+          <!-- take status -->
+          <div class="qbtn qshine" onClick="{{ openTake }}" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:6px 13px;border-radius:7px;border:1px solid rgba(40,34,24,.2);">
+            <span style="font-family:'Spline Sans Mono',monospace;font-size:10px;letter-spacing:.08em;color:{{ takeStatusCol }};">{{ takeStatus }}</span>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8a7c5a" stroke-width="1.6" stroke-linecap="round"><path d="M4 18V8M9 18V5M14 18v-7M19 18V9"></path></svg>
+          </div>
+        </div>
+
+        <!-- PIANO ROLL (可编辑 MIDI 卷帘,替换 live waveform;逻辑见 ./pianoroll.js) -->
+        <div style="flex:none;height:212px;border-radius:8px;background:linear-gradient(170deg,#1a1810,#222016);position:relative;overflow:hidden;box-shadow:inset 0 2px 14px rgba(0,0,0,.5);border:1px solid rgba(176,141,79,.2);display:flex;flex-direction:column;">
+          <div style="flex:none;display:flex;align-items:center;gap:8px;padding:6px 12px 3px;">
+            <span style="font-family:'Cormorant SC',serif;letter-spacing:.24em;font-size:12px;color:#c9a86a;">PIANO ROLL</span>
+            <span style="font-family:'Spline Sans Mono',monospace;font-size:8.5px;letter-spacing:.04em;color:#7d7259;">play keyboard / MIDI to record</span>
+            <div style="flex:1;"></div>
+            <span id="prRec" style="cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:10px;letter-spacing:.05em;color:#cdc3a8;padding:4px 11px;border:1px solid rgba(217,84,78,.45);border-radius:5px;">● Rec</span>
+            <span id="prPlay" style="cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:10px;letter-spacing:.05em;color:#1a1208;background:radial-gradient(circle at 40% 30%,#caa86b,#9a7c40 70%);padding:4px 12px;border-radius:5px;">▶ Play</span>
+            <span id="prStop" style="cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:10px;letter-spacing:.05em;color:#cdc3a8;padding:4px 10px;border:1px solid rgba(176,141,79,.3);border-radius:5px;">■ Stop</span>
+            <span id="prClear" style="cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:10px;letter-spacing:.05em;color:#cdc3a8;padding:4px 10px;border:1px solid rgba(176,141,79,.3);border-radius:5px;">Clear</span>
+            <span id="prNeural" title="Neural voice: click to cycle off → violin → guitar (DDSP + articulation-conditioned retrieval)" style="cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:10px;letter-spacing:.05em;color:#cdc3a8;padding:4px 10px;border:1px solid rgba(176,141,79,.3);border-radius:5px;">◌ Neural</span>
+            <span id="prBehavior" title="Behavior source: click to cycle (= timbre → violin → guitar → cello → custom)" style="display:none;cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:10px;letter-spacing:.05em;color:#cdc3a8;padding:4px 10px;border:1px solid rgba(176,141,79,.3);border-radius:5px;">♪ = timbre</span>
+            <span id="prGainWrap" title="Trajectory gain: how strongly the retrieved behavior shapes the output" style="display:none;flex-direction:row;align-items:center;gap:4px;font-family:'Spline Sans Mono',monospace;font-size:9px;color:#9a8a63;">
+              <span>GAIN</span>
+              <input id="prGain" type="range" min="0.3" max="2.0" step="0.1" value="1.0" style="width:52px;height:12px;accent-color:#c9a86a;cursor:pointer;">
+              <span id="prGainVal" style="min-width:20px;">1.0</span>
+            </span>
+            <span id="prImport" title="Import a .wav as a custom behavior library (extracts style → trajectory bank)" style="cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:10px;letter-spacing:.05em;color:#9a8a63;padding:4px 10px;border:1px solid rgba(176,141,79,.2);border-radius:5px;">+ Style</span>
+            <span id="prMidi" title="Save as standard MIDI file (.mid — opens in any DAW)" style="cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:10px;letter-spacing:.05em;color:#cdc3a8;padding:4px 10px;border:1px solid rgba(176,141,79,.3);border-radius:5px;">⤓ MIDI</span>
+            <span id="prWav" title="Export audio (rendered offline with the current tone)" style="cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:10px;letter-spacing:.05em;color:#cdc3a8;padding:4px 10px;border:1px solid rgba(176,141,79,.3);border-radius:5px;">⤓ WAV</span>
+            <span id="prSend" title="Send this take to Audiotool (via local Nexus companion)" style="cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:10px;letter-spacing:.05em;color:#e8b45a;padding:4px 10px;border:1px solid rgba(232,180,90,.45);border-radius:5px;">⇪ AUDIOTOOL</span>
+          </div>
+          <div style="flex:1;position:relative;min-height:0;z-index:30;">
+            <canvas id="prCanvas" style="position:absolute;inset:0;width:100%;height:100%;display:block;cursor:default;touch-action:none;"></canvas>
+          </div>
+        </div>
+
+        <!-- synth module row -->
+        <div style="flex:1;display:flex;flex-direction:column;gap:13px;min-height:0;">
+
+         <!-- ROW 1 : FILTER + AMP -->
+         <div style="flex:1.18;display:flex;gap:13px;min-height:0;">
+
+          <!-- FILTER -->
+          <div style="flex:1.05;min-width:0;overflow:hidden;background:#ece8df;border:1px solid rgba(40,34,24,.16);border-radius:7px;padding:13px 15px;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(0,0,0,.05);">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+              <span style="font-family:'Cormorant SC',serif;letter-spacing:.2em;font-size:13px;color:#9a7c40;">FILTER</span>
+              <span style="font-size:13px;font-style:italic;color:#9a8a63;">tone</span>
+            </div>
+            <div style="display:flex;gap:14px;flex:1;min-height:0;margin-top:8px;">
+              <!-- knobs column (left) -->
+              <div style="flex:none;display:flex;flex-direction:column;justify-content:center;gap:10px;">
+                <div data-knob="brightness" style="text-align:center;cursor:default;">
+                  <div ref="{{ k_brightness }}" onPointerDown="{{ knobDown }}" data-knob="brightness" style="width:40px;height:40px;border-radius:50%;background:radial-gradient(circle at 50% 30%,rgba(255,246,224,.16),rgba(255,246,224,0) 50%),conic-gradient(from 0deg,#34302a,#47423a,#272320,#47423a,#2b2722,#1b1814,#47423a,#272320,#34302a),#2a2620;box-shadow:0 0 0 1.5px #0c0a07,0 0 0 3.5px #3b3e44,0 0 0 4.5px rgba(176,186,194,.5),0 5px 11px rgba(0,0,0,.5),inset 0 2px 3px rgba(255,240,210,.2),inset 0 -5px 9px rgba(0,0,0,.6);position:relative;margin:0 auto;">
+                    <div ref="{{ n_brightness }}" style="position:absolute;left:50%;top:4px;width:2.5px;height:13px;background:linear-gradient(#f3dca0,#c79a4e);border-radius:2px;box-shadow:0 0 4px rgba(243,220,160,.6);transform-origin:50% 16px;transform:translateX(-50%) rotate(0deg);"></div>
+                  </div>
+                  <div style="margin-top:3px;font-size:13px;line-height:1.15;color:#23201a;">Brightness</div>
+                  <div ref="{{ v_brightness }}" style="font-family:'Spline Sans Mono',monospace;font-size:10px;line-height:1.1;color:#9a8a63;">+0.0</div>
+                </div>
+                <div data-knob="noise" style="text-align:center;cursor:default;">
+                  <div ref="{{ k_noise }}" onPointerDown="{{ knobDown }}" data-knob="noise" style="width:40px;height:40px;border-radius:50%;background:radial-gradient(circle at 50% 30%,rgba(255,246,224,.16),rgba(255,246,224,0) 50%),conic-gradient(from 0deg,#34302a,#47423a,#272320,#47423a,#2b2722,#1b1814,#47423a,#272320,#34302a),#2a2620;box-shadow:0 0 0 1.5px #0c0a07,0 0 0 3.5px #3b3e44,0 0 0 4.5px rgba(176,186,194,.5),0 5px 11px rgba(0,0,0,.5),inset 0 2px 3px rgba(255,240,210,.2),inset 0 -5px 9px rgba(0,0,0,.6);position:relative;margin:0 auto;">
+                    <div ref="{{ n_noise }}" style="position:absolute;left:50%;top:4px;width:2.5px;height:13px;background:linear-gradient(#f3dca0,#c79a4e);border-radius:2px;box-shadow:0 0 4px rgba(243,220,160,.6);transform-origin:50% 16px;transform:translateX(-50%) rotate(0deg);"></div>
+                  </div>
+                  <div style="margin-top:3px;font-size:13px;line-height:1.15;color:#23201a;">Air / Noise</div>
+                  <div ref="{{ v_noise }}" style="font-family:'Spline Sans Mono',monospace;font-size:10px;line-height:1.1;color:#9a8a63;">2%</div>
+                </div>
+              </div>
+              <!-- response curve (right) -->
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+                  <span style="font-size:9px;font-family:'Spline Sans Mono',monospace;letter-spacing:.06em;color:#8a6c2e;font-weight:500;">FILTER RESPONSE · SPECTRAL TILT</span>
+                  <span style="font-size:9px;font-family:'Spline Sans Mono',monospace;color:#8a6c2e;font-weight:500;">12 dB/oct</span>
+                </div>
+                <div style="flex:1;min-height:0;position:relative;background:rgba(40,34,24,.05);border-radius:5px;border:1px solid rgba(40,34,24,.08);overflow:hidden;">
+                  <canvas ref="{{ tiltCanvasRef }}" width="560" height="320" style="position:absolute;inset:0;width:100%;height:100%;display:block;"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AMP ENV (ADSR) + TOUCH -->
+          <div style="flex:1.25;min-width:0;background:#ece8df;border:1px solid rgba(40,34,24,.16);border-radius:7px;padding:13px 15px;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(0,0,0,.05);">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+              <span style="font-family:'Cormorant SC',serif;letter-spacing:.2em;font-size:13px;color:#7a5e26;">AMP ENVELOPE · TOUCH</span>
+              <span style="font-size:13px;font-style:italic;color:#8a7a52;">ADSR · pick</span>
+            </div>
+            <div style="display:flex;gap:12px;flex:1;min-height:0;align-items:stretch;">
+              <canvas ref="{{ adsrCanvasRef }}" width="320" height="150" style="flex:1;min-width:0;width:auto;align-self:stretch;background:rgba(40,34,24,.05);border-radius:4px;"></canvas>
+              <div ref="{{ adsrFadersRef }}" style="flex:none;display:flex;gap:15px;align-items:flex-end;"></div>
+              <div style="flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:default;padding-left:6px;">
+                <div ref="{{ k_pick }}" onPointerDown="{{ knobDown }}" data-knob="pick" style="width:64px;height:64px;border-radius:50%;background:radial-gradient(circle at 50% 30%,rgba(255,246,224,.16),rgba(255,246,224,0) 50%),conic-gradient(from 0deg,#34302a,#47423a,#272320,#47423a,#2b2722,#1b1814,#47423a,#272320,#34302a),#2a2620;box-shadow:0 0 0 1.5px #0c0a07,0 0 0 3.5px #3b3e44,0 0 0 4.5px rgba(176,186,194,.5),0 5px 11px rgba(0,0,0,.5),inset 0 2px 3px rgba(255,240,210,.2),inset 0 -5px 9px rgba(0,0,0,.6);position:relative;margin:0 auto;">
+                  <div ref="{{ n_pick }}" style="position:absolute;left:50%;top:5px;width:2.5px;height:23px;background:linear-gradient(#f3dca0,#c79a4e);border-radius:2px;box-shadow:0 0 4px rgba(243,220,160,.6);transform-origin:50% 27px;transform:translateX(-50%) rotate(0deg);"></div>
+                </div>
+                <div style="margin-top:8px;font-size:14px;color:#2b261c;">Pick</div>
+                <div ref="{{ v_pick }}" style="font-family:'Spline Sans Mono',monospace;font-size:11px;color:#7a5e26;font-weight:500;">0.50</div>
+              </div>
+            </div>
+          </div>
+
+         </div>
+
+         <!-- ROW 2 : VOICE + LFO + MASTER -->
+         <div style="flex:0.86;display:flex;gap:13px;min-height:0;">
+
+          <!-- VOICE -->
+          <div style="flex:1;min-width:0;background:#ece8df;border:1px solid rgba(40,34,24,.16);border-radius:7px;padding:13px 15px;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(0,0,0,.05);">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+              <span style="font-family:'Cormorant SC',serif;letter-spacing:.2em;font-size:13px;color:#9a7c40;">VOICE</span>
+              <span class="qbtn qshine" ref="{{ modeRef }}" onClick="{{ toggleMode }}" style="cursor:pointer;font-size:13px;font-style:italic;color:#9a7c40;border:1px solid rgba(138,109,48,.4);border-radius:11px;padding:1px 11px;">solo</span>
+            </div>
+            <div ref="{{ voiceGridRef }}" style="display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin:8px 0 8px;"></div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;line-height:1.25;color:#23201a;">
+              <span>Polyphony</span><span style="font-family:'Spline Sans Mono',monospace;color:#9a7c40;">16</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:13px;line-height:1.25;color:#23201a;margin-top:2px;">
+              <span>Stealing</span><span style="font-family:'Spline Sans Mono',monospace;color:#9a7c40;">oldest</span>
+            </div>
+          </div>
+
+          <!-- LFO · MOTION -->
+          <div style="flex:1;min-width:0;background:#ece8df;border:1px solid rgba(40,34,24,.16);border-radius:7px;padding:13px 15px;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(0,0,0,.05);">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;">
+              <span style="font-family:'Cormorant SC',serif;letter-spacing:.2em;font-size:13px;color:#9a7c40;">LFO · MOTION</span>
+              <span style="font-size:13px;font-style:italic;color:#9a8a63;">vibrato</span>
+            </div>
+            <div style="display:flex;justify-content:space-around;flex:1;align-items:center;">
+              <div style="text-align:center;cursor:default;">
+                <div ref="{{ k_vibdepth }}" onPointerDown="{{ knobDown }}" data-knob="vibdepth" style="width:62px;height:62px;border-radius:50%;background:radial-gradient(circle at 50% 30%,rgba(255,246,224,.16),rgba(255,246,224,0) 50%),conic-gradient(from 0deg,#34302a,#47423a,#272320,#47423a,#2b2722,#1b1814,#47423a,#272320,#34302a),#2a2620;box-shadow:0 0 0 1.5px #0c0a07,0 0 0 3.5px #3b3e44,0 0 0 4.5px rgba(176,186,194,.5),0 5px 11px rgba(0,0,0,.5),inset 0 2px 3px rgba(255,240,210,.2),inset 0 -5px 9px rgba(0,0,0,.6);position:relative;margin:0 auto;">
+                  <div ref="{{ n_vibdepth }}" style="position:absolute;left:50%;top:5px;width:2.5px;height:22px;background:linear-gradient(#f3dca0,#c79a4e);border-radius:2px;box-shadow:0 0 4px rgba(243,220,160,.6);transform-origin:50% 26px;transform:translateX(-50%) rotate(0deg);"></div>
+                </div>
+                <div style="margin-top:8px;font-size:14px;color:#23201a;">Depth</div>
+                <div ref="{{ v_vibdepth }}" style="font-family:'Spline Sans Mono',monospace;font-size:11px;color:#9a8a63;">30 %</div>
+              </div>
+              <div style="text-align:center;cursor:default;">
+                <div ref="{{ k_vibrate }}" onPointerDown="{{ knobDown }}" data-knob="vibrate" style="width:62px;height:62px;border-radius:50%;background:radial-gradient(circle at 50% 30%,rgba(255,246,224,.16),rgba(255,246,224,0) 50%),conic-gradient(from 0deg,#34302a,#47423a,#272320,#47423a,#2b2722,#1b1814,#47423a,#272320,#34302a),#2a2620;box-shadow:0 0 0 1.5px #0c0a07,0 0 0 3.5px #3b3e44,0 0 0 4.5px rgba(176,186,194,.5),0 5px 11px rgba(0,0,0,.5),inset 0 2px 3px rgba(255,240,210,.2),inset 0 -5px 9px rgba(0,0,0,.6);position:relative;margin:0 auto;">
+                  <div ref="{{ n_vibrate }}" style="position:absolute;left:50%;top:5px;width:2.5px;height:22px;background:linear-gradient(#f3dca0,#c79a4e);border-radius:2px;box-shadow:0 0 4px rgba(243,220,160,.6);transform-origin:50% 26px;transform:translateX(-50%) rotate(0deg);"></div>
+                </div>
+                <div style="margin-top:8px;font-size:14px;color:#23201a;">Rate</div>
+                <div ref="{{ v_vibrate }}" style="font-family:'Spline Sans Mono',monospace;font-size:11px;color:#9a8a63;">5.4 Hz</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- MASTER -->
+          <div style="flex:1.2;min-width:0;background:#ece8df;border:1px solid rgba(40,34,24,.16);border-radius:7px;padding:13px 15px;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(0,0,0,.05);">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;">
+              <span style="font-family:'Cormorant SC',serif;letter-spacing:.2em;font-size:13px;color:#9a7c40;">MASTER</span>
+              <span style="font-size:13px;font-style:italic;color:#9a8a63;">output</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;flex:1;">
+              <div style="text-align:center;cursor:default;">
+                <div ref="{{ k_master }}" onPointerDown="{{ knobDown }}" data-knob="master" style="width:62px;height:62px;border-radius:50%;background:radial-gradient(circle at 50% 30%,rgba(255,246,224,.16),rgba(255,246,224,0) 50%),conic-gradient(from 0deg,#34302a,#47423a,#272320,#47423a,#2b2722,#1b1814,#47423a,#272320,#34302a),#2a2620;box-shadow:0 0 0 1.5px #0c0a07,0 0 0 3.5px #3b3e44,0 0 0 4.5px rgba(176,186,194,.5),0 5px 11px rgba(0,0,0,.5),inset 0 2px 3px rgba(255,240,210,.2),inset 0 -5px 9px rgba(0,0,0,.6);position:relative;margin:0 auto;">
+                  <div ref="{{ n_master }}" style="position:absolute;left:50%;top:5px;width:2.5px;height:22px;background:linear-gradient(#f3dca0,#c79a4e);border-radius:2px;box-shadow:0 0 4px rgba(243,220,160,.6);transform-origin:50% 26px;transform:translateX(-50%) rotate(0deg);"></div>
+                </div>
+                <div style="margin-top:8px;font-size:14px;color:#23201a;">Volume</div>
+                <div ref="{{ v_master }}" style="font-family:'Spline Sans Mono',monospace;font-size:11px;color:#9a8a63;">-6.0 dB</div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:5px;margin-bottom:46px;">
+                <div style="font-size:9px;font-family:'Spline Sans Mono',monospace;letter-spacing:.06em;color:#a89c80;">OUTPUT · tanh soft-clip</div>
+                <div style="height:11px;border-radius:3px;background:rgba(40,34,24,.1);overflow:hidden;position:relative;">
+                  <div ref="{{ meterLRef }}" style="position:absolute;inset:0;width:30%;background:linear-gradient(90deg,#b06a72,#edafb8 60%,#f0d2c0);"></div>
+                </div>
+                <div style="height:11px;border-radius:3px;background:rgba(40,34,24,.1);overflow:hidden;position:relative;">
+                  <div ref="{{ meterRRef }}" style="position:absolute;inset:0;width:26%;background:linear-gradient(90deg,#b06a72,#edafb8 60%,#f0d2c0);"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+         </div>
+        </div>
+      </div>
+
+      <!-- ---------- RIGHT : PERFORMANCE ---------- -->
+      <div style="width:284px;flex:none;background:linear-gradient(184deg,#16140f,#1d1a12);border-left:1px solid rgba(176,141,79,.18);display:flex;flex-direction:column;padding:16px 18px 14px;">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;">
+          <div style="font-family:'Cormorant SC',serif;letter-spacing:.22em;font-size:13px;color:#c9a86a;">ARTICULATION</div>
+          <div style="font-size:13px;font-style:italic;color:#897f66;">the hand</div>
+        </div>
+        <div style="font-size:14px;color:#897f66;margin-top:2px;line-height:1.35;">No synth plays like a player. Quill does.</div>
+
+        <!-- live label -->
+        <div style="margin-top:15px;text-align:center;background:rgba(0,0,0,.28);border:1px solid rgba(176,141,79,.16);border-radius:7px;padding:16px 0 14px;box-shadow:inset 0 2px 10px rgba(0,0,0,.4);">
+          <div style="font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.12em;color:#7d7259;">NOW PLAYING</div>
+          <div id="quillArtLabel" ref="{{ artLabelRef }}" style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:34px;color:#d8cdb1;margin-top:3px;line-height:1;">pluck</div>
+        </div>
+
+        <!-- articulation chips -->
+        <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:13px;" ref="{{ chipsRef }}"></div>
+
+        <!-- glide curve -->
+        <div style="margin-top:16px;">
+          <div style="font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.1em;color:#9a8a63;margin-bottom:6px;">GLIDE · PITCH CURVE</div>
+          <canvas ref="{{ glideCanvasRef }}" width="496" height="150" style="width:100%;height:76px;display:block;background:#1a1810;border-radius:6px;"></canvas>
+        </div>
+
+        <!-- knobs: intensity / strum / glide-sens -->
+        <div style="margin-top:16px;display:flex;justify-content:space-between;">
+          <div style="text-align:center;cursor:default;">
+            <div ref="{{ k_artint }}" onPointerDown="{{ knobDown }}" data-knob="artint" style="width:58px;height:58px;border-radius:50%;background:radial-gradient(circle at 50% 30%,rgba(255,246,224,.16),rgba(255,246,224,0) 50%),conic-gradient(from 0deg,#34302a,#47423a,#272320,#47423a,#2b2722,#1b1814,#47423a,#272320,#34302a),#2a2620;box-shadow:0 0 0 1.5px #0c0a07,0 0 0 3.5px #3b3e44,0 0 0 4.5px rgba(176,186,194,.5),0 5px 11px rgba(0,0,0,.5),inset 0 2px 3px rgba(255,240,210,.2),inset 0 -5px 9px rgba(0,0,0,.6);position:relative;margin:0 auto;">
+              <div ref="{{ n_artint }}" style="position:absolute;left:50%;top:5px;width:2.5px;height:20px;background:linear-gradient(#f3dca0,#c79a4e);border-radius:2px;box-shadow:0 0 4px rgba(243,220,160,.6);transform-origin:50% 24px;transform:translateX(-50%) rotate(0deg);"></div>
+            </div>
+            <div style="margin-top:7px;font-size:13px;color:#cdc3a8;">Intensity</div>
+          </div>
+          <div style="text-align:center;cursor:default;">
+            <div ref="{{ k_strum }}" onPointerDown="{{ knobDown }}" data-knob="strum" style="width:58px;height:58px;border-radius:50%;background:radial-gradient(circle at 50% 30%,rgba(255,246,224,.16),rgba(255,246,224,0) 50%),conic-gradient(from 0deg,#34302a,#47423a,#272320,#47423a,#2b2722,#1b1814,#47423a,#272320,#34302a),#2a2620;box-shadow:0 0 0 1.5px #0c0a07,0 0 0 3.5px #3b3e44,0 0 0 4.5px rgba(176,186,194,.5),0 5px 11px rgba(0,0,0,.5),inset 0 2px 3px rgba(255,240,210,.2),inset 0 -5px 9px rgba(0,0,0,.6);position:relative;margin:0 auto;">
+              <div ref="{{ n_strum }}" style="position:absolute;left:50%;top:5px;width:2.5px;height:20px;background:linear-gradient(#f3dca0,#c79a4e);border-radius:2px;box-shadow:0 0 4px rgba(243,220,160,.6);transform-origin:50% 24px;transform:translateX(-50%) rotate(0deg);"></div>
+            </div>
+            <div style="margin-top:7px;font-size:13px;color:#cdc3a8;">Strum</div>
+            <div ref="{{ v_strum }}" style="font-family:'Spline Sans Mono',monospace;font-size:10px;color:#9a8a63;">28 ms</div>
+          </div>
+          <div style="text-align:center;cursor:default;">
+            <div ref="{{ k_gsens }}" onPointerDown="{{ knobDown }}" data-knob="gsens" style="width:58px;height:58px;border-radius:50%;background:radial-gradient(circle at 50% 30%,rgba(255,246,224,.16),rgba(255,246,224,0) 50%),conic-gradient(from 0deg,#34302a,#47423a,#272320,#47423a,#2b2722,#1b1814,#47423a,#272320,#34302a),#2a2620;box-shadow:0 0 0 1.5px #0c0a07,0 0 0 3.5px #3b3e44,0 0 0 4.5px rgba(176,186,194,.5),0 5px 11px rgba(0,0,0,.5),inset 0 2px 3px rgba(255,240,210,.2),inset 0 -5px 9px rgba(0,0,0,.6);position:relative;margin:0 auto;">
+              <div ref="{{ n_gsens }}" style="position:absolute;left:50%;top:5px;width:2.5px;height:20px;background:linear-gradient(#f3dca0,#c79a4e);border-radius:2px;box-shadow:0 0 4px rgba(243,220,160,.6);transform-origin:50% 24px;transform:translateX(-50%) rotate(0deg);"></div>
+            </div>
+            <div style="margin-top:7px;font-size:13px;color:#cdc3a8;">Slide</div>
+            <div ref="{{ glideValRef }}" style="font-family:'Spline Sans Mono',monospace;font-size:10px;color:#9a7c40;">42 ms glide</div>
+          </div>
+        </div>
+        <div style="margin-top:16px;flex:none;display:flex;flex-direction:column;">
+          <div style="font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.1em;color:#9a8a63;margin-bottom:7px;">LIBRARY · .tplib</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;background:#1a1810;border-radius:6px;padding:7px 11px;cursor:pointer;">
+              <span style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:18px;color:#d8cdb1;">Guitar · hammer &amp; slide</span>
+              <span style="font-family:'Spline Sans Mono',monospace;font-size:9px;color:#6fae7a;">● active</span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(232,224,205,.05);border:1px solid rgba(176,141,79,.16);border-radius:6px;padding:7px 11px;cursor:pointer;">
+              <span style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:18px;color:#a89c80;">Upright bass · round pluck</span>
+              <span style="font-family:'Spline Sans Mono',monospace;font-size:9px;color:#7d7259;">load</span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(232,224,205,.05);border:1px solid rgba(176,141,79,.16);border-radius:6px;padding:7px 11px;cursor:pointer;">
+              <span style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:18px;color:#a89c80;">Brass · swell &amp; fall</span>
+              <span style="font-family:'Spline Sans Mono',monospace;font-size:9px;color:#7d7259;">load</span>
+            </div>
+          </div>
+        </div>
+        <div style="flex:1;min-height:8px;"></div>
+        <div style="font-family:'Italianno',cursive;font-size:23px;color:#9a7c40;text-align:center;line-height:1.05;margin-top:12px;">To transform is to compose.</div>
+      </div>
+    </div>
+
+    <!-- ================= KEYBOARD ================= -->
+    <div style="height:138px;flex:none;background:linear-gradient(180deg,#1d1a12,#141109);padding:11px 16px 0;position:relative;border-top:1px solid rgba(176,141,79,.22);">
+      <div ref="{{ keyboardRef }}" style="position:relative;height:96px;display:flex;gap:2px;"></div>
+    </div>
+    </div>
+    </sc-if>
+
+    <!-- ================= STATUS BAR ================= -->
+    <div style="height:34px;flex:none;background:#10100c;display:flex;align-items:center;gap:0;padding:0 18px;font-family:'Spline Sans Mono',monospace;font-size:10.5px;color:#9a8a63;letter-spacing:.04em;">
+      <span id="quillMidiDot" style="color:#8a6c2e;">●</span>
+      <span id="quillMidiName" style="margin-left:7px;">MIDI IN · connecting…</span>
+      <span style="margin:0 14px;color:#3f3a2c;">│</span>
+      <span>LATENCY <b id="quillLat" style="color:#f3ead2;font-weight:600;">–</b> ms</span>
+      <span style="margin:0 14px;color:#3f3a2c;">│</span>
+      <span>VEL→LVL/BRT · PB→PITCH · CC1→VIB · CC64→SUS</span>
+      <span style="flex:1;"></span>
+      <span style="color:#6fae7a;">◆</span><span id="quillEngine" style="margin-left:6px;">ENGINE · ♩ {{ tempoStr }} BPM</span>
+    </div>
+
+    <!-- ================= OVERLAYS ================= -->
+    <sc-if value="{{ anyOverlay }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeOv }}" style="position:absolute;inset:0;background:rgba(12,10,7,.62);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:50;">
+
+      <!-- SETTINGS · 内置设备面板(capture 页语言:暖深面板 + 金细线;真数据) -->
+      <sc-if value="{{ ovSettings }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ stop }}" style="width:560px;max-height:80vh;display:flex;flex-direction:column;background:#15130e;border:1px solid rgba(201,168,106,.22);border-radius:14px;box-shadow:0 30px 80px rgba(0,0,0,.6);overflow:hidden;">
+        <div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:15px 20px;">
+          <span style="display:flex;align-items:baseline;gap:9px;"><span style="font-family:'Cormorant SC',serif;letter-spacing:.22em;font-size:15px;color:#c9a86a;">DEVICES</span><span style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:13px;color:#897f66;">route your sound</span></span>
+          <span style="display:flex;align-items:center;gap:9px;">
+            <span class="qbtn qshine" onClick="{{ rescanDevices }}" title="Rescan devices" style="cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.08em;color:#9a7c40;border:1px solid rgba(176,141,79,.3);border-radius:5px;padding:4px 9px;">⟲ RESCAN</span>
+            <span class="qbtn qshine" onClick="{{ closeOv }}" style="cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:16px;color:#9a8a63;">✕</span>
+          </span>
+        </div>
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:2px 16px 16px;display:flex;flex-direction:column;gap:11px;">
+
+          <!-- AUDIO INPUT(录音源:修 BlackHole 静音坑) -->
+          <div style="background:linear-gradient(165deg,#232019,#171410);border:1px solid rgba(201,168,106,.14);border-radius:13px;box-shadow:0 8px 20px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.04);padding:12px 14px;">
+            <div style="display:flex;align-items:center;margin-bottom:9px;">
+              <span style="font-family:'Cormorant SC',serif;letter-spacing:.2em;font-size:11px;color:#b08d4f;text-shadow:0 -1px 0 rgba(0,0,0,.6);">AUDIO INPUT</span>
+              <span style="flex:1;"></span>
+              <span style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:12px;color:#7d7259;">where Quill listens</span>
+              <span class="qbtn qshine" onClick="{{ testInput }}" title="Record 0.3 s and check for signal" style="margin-left:9px;cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.06em;color:{{ probeCol }};border:1px solid {{ probeBorder }};border-radius:5px;padding:4px 9px;">{{ probeLabel }}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <sc-for list="{{ audioInputs }}" as="d" hint-placeholder-count="2">
+                <div onClick="{{ d.pick }}" style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;border:1px solid {{ d.border }};background:{{ d.bg }};box-shadow:{{ d.shadow }};cursor:pointer;transition:border-color .15s;">
+                  <span style="width:13px;height:13px;border-radius:50%;border:1.5px solid {{ d.ring }};display:flex;align-items:center;justify-content:center;flex:none;"><span style="width:6px;height:6px;border-radius:50%;background:{{ d.fill }};"></span></span>
+                  <span style="flex:1;font-family:'Cormorant Garamond',serif;font-size:16px;color:#e8e0cd;">{{ d.name }}</span>
+                  <span style="font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.06em;color:{{ d.tagCol }};">{{ d.tag }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <!-- AUDIO OUTPUT -->
+          <div style="background:linear-gradient(165deg,#232019,#171410);border:1px solid rgba(201,168,106,.14);border-radius:13px;box-shadow:0 8px 20px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.04);padding:12px 14px;">
+            <div style="display:flex;align-items:center;margin-bottom:9px;">
+              <span style="font-family:'Cormorant SC',serif;letter-spacing:.2em;font-size:11px;color:#b08d4f;text-shadow:0 -1px 0 rgba(0,0,0,.6);">AUDIO OUTPUT</span>
+              <span style="flex:1;"></span>
+              <span style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:12px;color:#7d7259;">where Quill plays</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <sc-for list="{{ audioOutputs }}" as="d" hint-placeholder-count="2">
+                <div onClick="{{ d.pick }}" style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;border:1px solid {{ d.border }};background:{{ d.bg }};box-shadow:{{ d.shadow }};cursor:pointer;transition:border-color .15s;">
+                  <span style="width:13px;height:13px;border-radius:50%;border:1.5px solid {{ d.ring }};display:flex;align-items:center;justify-content:center;flex:none;"><span style="width:6px;height:6px;border-radius:50%;background:{{ d.fill }};"></span></span>
+                  <span style="flex:1;font-family:'Cormorant Garamond',serif;font-size:16px;color:#e8e0cd;">{{ d.name }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <!-- MIDI INPUT -->
+          <div style="background:linear-gradient(165deg,#232019,#171410);border:1px solid rgba(201,168,106,.14);border-radius:13px;box-shadow:0 8px 20px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.04);padding:12px 14px;">
+            <div style="display:flex;align-items:center;margin-bottom:9px;">
+              <span style="font-family:'Cormorant SC',serif;letter-spacing:.2em;font-size:11px;color:#8aadae;text-shadow:0 -1px 0 rgba(0,0,0,.6);">MIDI INPUT</span>
+              <span style="flex:1;"></span>
+              <span style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:12px;color:#7d7259;">your keyboard / controller</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <sc-for list="{{ midiDevices }}" as="d" hint-placeholder-count="2">
+                <div onClick="{{ d.pick }}" style="display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;border:1px solid {{ d.border }};background:{{ d.bg }};cursor:pointer;transition:border-color .15s;">
+                  <span style="width:9px;height:9px;border-radius:50%;background:{{ d.dot }};box-shadow:{{ d.glow }};flex:none;"></span>
+                  <span style="flex:1;font-family:'Cormorant Garamond',serif;font-size:16px;color:#e8e0cd;">{{ d.name }}</span>
+                  <span style="font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.08em;color:{{ d.statusCol }};">{{ d.status }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <!-- ENGINE -->
+          <div style="background:linear-gradient(165deg,#232019,#171410);border:1px solid rgba(201,168,106,.14);border-radius:13px;box-shadow:0 8px 20px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.04);padding:12px 14px;">
+            <div style="font-family:'Cormorant SC',serif;letter-spacing:.2em;font-size:11px;color:#b08d4f;text-shadow:0 -1px 0 rgba(0,0,0,.6);margin-bottom:6px;">ENGINE</div>
+            <sc-for list="{{ engineRows }}" as="row" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(176,141,79,.1);">
+                <span style="font-family:'Cormorant Garamond',serif;font-size:15px;color:#d8cdb1;">{{ row.label }}</span>
+                <span style="font-family:'Spline Sans Mono',monospace;font-size:12px;color:#c9a86a;">{{ row.value }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- EXPORT -->
+      <sc-if value="{{ ovExport }}" hint-placeholder-val="{{ false }}">
+      <div style="width:520px;background:#1b1812;border:1px solid rgba(176,141,79,.3);border-radius:12px;box-shadow:0 30px 80px rgba(0,0,0,.6);overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid rgba(176,141,79,.18);">
+          <span style="font-family:'Cormorant SC',serif;letter-spacing:.22em;font-size:16px;color:#c9a86a;">EXPORT</span>
+          <span class="qbtn qshine" onClick="{{ closeOv }}" style="cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:16px;color:#9a8a63;">✕</span>
+        </div>
+        <div style="padding:20px 24px;display:flex;flex-direction:column;gap:11px;">
+          <sc-for list="{{ exportRows }}" as="row" hint-placeholder-count="3">
+            <div onClick="{{ closeOv }}" style="display:flex;align-items:center;gap:14px;padding:15px 16px;border-radius:9px;border:1px solid rgba(176,141,79,.2);background:rgba(232,224,205,.04);cursor:pointer;" style-hover="background:rgba(232,224,205,.09);">
+              <span style="font-family:'Cormorant Garamond',serif;font-size:20px;color:#e8e0cd;flex:1;">{{ row.label }}</span>
+              <span style="font-family:'Spline Sans Mono',monospace;font-size:10px;letter-spacing:.08em;color:#9a8a63;">{{ row.fmt }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- LIBRARY -->
+      <sc-if value="{{ ovLibrary }}" hint-placeholder-val="{{ false }}">
+      <div style="width:720px;height:520px;background:#1b1812;border:1px solid rgba(176,141,79,.3);border-radius:12px;box-shadow:0 30px 80px rgba(0,0,0,.6);overflow:hidden;display:flex;flex-direction:column;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid rgba(176,141,79,.18);">
+          <span style="font-family:'Cormorant SC',serif;letter-spacing:.22em;font-size:16px;color:#c9a86a;">LIBRARY · PRESETS</span>
+          <span class="qbtn qshine" onClick="{{ closeOv }}" style="cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:16px;color:#9a8a63;">✕</span>
+        </div>
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:18px 24px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px;align-content:start;">
+          <sc-for list="{{ libraryItems }}" as="it" hint-placeholder-count="9">
+            <div onClick="{{ closeOv }}" style="cursor:pointer;border-radius:10px;border:1px solid rgba(176,141,79,.18);overflow:hidden;background:rgba(232,224,205,.04);" style-hover="border-color:rgba(176,141,79,.5);">
+              <div style="height:64px;background:{{ it.css }};"></div>
+              <div style="padding:9px 12px;">
+                <div style="font-family:'Cormorant Garamond',serif;font-style:italic;font-size:17px;color:#e8e0cd;line-height:1.1;">{{ it.name }}</div>
+                <div style="font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.06em;color:#9a8a63;margin-top:3px;">{{ it.tag }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- TAKE EDITOR -->
+      <sc-if value="{{ ovTake }}" hint-placeholder-val="{{ false }}">
+      <div style="width:780px;background:#1b1812;border:1px solid rgba(176,141,79,.3);border-radius:12px;box-shadow:0 30px 80px rgba(0,0,0,.6);overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid rgba(176,141,79,.18);">
+          <span style="font-family:'Cormorant SC',serif;letter-spacing:.22em;font-size:16px;color:#c9a86a;">TAKE 01 · EDIT</span>
+          <div style="display:flex;align-items:center;gap:14px;">
+            <span style="font-family:'Spline Sans Mono',monospace;font-size:10px;letter-spacing:.08em;color:#9a8a63;">QUANTIZE 1/16</span>
+            <span class="qbtn qshine" onClick="{{ closeOv }}" style="cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:16px;color:#9a8a63;">✕</span>
+          </div>
+        </div>
+        <div style="padding:18px 24px;">
+          <!-- mini piano roll -->
+          <div style="height:200px;border-radius:8px;background:#15130e;border:1px solid rgba(176,141,79,.14);position:relative;overflow:hidden;">
+            <sc-for list="{{ rollNotes }}" as="n" hint-placeholder-count="10">
+              <div style="position:absolute;left:{{ n.x }};top:{{ n.y }};width:{{ n.w }};height:9px;border-radius:2px;background:linear-gradient(#edafb8,#b06a72);box-shadow:0 0 6px rgba(176,106,114,.4);"></div>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:16px;">
+            <div class="qbtn qshine" onClick="{{ closeOv }}" style="cursor:pointer;padding:10px 18px;border-radius:7px;border:1px solid rgba(176,141,79,.22);font-family:'Spline Sans Mono',monospace;font-size:11px;color:#cdc3a8;">QUANTIZE</div>
+            <div style="flex:1;"></div>
+            <div class="qbtn qshine" onClick="{{ closeOv }}" style="cursor:pointer;padding:10px 20px;border-radius:7px;background:radial-gradient(circle at 40% 30%,#caa86b,#9a7c40 70%);font-family:'Spline Sans Mono',monospace;font-size:11px;color:#1a1208;font-weight:600;">DONE</div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- CAPTURE -->
+      <sc-if value="{{ ovCapture }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ stop }}" style="width:1160px;max-width:94vw;height:80vh;display:flex;flex-direction:column;background:#16140f;border:1px solid rgba(176,141,79,.3);border-radius:14px;box-shadow:0 40px 100px rgba(0,0,0,.7);overflow:hidden;">
+
+        <!-- header -->
+        <div style="flex:none;display:flex;align-items:center;gap:18px;padding:16px 24px;border-bottom:1px solid rgba(176,141,79,.18);">
+          <div class="qbtn" onClick="{{ closeOv }}" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:7px 13px;border-radius:7px;background:rgba(232,224,205,.06);" style-hover="background:rgba(232,224,205,.06);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c9a86a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+            <span style="font-family:'Spline Sans Mono',monospace;font-size:11px;letter-spacing:.08em;color:#c9a86a;">PLAY</span>
+          </div>
+          <div>
+            <div style="font-family:'Cormorant SC',serif;letter-spacing:.24em;font-size:16px;color:#c9a86a;">CAPTURE</div>
+            <div style="font-size:14px;font-style:italic;color:#897f66;margin-top:1px;">Draw a sound, draw a hand &mdash; Quill keeps both.</div>
+          </div>
+          <div style="flex:1;"></div>
+          <div style="font-family:'Italianno',cursive;font-size:26px;color:#c98b92;">the colour-pick</div>
+          <span class="qbtn" onClick="{{ closeOv }}" style="cursor:pointer;font-family:'Spline Sans Mono',monospace;font-size:16px;color:#9a8a63;margin-left:6px;">&times;</span>
+        </div>
+
+        <!-- two parallel flows -->
+        <div style="flex:1;min-height:0;display:flex;gap:22px;padding:22px 24px;overflow:hidden;">
+
+          <!-- ===== FLOW A : TIMBRE (rose) ===== -->
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(176,106,114,.12),rgba(176,106,114,.04));border-radius:11px;padding:20px 22px;">
+            <div style="display:flex;align-items:center;gap:11px;margin-bottom:3px;">
+              <div style="width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,#edafb8,#b06a72);box-shadow:inset 0 1px 2px rgba(255,255,255,.4);"></div>
+              <span style="font-family:'Cormorant SC',serif;letter-spacing:.18em;font-size:15px;color:#edafb8;">TIMBRE</span>
+              <span style="font-size:13px;font-style:italic;color:#c08e93;">the colour-pick</span>
+            </div>
+            <div style="font-size:13px;color:#b08489;margin-bottom:14px;">Record or drag a file &rarr; trim &rarr; analyse &rarr; name &rarr; save to Palette.</div>
+
+            <!-- step 1 -->
+            <div style="display:flex;gap:13px;padding:11px 2px;">
+              <div style="flex:none;width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#edafb8,#b06a72);display:flex;align-items:center;justify-content:center;font-family:'Spline Sans Mono',monospace;font-size:12px;color:#2b1418;font-weight:600;box-shadow:0 2px 6px rgba(176,106,114,.5);">1</div>
+              <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                  <span style="font-family:'Cormorant Garamond',serif;font-size:18px;color:#ece3df;">Source</span>
+                  <span style="font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.1em;color:#c08e93;">REC &le; 60s &middot; or drag a file</span>
+                </div>
+                <div style="margin-top:9px;display:flex;align-items:center;gap:12px;">
+                  <div style="flex:none;width:46px;height:46px;border-radius:50%;background:radial-gradient(circle at 38% 32%,#edafb8,#b06a72 70%);box-shadow:0 4px 10px rgba(176,106,114,.5),inset 0 1px 2px rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;">
+                    <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="#fff"></circle></svg>
+                  </div>
+                  <div style="flex:1;height:46px;border-radius:6px;background:rgba(176,106,114,.08);display:flex;align-items:center;padding:0 12px;overflow:hidden;">
+                    <svg viewBox="0 0 400 40" preserveAspectRatio="none" style="width:100%;height:30px;"><polyline points="0,20 12,14 24,26 36,8 48,30 60,12 72,28 84,16 96,24 108,6 120,32 132,18 144,22 156,10 168,30 180,14 192,26 204,18 216,22 228,12 240,28 252,16 264,24 276,10 288,30 300,18 312,22 324,14 336,26 348,16 360,24 372,18 384,22 400,20" fill="none" stroke="#cf8f96" stroke-width="1.5"></polyline></svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- step 2 -->
+            <div style="display:flex;gap:13px;padding:11px 2px;">
+              <div style="flex:none;width:30px;height:30px;border-radius:50%;background:rgba(176,106,114,.18);display:flex;align-items:center;justify-content:center;font-family:'Spline Sans Mono',monospace;font-size:12px;color:#edafb8;font-weight:600;">2</div>
+              <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                  <span style="font-family:'Cormorant Garamond',serif;font-size:18px;color:#ece3df;">Trim &amp; audition</span>
+                  <span style="font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.1em;color:#c08e93;">&#9654; 0:00 &ndash; 0:02.4</span>
+                </div>
+                <div style="margin-top:9px;position:relative;height:40px;border-radius:6px;background:rgba(0,0,0,.25);overflow:hidden;">
+                  <div style="position:absolute;left:18%;right:24%;top:0;bottom:0;background:rgba(176,106,114,.2);border-left:2px solid #edafb8;border-right:2px solid #edafb8;"></div>
+                  <svg viewBox="0 0 400 40" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;"><polyline points="0,20 10,18 20,24 30,10 40,28 50,14 60,26 70,18 80,22 90,8 100,30 110,16 120,24 130,12 140,28 150,16 160,24 170,18 180,22 190,10 200,30 210,16 220,24 230,12 240,26 250,18 260,22 270,14 280,26 290,16 300,24 310,18 320,22 330,12 340,28 350,16 360,24 370,18 380,22 400,20" fill="none" stroke="#cf8f96" stroke-width="1.5"></polyline></svg>
+                </div>
+              </div>
+            </div>
+
+            <!-- step 3 -->
+            <div style="display:flex;gap:13px;padding:11px 2px;">
+              <div style="flex:none;width:30px;height:30px;border-radius:50%;background:rgba(176,106,114,.18);display:flex;align-items:center;justify-content:center;font-family:'Spline Sans Mono',monospace;font-size:12px;color:#edafb8;font-weight:600;">3</div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-family:'Cormorant Garamond',serif;font-size:18px;color:#ece3df;margin-bottom:9px;">Analyse</div>
+                <div style="display:flex;gap:10px;">
+                  <div style="flex:1;background:rgba(0,0,0,.25);border-radius:7px;padding:9px 11px;">
+                    <div style="font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.08em;color:#c08e93;">f&#8320; PITCH</div>
+                    <div style="font-family:'Spline Sans Mono',monospace;font-size:16px;color:#edafb8;margin-top:3px;">146.8 Hz</div>
+                    <div style="font-family:'Spline Sans Mono',monospace;font-size:10px;color:#a8787d;">D3</div>
+                  </div>
+                  <div style="flex:1;background:rgba(0,0,0,.25);border-radius:7px;padding:9px 11px;">
+                    <div style="font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.08em;color:#c08e93;">HARMONICS</div>
+                    <div style="display:flex;gap:2px;align-items:flex-end;height:26px;margin-top:5px;">
+                      <div style="flex:1;height:90%;background:#d18a92;border-radius:1px;"></div><div style="flex:1;height:62%;background:#d18a92;border-radius:1px;"></div><div style="flex:1;height:74%;background:#d18a92;border-radius:1px;"></div><div style="flex:1;height:40%;background:#d18a92;border-radius:1px;"></div><div style="flex:1;height:52%;background:#d18a92;border-radius:1px;"></div><div style="flex:1;height:28%;background:#d18a92;border-radius:1px;"></div><div style="flex:1;height:36%;background:#d18a92;border-radius:1px;"></div><div style="flex:1;height:18%;background:#d18a92;border-radius:1px;"></div>
+                    </div>
+                  </div>
+                  <div style="flex:1;background:rgba(0,0,0,.25);border-radius:7px;padding:9px 11px;">
+                    <div style="font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.08em;color:#c08e93;">NOISE / AIR</div>
+                    <div style="font-family:'Spline Sans Mono',monospace;font-size:16px;color:#edafb8;margin-top:3px;">18 %</div>
+                    <div style="font-family:'Spline Sans Mono',monospace;font-size:10px;color:#a8787d;">breathy</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="flex:1;"></div>
+
+            <!-- step 4 save -->
+            <div style="display:flex;align-items:center;gap:12px;margin-top:14px;padding-top:16px;">
+              <div style="flex:none;width:34px;height:34px;border-radius:7px;background:linear-gradient(135deg,#edafb8,#b06a72);box-shadow:inset 0 1px 2px rgba(255,255,255,.4);"></div>
+              <div style="flex:1;background:rgba(0,0,0,.3);border-radius:7px;padding:9px 13px;font-family:'Cormorant Garamond',serif;font-style:italic;font-size:18px;color:#ece3df;">Amber Guitar II</div>
+              <div class="qbtn" onClick="{{ saveColour }}" style="cursor:pointer;background:linear-gradient(135deg,#edafb8,#b06a72);border-radius:7px;padding:11px 20px;box-shadow:0 3px 9px rgba(176,106,114,.45);font-family:'Spline Sans Mono',monospace;font-size:11px;letter-spacing:.08em;color:#2b1418;font-weight:600;">SAVE TO PALETTE</div>
+            </div>
+          </div>
+
+          <!-- ===== FLOW B : ARTICULATION (teal) ===== -->
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(122,150,152,.12),rgba(122,150,152,.04));border-radius:11px;padding:20px 22px;">
+            <div style="display:flex;align-items:center;gap:11px;margin-bottom:3px;">
+              <div style="width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,#a9c2c4,#4a5759);box-shadow:inset 0 1px 2px rgba(255,255,255,.4);"></div>
+              <span style="font-family:'Cormorant SC',serif;letter-spacing:.18em;font-size:15px;color:#a9c2c4;">ARTICULATION</span>
+              <span style="font-size:13px;font-style:italic;color:#8aa6a7;">the hand</span>
+            </div>
+            <div style="font-size:13px;color:#85a0a1;margin-bottom:14px;">Drag a performance &rarr; auto-segment &amp; classify &rarr; preview slide / strum &rarr; save as .tplib.</div>
+
+            <!-- step 1 -->
+            <div style="display:flex;gap:13px;padding:11px 2px;">
+              <div style="flex:none;width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#a9c2c4,#4a5759);display:flex;align-items:center;justify-content:center;font-family:'Spline Sans Mono',monospace;font-size:12px;color:#fff;font-weight:600;box-shadow:0 2px 6px rgba(74,87,89,.5);">1</div>
+              <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                  <span style="font-family:'Cormorant Garamond',serif;font-size:18px;color:#e3eaea;">Drag a performance</span>
+                  <span style="font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.1em;color:#8aa6a7;">MIDI or audio</span>
+                </div>
+                <div style="margin-top:9px;height:46px;border-radius:6px;background:rgba(122,150,152,.08);position:relative;overflow:hidden;">
+                  <svg viewBox="0 0 400 46" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;">
+                    <rect x="20" y="26" width="36" height="7" rx="2" fill="#8aadae"></rect><rect x="80" y="18" width="22" height="7" rx="2" fill="#8aadae"></rect><rect x="120" y="30" width="50" height="7" rx="2" fill="#8aadae"></rect><rect x="190" y="14" width="30" height="7" rx="2" fill="#8aadae"></rect><rect x="240" y="24" width="42" height="7" rx="2" fill="#8aadae"></rect><rect x="300" y="20" width="26" height="7" rx="2" fill="#8aadae"></rect><rect x="344" y="30" width="44" height="7" rx="2" fill="#8aadae"></rect>
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <!-- step 2 -->
+            <div style="display:flex;gap:13px;padding:11px 2px;">
+              <div style="flex:none;width:30px;height:30px;border-radius:50%;background:rgba(122,150,152,.18);display:flex;align-items:center;justify-content:center;font-family:'Spline Sans Mono',monospace;font-size:12px;color:#a9c2c4;font-weight:600;">2</div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-family:'Cormorant Garamond',serif;font-size:18px;color:#e3eaea;margin-bottom:9px;">Auto-segment &amp; classify</div>
+                <div style="display:flex;flex-wrap:wrap;gap:7px;">
+                  <span style="font-family:'Spline Sans Mono',monospace;font-size:10px;padding:5px 12px;border-radius:13px;background:rgba(122,150,152,.18);color:#bcd2d3;">pluck &times;4</span>
+                  <span style="font-family:'Spline Sans Mono',monospace;font-size:10px;padding:5px 12px;border-radius:13px;background:rgba(122,150,152,.18);color:#bcd2d3;">slide &times;2</span>
+                  <span style="font-family:'Spline Sans Mono',monospace;font-size:10px;padding:5px 12px;border-radius:13px;background:rgba(122,150,152,.18);color:#bcd2d3;">legato &times;3</span>
+                  <span style="font-family:'Spline Sans Mono',monospace;font-size:10px;padding:5px 12px;border-radius:13px;background:rgba(122,150,152,.18);color:#bcd2d3;">strum &times;1</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- step 3 -->
+            <div style="display:flex;gap:13px;padding:11px 2px;">
+              <div style="flex:none;width:30px;height:30px;border-radius:50%;background:rgba(122,150,152,.18);display:flex;align-items:center;justify-content:center;font-family:'Spline Sans Mono',monospace;font-size:12px;color:#a9c2c4;font-weight:600;">3</div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-family:'Cormorant Garamond',serif;font-size:18px;color:#e3eaea;margin-bottom:9px;">Preview motion</div>
+                <div style="display:flex;gap:10px;">
+                  <div style="flex:1;background:rgba(0,0,0,.25);border-radius:7px;padding:8px 11px;">
+                    <div style="font-family:'Spline Sans Mono',monospace;font-size:9px;color:#8aa6a7;">SLIDE CURVE</div>
+                    <svg viewBox="0 0 120 36" preserveAspectRatio="none" style="width:100%;height:30px;margin-top:3px;"><path d="M2 32 C40 32 60 6 118 6" fill="none" stroke="#a9c2c4" stroke-width="2"></path></svg>
+                  </div>
+                  <div style="flex:1;background:rgba(0,0,0,.25);border-radius:7px;padding:8px 11px;">
+                    <div style="font-family:'Spline Sans Mono',monospace;font-size:9px;color:#8aa6a7;">STRUM SPREAD</div>
+                    <div style="display:flex;gap:3px;align-items:flex-end;height:26px;margin-top:5px;">
+                      <div style="width:5px;height:60%;background:#8aadae;"></div><div style="width:5px;height:74%;background:#8aadae;margin-left:6px;"></div><div style="width:5px;height:88%;background:#8aadae;margin-left:5px;"></div><div style="width:5px;height:100%;background:#8aadae;margin-left:7px;"></div>
+                      <span style="font-family:'Spline Sans Mono',monospace;font-size:10px;color:#bcd2d3;margin-left:8px;align-self:center;">30 ms</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="flex:1;"></div>
+
+            <!-- step 4 save -->
+            <div style="display:flex;align-items:center;gap:12px;margin-top:14px;padding-top:16px;">
+              <div style="flex:none;width:34px;height:34px;border-radius:7px;background:linear-gradient(135deg,#a9c2c4,#4a5759);box-shadow:inset 0 1px 2px rgba(255,255,255,.4);"></div>
+              <div style="flex:1;background:rgba(0,0,0,.3);border-radius:7px;padding:9px 13px;font-family:'Cormorant Garamond',serif;font-style:italic;font-size:18px;color:#e3eaea;">Nylon &middot; finger &amp; slide</div>
+              <div class="qbtn" onClick="{{ closeOv }}" style="cursor:pointer;background:linear-gradient(135deg,#a9c2c4,#4a5759);border-radius:7px;padding:11px 20px;box-shadow:0 3px 9px rgba(74,87,89,.45);font-family:'Spline Sans Mono',monospace;font-size:11px;letter-spacing:.08em;color:#fff;font-weight:600;">SAVE AS .tplib</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+      </sc-if>
+
+    </div>
+    </sc-if>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  constructor(p){
+    super(p);
+    this.refsMap = {};
+    this.params = { brightness:0.5, noise:0.02, vibdepth:0.3, vibrate:0.42, master:0.62, artint:0.6, strum:0.32, gsens:0.5, pick:0.62 };   // noise 默认 2%(7.3 用户耳测拍板)
+    this.everPlayed = false; this._f0y = null;
+    this.adsrVals = { a:0.18, d:0.32, s:0.55, r:0.45 };
+    this.voices = {};            // midi -> {osc,gain,filt,...}
+    this.activeMidi = new Set();
+    this.recording = false;
+    this.recT0 = 0;
+    this.curArt = 'legato';
+    this.lastNoteT = 0;
+    this.prevMidi = null;
+    this.t = 0;
+    this.state = { view:'play', overlay:null, hasTake:false, playing:false, takeRec:false, metro:true, loop:false, countin:false, tempo:120.0, tsig:4, tones:[], curTone:'__default__', devices:{input:[],output:[],midi:[],engine:{}}, probe:null };
+  }
+
+  // ---- ref helpers ----
+  mk(name){ return (el)=>{ if(el) this.refsMap[name]=el; }; }
+
+  renderVals(){
+    const r = {};
+    ['scalerRef','recBtnRef','recLabelRef','f0Ref','srcCanvasRef','toneCanvasRef',
+     'liveCanvasRef','voicesRef','tiltCanvasRef','adsrCanvasRef','modeRef','glideValRef',
+     'artLabelRef','glideCanvasRef','latRef','midiDotRef','meterLRef','meterRRef','v_strum'
+    ].forEach(n=> r[n]=this.mk(n));
+    r.keyboardRef   = (el)=>{ if(el){ this.refsMap.keyboardRef=el;   if(!el.childElementCount) this.buildKeyboard();  } };
+    r.voiceGridRef  = (el)=>{ if(el){ this.refsMap.voiceGridRef=el;  if(!el.childElementCount) this.buildVoiceGrid(); } };
+    r.chipsRef      = (el)=>{ if(el){ this.refsMap.chipsRef=el;      if(!el.childElementCount) this.buildChips();      } };
+    r.adsrFadersRef = (el)=>{ if(el){ this.refsMap.adsrFadersRef=el; if(!el.childElementCount) this.buildFaders();     } };
+    ['brightness','noise','vibdepth','vibrate','master','artint','strum','gsens','pick'].forEach(k=>{
+      r['k_'+k]=this.mk('k_'+k); r['n_'+k]=this.mk('n_'+k); r['v_'+k]=this.mk('v_'+k);
+    });
+    r.knobDown = (e)=>this.knobDown(e);
+    r.faderDown = (e)=>this.faderDown(e);
+    r.toggleCapture = ()=>{ if(window.pywebview&&window.pywebview.api&&window.pywebview.api.open_capture) window.pywebview.api.open_capture(); else this.toggleCapture(); };
+    r.toggleMode = ()=>this.setMode();
+    r.pickTone = (e)=>{ const nm=e.currentTarget.dataset.tname; this.flashTone();
+      if(window.pywebview&&window.pywebview.api&&window.pywebview.api.load_tone) window.pywebview.api.load_tone(nm).then(res=>{ if(res&&res.disp){ const el=document.getElementById('quillToneName'); if(el) el.textContent=res.disp; this.setState({curTone:nm}); } }); };
+    r.saveTone = ()=>{ const inp=this.refsMap.toneNameRef, nm=inp?inp.value.trim():''; if(!nm){ if(inp) inp.focus(); return; }
+      if(window.pywebview&&window.pywebview.api&&window.pywebview.api.save_timbre) window.pywebview.api.save_timbre(nm).then(res=>{ if(inp) inp.value=''; if(res&&res.ok) this.setState({curTone:res.name}); this.refreshTones(); }); };
+    r.toneNameRef = (el)=>{ if(el) this.refsMap.toneNameRef=el; };
+    r.delTone = (e)=>{ if(e&&e.preventDefault) e.preventDefault(); if(e&&e.stopPropagation) e.stopPropagation();
+      const el=e.currentTarget, nm=el.dataset.tname; if(!nm||nm==='__default__') return;
+      if(!el.dataset.armed){ el.dataset.armed='1'; el.classList.add('armed');   // 两击确认:先红一下
+        setTimeout(()=>{ el.dataset.armed=''; el.classList.remove('armed'); }, 1600); return; }
+      if(window.pywebview&&window.pywebview.api&&window.pywebview.api.delete_tone)
+        window.pywebview.api.delete_tone(nm).then(()=>{ if(this.state.curTone===nm) this.setState({curTone:'__default__'}); this.refreshTones(); }); };
+    r.renTone = (e)=>{ if(e&&e.stopPropagation) e.stopPropagation();
+      const nm=e.currentTarget.dataset.tname; if(!nm||nm==='__default__') return;
+      const card=e.currentTarget.closest('.tonecard'); if(!card) return;
+      const rect=card.getBoundingClientRect();
+      const t=(this.state.tones||[]).find(x=>x.name===nm);
+      const inp=document.createElement('input'); inp.value=(t&&t.disp)||nm;
+      inp.style.cssText='position:fixed;z-index:99;left:'+rect.left+'px;top:'+(rect.top+rect.height-20)+'px;width:'+rect.width+'px;'
+        +'background:#1b1812;border:1px solid #c9a86a;border-radius:4px;padding:3px 5px;color:#f0e6cc;'
+        +'font-size:10.5px;font-family:\'Spline Sans Mono\',monospace;outline:none;box-shadow:0 3px 10px rgba(0,0,0,.5);';
+      document.body.appendChild(inp); inp.focus(); inp.select();
+      let done=false;
+      const commit=(ok)=>{ if(done) return; done=true; const v=inp.value.trim(); inp.remove();
+        if(!ok||!v||v===((t&&t.disp)||nm)) return;
+        if(window.pywebview&&window.pywebview.api&&window.pywebview.api.rename_tone)
+          window.pywebview.api.rename_tone(nm, v).then(res=>{
+            if(res&&res.ok&&this.state.curTone===nm) this.setState({curTone:res.name});
+            this.refreshTones(); }); };
+      inp.onkeydown=(k)=>{ if(k.key==='Enter') commit(true); if(k.key==='Escape') commit(false); };
+      inp.onblur=()=>commit(true); };
+    // ---- navigation / overlays / transport ----
+    const s = this.state;
+    r.isPlay = s.view==='play';
+    r.ovSettings = s.overlay==='settings';
+    r.ovExport = s.overlay==='export';
+    r.ovLibrary = s.overlay==='library';
+    r.ovTake = s.overlay==='take';
+    r.ovCapture = s.overlay==='capture';
+    r.stop = (e)=>{ e.stopPropagation(); };
+    r.anyOverlay = !!s.overlay;
+    r.hasTake = s.hasTake;
+    r.playing = s.playing;
+    r.takeRec = s.takeRec;
+    r.metroOn = s.metro; r.loopOn = s.loop; r.countinOn = s.countin;
+    r.metroCol = s.metro?'#c9a86a':'#6a6353';
+    r.loopCol = s.loop?'#c9a86a':'#6a6353';
+    r.countinCol = s.countin?'#c9a86a':'#6a6353';
+    r.playCol = s.playing?'#6fae7a':'#cdc3a8';
+    r.recCol = s.takeRec?'#cf6b63':'#cdc3a8';
+    r.tempoStr = s.tempo.toFixed(1);
+    r.tsigStr = (s.tsig||4) + '/4';
+    r.takeStatus = s.takeRec ? '● RECORDING…' : (s.hasTake ? 'TAKE 01 · 4.2 s' : 'no take');
+    r.takeStatusCol = s.takeRec ? '#cf6b63' : (s.hasTake ? '#6fae7a' : '#6a6353');
+    r.goCapture = ()=>{ if(window.pywebview&&window.pywebview.api&&window.pywebview.api.open_capture) window.pywebview.api.open_capture(); else this.setState({overlay:'capture'}); };
+    r.goRefine = r.goCapture;                                              // 精修=同一取色窗(工具常驻 ANALYSIS 面板)
+    r.goSong = ()=>{ if(window.pywebview&&window.pywebview.api&&window.pywebview.api.open_capture) window.pywebview.api.open_capture('song'); else this.setState({overlay:'capture'}); };
+    r.goPlay = ()=>this.setState({overlay:null});
+    r.openSettings = ()=>{ this.setState({overlay:'settings', probe:null}); this.fetchDevices(); };
+    r.openExport = ()=>this.setState({overlay:'export'});
+    r.openLibrary = ()=>this.setState({overlay:'library'});
+    r.openTake = ()=>{};   // 废掉独立 TAKE 编辑弹窗:录制内容直接进卷帘,不再另开窗
+    r.closeOv = ()=>this.setState({overlay:null});
+    r.tPlay = ()=>{ if(window.quillPiano) window.quillPiano.play(); this.setState(st=>({playing:!st.playing})); };
+    r.tStop = ()=>{ if(window.quillPiano) window.quillPiano.stop(); this.setState({playing:false, takeRec:false}); };
+    r.tRec = ()=>{ const rec=window.quillPiano&&window.quillPiano.record(); this.setState(st=>({takeRec:!st.takeRec, hasTake:true})); };
+    r.toggleMetro = ()=>this.setState(st=>{ const v=!st.metro; if(window.quillPiano) window.quillPiano.setMetro(v); return {metro:v}; });
+    r.toggleLoop = ()=>this.setState(st=>({loop:!st.loop}));
+    r.toggleCountin = ()=>this.setState(st=>{ const v=!st.countin; if(window.quillPiano) window.quillPiano.setCountin(v); return {countin:v}; });
+    r.tempoDown = ()=>this.setState(st=>{ const t=Math.max(40,(st.tempo|0)-1); if(window.quillPiano) window.quillPiano.setBPM(t); return {tempo:t}; });
+    r.tempoUp = ()=>this.setState(st=>{ const t=Math.min(240,(st.tempo|0)+1); if(window.quillPiano) window.quillPiano.setBPM(t); return {tempo:t}; });
+    r.cycleSig = ()=>this.setState(st=>{ const seq=[4,3,2,6], n=seq[(seq.indexOf(st.tsig)+1)%seq.length]; if(window.quillPiano) window.quillPiano.setTimeSig(n); return {tsig:n}; });
+    r.saveColour = ()=>this.setState({overlay:null});
+    // ---- devices(真数据:list_devices;点击即切换后端)----
+    const dv = this.state.devices||{input:[],output:[],midi:[],engine:{}};
+    const radio = (sel)=>({ ring: sel?'#c9a86a':'rgba(176,141,79,.4)', fill: sel?'#c9a86a':'transparent',
+      bg: sel?'rgba(201,168,106,.09)':'rgba(232,224,205,.03)',
+      border: sel?'rgba(201,168,106,.42)':'rgba(176,141,79,.14)',
+      shadow: sel?'inset 0 1px 0 rgba(255,255,255,.05)':'none' });
+    r.audioInputs = (dv.input||[]).map(d=>{
+      const isBlackhole=/blackhole|loopback|aggregate|multi-output/i.test(d.name);
+      return Object.assign(radio(d.sel), { name:d.name,
+        tag: d.sel?(isBlackhole?'VIRTUAL':'ACTIVE'):'', tagCol: isBlackhole?'#d08a6a':'#6fae7a',
+        pick: ()=>this.pickInput(d.idx) }); });
+    r.audioOutputs = (dv.output||[]).map(d=>Object.assign(radio(d.sel), { name:d.name,
+      pick: ()=>this.pickOutput(d.idx) }));
+    r.midiDevices = (dv.midi||[]).map(d=>({ name:d.name,
+      status: d.sel?'CONNECTED':'AVAILABLE', statusCol: d.sel?'#6fae7a':'#7d7259',
+      dot: d.sel?'#6fae7a':'#5a5446', glow: d.sel?'0 0 7px #6fae7a':'none',
+      bg: d.sel?'rgba(111,174,122,.08)':'rgba(232,224,205,.03)',
+      border: d.sel?'rgba(111,174,122,.38)':'rgba(176,141,79,.14)',
+      pick: ()=>this.pickMidi(d.sel?null:d.name) }));
+    if(!r.midiDevices.length) r.midiDevices=[{ name:'No MIDI input — plug in a keyboard, or play the on-screen keys.',
+      status:'', statusCol:'#7d7259', dot:'#5a5446', glow:'none',
+      bg:'rgba(232,224,205,.02)', border:'rgba(176,141,79,.1)', pick:()=>{} }];
+    r.testInput = ()=>this.testInput();
+    const pb=this.state.probe;
+    r.probeLabel = pb||'▶ TEST';
+    r.probeCol = pb&&/silent/i.test(pb)?'#d08a6a':(pb&&/signal/i.test(pb)?'#6fae7a':'#9a7c40');
+    r.probeBorder = pb&&/silent/i.test(pb)?'rgba(208,138,106,.5)':'rgba(176,141,79,.3)';
+    r.rescanDevices = ()=>this.fetchDevices();
+    const eng = dv.engine||{};
+    r.engineRows = [
+      {label:'Sample rate', value: eng.sr? (eng.sr).toLocaleString()+' Hz':'—'},
+      {label:'Buffer', value: eng.blocksize? eng.blocksize+' samples':'—'},
+      {label:'Output latency', value: eng.latency_ms!=null? eng.latency_ms+' ms':'measuring…'},
+      {label:'Voices', value: eng.voices? String(eng.voices):'—'},
+    ];
+    r.exportRows = [
+      {label:'Audio', fmt:'WAV · AIFF'},
+      {label:'MIDI', fmt:'.mid'},
+      {label:'Project', fmt:'.quill'},
+    ];
+    r.libraryItems = [
+      {name:'Amber Guitar', tag:'WARM · PLUCK', css:'linear-gradient(135deg,#edafb8,#b06a72)'},
+      {name:'Bright Nylon', tag:'BRIGHT', css:'linear-gradient(135deg,#cdd2b0,#c9a86a)'},
+      {name:'Round Pluck', tag:'PLUCK', css:'linear-gradient(135deg,#7fa07a,#9a7c40)'},
+      {name:'Swell Brass', tag:'BRASS', css:'linear-gradient(135deg,#d8b974,#c9885a)'},
+      {name:'Vocal Air', tag:'VOCAL', css:'linear-gradient(135deg,#b0c4b1,#4a5759)'},
+      {name:'Glass Bell', tag:'GLASS', css:'linear-gradient(135deg,#a9c2c4,#4a5759)'},
+      {name:'Felt Keys', tag:'SOFT', css:'linear-gradient(135deg,#e0d2bb,#a8895a)'},
+      {name:'Reed Hum', tag:'WIND', css:'linear-gradient(135deg,#cdbf9a,#8a7c4a)'},
+      {name:'Wire Harp', tag:'METAL', css:'linear-gradient(135deg,#b8c2c0,#5a6a66)'},
+    ];
+    r.rollNotes = [
+      {x:'4%',y:'62%',w:'9%'},{x:'15%',y:'48%',w:'12%'},{x:'29%',y:'54%',w:'7%'},
+      {x:'38%',y:'34%',w:'15%'},{x:'55%',y:'44%',w:'9%'},{x:'66%',y:'58%',w:'11%'},
+      {x:'79%',y:'40%',w:'8%'},{x:'89%',y:'50%',w:'7%'},{x:'10%',y:'72%',w:'6%'},{x:'48%',y:'68%',w:'10%'},
+    ];
+    r.palette = (this.state.tones||[]).map((t,i)=>{ const sel=t.name===this.state.curTone; return { i, label:t.disp||t.name, css:t.css, tname:t.name, builtin:!!t.builtin, bcol: sel?'#e8c987':'rgba(255,255,255,.14)', bw: sel?'2px':'1px', lcol: sel?'#f0e6cc':'#a89c80', dly: (i*45)+'ms', actDisp: t.builtin?'none':'flex' }; });
+    return r;
+  }
+
+  // ---- 设备面板:真数据拉取 + 切换 ----
+  fetchDevices(){
+    const api=window.pywebview&&window.pywebview.api;
+    if(api&&api.list_devices) api.list_devices().then(d=>this.setState({devices:d||{input:[],output:[],midi:[],engine:{}}})).catch(()=>{});
+  }
+  pickInput(idx){ const api=window.pywebview&&window.pywebview.api;
+    if(api&&api.set_input_device) api.set_input_device(idx).then(()=>{ this.setState({probe:null}); this.fetchDevices(); }).catch(()=>{}); }
+  pickOutput(idx){ const api=window.pywebview&&window.pywebview.api;
+    if(api&&api.set_output_device) api.set_output_device(idx).then(()=>this.fetchDevices()).catch(()=>{}); }
+  pickMidi(name){ const api=window.pywebview&&window.pywebview.api;
+    if(api&&api.set_midi_input) api.set_midi_input(name).then(()=>this.fetchDevices()).catch(()=>{}); }
+  testInput(){ const api=window.pywebview&&window.pywebview.api;
+    if(!(api&&api.probe_input)) return;
+    this.setState({probe:'…LISTENING'});
+    api.probe_input(350).then(r=>{
+      let p;
+      if(!(r&&r.ok)) p='ERR';
+      else p = (r.peak>0.002)? ('● SIGNAL '+Math.round(Math.min(1,r.peak*4)*100)+'%') : '○ SILENT';
+      this.setState({probe:p});
+    }).catch(()=>this.setState({probe:'ERR'}));
+  }
+
+  componentDidMount(){
+    this.buildKeyboard();
+    this.buildVoiceGrid();
+    this.buildChips();
+    this.buildFaders();
+    this.applyAllKnobs();
+    this.applyAdsr();
+    this.fit();
+    // 拉取音色库 —— pywebview 的 api 注入晚于页面挂载(竞态:重启后库不显示,存新音色才"跳出来")
+    // → 监听 pywebviewready + 轮询兜底,就绪即拉
+    window.quillRefreshTones=()=>this.refreshTones();
+    window.quillShowArt=(a)=>this.showArt(a);          // 外接 MIDI 判定推送入口(Api._push_art)
+    window.addEventListener('pywebviewready', ()=>this.refreshTones());
+    this._toneTry=0;
+    const tryTones=()=>{ if(window.pywebview&&window.pywebview.api){ this.refreshTones(); }
+                         else if(this._toneTry++<60){ setTimeout(tryTones,200); } };
+    tryTones();
+    window.addEventListener('resize', this._fit=()=>this.fit());
+    window.addEventListener('keydown', this._kd=(e)=>this.onKeyDown(e));
+    window.addEventListener('keyup', this._ku=(e)=>this.onKeyUp(e));
+    // SOURCE 实时波形:轮询取色窗录音电平(共享 bridge),录音时主窗同步滚动显示真实输入
+    this._capHist=[]; this._capActive=false;
+    const capTick=()=>{ const api=window.pywebview&&window.pywebview.api;
+      if(api&&api.capture_meter){ api.capture_meter().then(m=>{
+        this._capActive=!!(m&&m.active);
+        if(this._capActive){ this._capHist.push(Math.max(0,(m&&m.lvl)||0)); if(this._capHist.length>150) this._capHist.shift(); }
+        else if(this._capHist.length){ this._capHist.length=0; }   // 停录清空 → 回到包络/静息
+      }).catch(()=>{}); }
+      this._capTimer=setTimeout(capTick, 80); };
+    capTick();
+    this.raf = requestAnimationFrame(this._loop=()=>this.loop());
+  }
+  componentWillUnmount(){
+    cancelAnimationFrame(this.raf);
+    if(this._capTimer) clearTimeout(this._capTimer);
+    window.removeEventListener('resize',this._fit);
+    window.removeEventListener('keydown',this._kd);
+    window.removeEventListener('keyup',this._ku);
+  }
+  refreshTones(){   // 从后端拉音色库 → 渲染 SAVED TONES
+    if(window.pywebview&&window.pywebview.api&&window.pywebview.api.list_tones)
+      window.pywebview.api.list_tones().then(tones=>this.setState({tones:tones||[]}));
+  }
+
+  fit(){
+    const el=this.refsMap.scalerRef; if(!el) return;
+    const s=Math.min(window.innerWidth/1440, window.innerHeight/900);
+    el.style.transform='scale('+s+')';
+  }
+
+  // ---------- audio ----------
+  ac(){ if(!this._ac){ this._ac=new (window.AudioContext||window.webkitAudioContext)(); this._bus=this._ac.createGain(); this._bus.gain.value=this.params.master; this._comp=this._ac.createDynamicsCompressor(); this._bus.connect(this._comp).connect(this._ac.destination);} if(this._ac.state==='suspended') this._ac.resume(); return this._ac; }
+
+  noteOn(midi){
+    if(this.activeMidi.has(midi)) return;
+    this.everPlayed=true;
+    if(window.pywebview&&window.pywebview.api&&window.pywebview.api.note_on){   // 真实 Quill 引擎(app)
+      this.activeMidi.add(midi);
+      const r=window.pywebview.api.note_on(midi,110,'auto',-1);    // 判定收敛到引擎侧(gesture.py 语义)
+      if(r&&r.then) r.then(a=>this.showArt(a));                    // Python 返回判定结果 → 点亮标签
+      this.prevMidi=midi; this.setKeyVisual(midi,true);
+      return;
+    }
+    const ac=this.ac();
+    const f=440*Math.pow(2,(midi-69)/12);
+    const now=ac.currentTime;
+    const osc=ac.createOscillator();
+    osc.type = this.params.noise>0.4?'sawtooth':(this.params.brightness>0.6?'sawtooth':'triangle');
+    osc.frequency.setValueAtTime(f, now);
+    // glide
+    if(this.prevMidi!=null){ const pf=440*Math.pow(2,(this.prevMidi-69)/12); osc.frequency.setValueAtTime(pf,now); osc.frequency.exponentialRampToValueAtTime(f, now+0.042+this.params.gsens*0.08); }
+    // vibrato
+    const lfo=ac.createOscillator(); const lg=ac.createGain();
+    lfo.frequency.value=2+this.params.vibrate*8; lg.gain.value=this.params.vibdepth*7; lfo.connect(lg).connect(osc.frequency); lfo.start();
+    const filt=ac.createBiquadFilter(); filt.type='lowpass';
+    filt.frequency.value=400+this.params.brightness*8000+this.params.pick*3200;
+    const g=ac.createGain(); g.gain.value=0;
+    osc.connect(filt).connect(g).connect(this._bus);
+    // ADSR — pick sharpens attack + adds a transient
+    const pk=this.params.pick;
+    const A=(0.005+this.adsrVals.a*1.2)*(1-pk*0.82)+0.002, D=0.02+this.adsrVals.d*1.0, S=this.adsrVals.s, peak=0.30;
+    const trans=peak*(1+pk*0.9);
+    g.gain.cancelScheduledValues(now);
+    g.gain.setValueAtTime(0,now);
+    g.gain.linearRampToValueAtTime(trans, now+A);
+    g.gain.linearRampToValueAtTime(peak*S, now+A+D);
+    osc.start();
+    // noise
+    let noiseNode=null;
+    if(this.params.noise>0.02){
+      const buf=ac.createBuffer(1,ac.sampleRate*0.5,ac.sampleRate); const d=buf.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*0.5;
+      noiseNode=ac.createBufferSource(); noiseNode.buffer=buf; noiseNode.loop=true;
+      const ng=ac.createGain(); ng.gain.value=this.params.noise*0.08*peak;
+      const nf=ac.createBiquadFilter(); nf.type='bandpass'; nf.frequency.value=2000+this.params.brightness*4000;
+      noiseNode.connect(nf).connect(ng).connect(g); noiseNode.start();
+    }
+    this.voices[midi]={osc,g,lfo,noiseNode,start:now};
+    this.activeMidi.add(midi);
+    this.updateArticulation(midi);
+    this.prevMidi=midi;
+    this.setKeyVisual(midi,true);
+  }
+  noteOff(midi){
+    if(window.pywebview&&window.pywebview.api&&window.pywebview.api.note_off){   // 真实 Quill 引擎(app)
+      window.pywebview.api.note_off(midi);
+      this.activeMidi.delete(midi); this.setKeyVisual(midi,false);
+      if(this.activeMidi.size===0) this.prevMidi=null;
+      return;
+    }
+    const v=this.voices[midi]; if(!v) return;
+    const ac=this._ac; const now=ac.currentTime; const R=0.05+this.adsrVals.r*1.4;
+    v.g.gain.cancelScheduledValues(now);
+    v.g.gain.setValueAtTime(v.g.gain.value,now);
+    v.g.gain.linearRampToValueAtTime(0, now+R);
+    v.osc.stop(now+R+0.05); v.lfo.stop(now+R+0.05); if(v.noiseNode) v.noiseNode.stop(now+R+0.05);
+    delete this.voices[midi]; this.activeMidi.delete(midi);
+    this.setKeyVisual(midi,false);
+    if(this.activeMidi.size===0) this.prevMidi=null;
+  }
+
+  showArt(art){   // 纯显示:点亮演奏法标签/chips(判定在引擎侧,这里只呈现)
+    if(!art) return;
+    this.curArt=art;
+    if(this.refsMap.artLabelRef) this.refsMap.artLabelRef.textContent=art;
+    var _al=document.getElementById('quillArtLabel'); if(_al) _al.textContent=art;   // id 直连兜底(refs 时序保险)
+    if(this._chips) this._chips.forEach(c=>{ const on=c.dataset.a===art; c.style.background=on?'#9a7c40':'transparent'; c.style.color=on?'#fff7e6':'#7d7259'; c.style.borderColor=on?'#9a7c40':'rgba(40,34,24,.22)'; });
+    this.glideAnim=performance.now();
+  }
+  updateArticulation(midi){   // 仅浏览器降级路径(无引擎)用;语义对齐 runtime/gesture.py:
+    const now=performance.now();                                     // 80ms 内 ≥3 音=strum;有按住音:≤2半音=legato,>2=slide
+    this._onsets=(this._onsets||[]).filter(t=>now-t<80); this._onsets.push(now);
+    const held=Array.from(this.activeMidi).filter(m=>m!==midi);
+    let art='pluck';
+    if(this._onsets.length>=3) art='strum';
+    else if(held.length){ const frm=held[held.length-1]; art=Math.abs(midi-frm)<=2?'legato':'slide'; }
+    this.showArt(art);
+  }
+
+  // ---------- knobs / faders ----------
+  knobDown(e){
+    const key=e.currentTarget.dataset.knob; e.preventDefault();
+    document.body.style.cursor='default'; document.body.style.userSelect='none';   // 拖动锁光标+禁选中(修 I 形光标)
+    const y0=e.clientY, v0=this.params[key];
+    const mv=(ev)=>{ let v=v0-(ev.clientY-y0)/180; v=Math.max(0,Math.min(1,v)); this.params[key]=v; this.applyKnob(key); if(key==='master'&&this._bus) this._bus.gain.value=v; };
+    const up=()=>{ document.body.style.cursor=''; document.body.style.userSelect=''; window.removeEventListener('pointermove',mv); window.removeEventListener('pointerup',up); };
+    window.addEventListener('pointermove',mv); window.addEventListener('pointerup',up);
+  }
+  applyKnob(key){
+    if(window.pywebview&&window.pywebview.api&&window.pywebview.api.set_param) window.pywebview.api.set_param(key, this.params[key]);  // → 真实引擎
+    const v=this.params[key]; const needle=this.refsMap['n_'+key];
+    if(needle) needle.style.transform='translateX(-50%) rotate('+(-135+v*270)+'deg)';
+    const valEl=this.refsMap['v_'+key];
+    if(valEl){
+      if(key==='brightness') valEl.textContent=(v*2-1>=0?'+':'')+((v*2-1)*6).toFixed(1);
+      else if(key==='noise') valEl.textContent=Math.round(v*100)+'%';
+      else if(key==='vibrate') valEl.textContent=(2+v*8).toFixed(1)+' Hz';
+      else if(key==='vibdepth') valEl.textContent=Math.round(v*100)+' %';
+      else if(key==='master') valEl.textContent=(20*Math.log10(Math.max(0.02,v))).toFixed(1)+' dB';
+      else if(key==='strum') valEl.textContent=Math.round(8+v*70)+' ms';
+      else if(key==='pick') valEl.textContent=v.toFixed(2);
+    }
+    if(key==='strum'&&this.refsMap.v_strum) this.refsMap.v_strum.textContent=Math.round(8+v*70)+' ms';
+  }
+  applyAllKnobs(){ Object.keys(this.params).forEach(k=>this.applyKnob(k)); if(this.refsMap.glideValRef) this.refsMap.glideValRef.textContent=Math.round(20+this.params.gsens*80)+' ms'; }
+
+  faderDown(e){
+    const key=e.currentTarget.dataset.fader; e.preventDefault();
+    document.body.style.cursor='default'; document.body.style.userSelect='none';   // 拖动锁光标+禁选中
+    const rect=e.currentTarget.getBoundingClientRect();
+    const set=(ev)=>{ let v=1-(ev.clientY-rect.top)/rect.height; v=Math.max(0,Math.min(1,v)); this.adsrVals[key]=v; this.applyAdsr(); };
+    set(e);
+    const up=()=>{ document.body.style.cursor=''; document.body.style.userSelect=''; window.removeEventListener('pointermove',set); window.removeEventListener('pointerup',up); };
+    window.addEventListener('pointermove',set); window.addEventListener('pointerup',up);
+  }
+  applyAdsr(){
+    if(window.pywebview&&window.pywebview.api&&window.pywebview.api.set_adsr) window.pywebview.api.set_adsr(this.adsrVals.a,this.adsrVals.d,this.adsrVals.s,this.adsrVals.r);  // → 真实引擎
+    ['a','d','s','r'].forEach(k=>{
+      const v=this.adsrVals[k]; const bar=this.refsMap['bar_'+k], h=this.refsMap['h_'+k];
+      if(bar) bar.style.height=(v*100)+'%';
+      if(h) h.style.bottom=(v*100)+'%';
+    });
+    this.drawAdsr();
+  }
+
+  toggleCapture(){
+    this.recording=!this.recording;
+    const btn=this.refsMap.recBtnRef, lbl=this.refsMap.recLabelRef;
+    if(this.recording){ this.recT0=performance.now(); if(btn) btn.style.animation='recring 1.1s infinite'; }
+    else { if(btn) btn.style.animation=''; this.flashTone(); if(lbl) lbl.textContent='PRESS TO CAPTURE · ≤ 60 s'; }
+  }
+  flashTone(){ this._toneFlash=performance.now(); }
+
+  setMode(){   // SOLO=重叠键连音/滑音(默认,已验收) | POLY=重叠键成和弦(行业 Poly/Legato 惯例)
+    this.poly=!this.poly;
+    if(window.pywebview&&window.pywebview.api&&window.pywebview.api.set_voice_mode)
+      window.pywebview.api.set_voice_mode(this.poly?'poly':'solo');
+    if(this.refsMap.modeRef) this.refsMap.modeRef.textContent=this.poly?'poly':'solo';
+  }
+
+  // ---------- builders ----------
+  buildKeyboard(){
+    const host=this.refsMap.keyboardRef; if(!host) return;
+    host.innerHTML='';
+    const startW=48; const whites=[]; const pat=[0,2,4,5,7,9,11];
+    for(let oct=0; oct<3; oct++){ pat.forEach(p=> whites.push(startW+oct*12+p)); }
+    whites.push(startW+36);
+    const blackOffsets={1:1,3:2,6:4,8:5,10:6};
+    const wWidth=100/whites.length;
+    whites.forEach((midi,idx)=>{
+      const k=document.createElement('div');
+      k.style.cssText='flex:1;background:linear-gradient(180deg,#f4eee4,#e2d8c0);border-radius:0 0 4px 4px;box-shadow:inset 0 -3px 6px rgba(120,100,60,.18),0 2px 3px rgba(0,0,0,.3);cursor:pointer;position:relative;';
+      k.dataset.midi=midi; k.dataset.white='1';
+      this.wireKey(k,midi);
+      host.appendChild(k);
+    });
+    // black keys
+    const blacks=[];
+    for(let oct=0; oct<3; oct++){ [1,3,6,8,10].forEach(p=> blacks.push(startW+oct*12+p)); }
+    blacks.forEach(midi=>{
+      const within=((midi-startW)%12); const oct=Math.floor((midi-startW)/12);
+      const wIndexBefore = oct*7 + ({1:1,3:2,6:4,8:5,10:6}[within]);
+      const k=document.createElement('div');
+      k.style.cssText='position:absolute;top:0;width:'+(wWidth*0.62)+'%;height:60%;background:linear-gradient(180deg,#2a2418,#141009);border-radius:0 0 3px 3px;box-shadow:0 3px 5px rgba(0,0,0,.5);cursor:pointer;z-index:2;';
+      k.style.left='calc('+(wIndexBefore*wWidth)+'% - '+(wWidth*0.31)+'%)';
+      k.dataset.midi=midi;
+      this.wireKey(k,midi);
+      host.appendChild(k);
+    });
+  }
+  wireKey(k,midi){
+    k.addEventListener('pointerdown',(e)=>{ e.preventDefault(); this.noteOn(midi); });
+    k.addEventListener('pointerup',()=>this.noteOff(midi));
+    k.addEventListener('pointerleave',(e)=>{ if(e.buttons) this.noteOff(midi); });
+    this._keyEls=this._keyEls||{}; this._keyEls[midi]=k;
+  }
+  setKeyVisual(midi,on){
+    const k=this._keyEls&&this._keyEls[midi]; if(!k) return;
+    const white=k.dataset.white;
+    if(on){ k.style.background=white?'linear-gradient(180deg,#e9d6a8,#caa86a)':'linear-gradient(180deg,#9a7c40,#6f5526)'; }
+    else { k.style.background=white?'linear-gradient(180deg,#f4eee4,#e2d8c0)':'linear-gradient(180deg,#2a2418,#141009)'; }
+  }
+
+  buildFaders(){
+    const host=this.refsMap.adsrFadersRef; if(!host) return; host.innerHTML='';
+    [['a','A'],['d','D'],['s','S'],['r','R']].forEach(([key,label])=>{
+      const col=document.createElement('div');
+      col.style.cssText='display:flex;flex-direction:column;align-items:center;height:100%;cursor:default;';
+      col.dataset.fader=key;
+      col.addEventListener('pointerdown',(e)=>this.faderDown(e));
+      // recessed slot track
+      const track=document.createElement('div');
+      track.style.cssText='flex:1;width:6px;border-radius:3px;background:linear-gradient(90deg,#cfc6b1,#e6ddc9 45%,#cfc6b1);box-shadow:inset 0 1px 3px rgba(40,34,24,.45),inset 0 -1px 0 rgba(255,255,255,.4),0 1px 0 rgba(255,255,255,.5);position:relative;display:flex;align-items:flex-end;overflow:visible;';
+      // filled portion below handle
+      const bar=document.createElement('div');
+      bar.style.cssText='width:100%;border-radius:3px;background:linear-gradient(#edafb8,#b06a72);box-shadow:inset 0 1px 1px rgba(255,225,228,.5);height:'+(this.adsrVals[key]*100)+'%;';
+      // machined metal thumb (matches knobs)
+      const handle=document.createElement('div');
+      handle.style.cssText='position:absolute;left:50%;bottom:'+(this.adsrVals[key]*100)+'%;transform:translate(-50%,50%);width:13px;height:7px;border-radius:2px;'+
+        'background:radial-gradient(circle at 50% 30%,rgba(255,246,224,.18),rgba(255,246,224,0) 55%),conic-gradient(from 0deg,#34302a,#47423a,#272320,#47423a,#2b2722,#1b1814,#47423a,#272320,#34302a),#2a2620;'+
+        'box-shadow:0 0 0 1px #0c0a07,0 0 0 2px #3b3e44,0 2px 5px rgba(0,0,0,.5),inset 0 1px 1px rgba(255,240,210,.25),inset 0 -2px 4px rgba(0,0,0,.55);';
+      track.appendChild(bar); track.appendChild(handle);
+      const lbl=document.createElement('div'); lbl.style.cssText='margin-top:9px;font-family:\'Spline Sans Mono\',monospace;font-size:11px;letter-spacing:.08em;color:#7a5e26;font-weight:500;'; lbl.textContent=label;
+      col.appendChild(track); col.appendChild(lbl); host.appendChild(col);
+      this.refsMap['bar_'+key]=bar; this.refsMap['h_'+key]=handle;
+    });
+  }
+  buildVoiceGrid(){
+    const host=this.refsMap.voiceGridRef; if(!host) return; host.innerHTML='';
+    this._voiceCells=[];
+    for(let i=0;i<16;i++){ const c=document.createElement('div'); c.style.cssText='aspect-ratio:1;border-radius:3px;background:rgba(40,34,24,.13);transition:background .12s,box-shadow .12s;'; host.appendChild(c); this._voiceCells.push(c); }
+  }
+  buildChips(){
+    const host=this.refsMap.chipsRef; if(!host) return; host.innerHTML='';
+    this._chips=[];
+    ['pluck','slide','legato','strum','vibrato'].forEach(a=>{
+      const c=document.createElement('div'); c.dataset.a=a;
+      c.style.cssText='font-family:Cormorant Garamond,serif;font-style:italic;font-size:15px;padding:2px 12px;border-radius:13px;border:1px solid rgba(176,141,79,.3);color:#a89c80;transition:all .15s;';
+      c.textContent=a; host.appendChild(c); this._chips.push(c);
+    });
+  }
+
+  // ---------- computer keyboard ----------
+  _typing(e){ const t=e.target, tn=t&&t.tagName; return tn==='INPUT'||tn==='TEXTAREA'||tn==='SELECT'||(t&&t.isContentEditable); }  // 焦点在输入框:放行给打字,不当 MIDI
+  onKeyDown(e){ if(this._typing(e)) return; const m=this.keymap()[e.key.toLowerCase()]; if(m==null) return; e.preventDefault(); if(e.repeat) return; this.noteOn(m); }   // preventDefault 防按键触发浏览器默认行为(快闪)
+  onKeyUp(e){ if(this._typing(e)) return; const m=this.keymap()[e.key.toLowerCase()]; if(m==null) return; e.preventDefault(); this.noteOff(m); }
+  keymap(){ return {a:60,w:61,s:62,e:63,d:64,f:65,t:66,g:67,y:68,h:69,u:70,j:71,k:72,o:73,l:74}; }
+
+  // ---------- draw loop ----------
+  loop(){
+    if(window.quillPiano && !this._pSync){ this._pSync=true;   // 卷帘就绪后把 BPM/节拍器/预备拍状态推过去(一次)
+      window.quillPiano.setBPM(this.state.tempo); window.quillPiano.setMetro(this.state.metro); window.quillPiano.setCountin(this.state.countin); window.quillPiano.setTimeSig(this.state.tsig); }
+    this.t+=1; const now=performance.now();
+    this.drawLive(now); this.drawSource(now); this.drawTone(now); this.drawTilt(); this.drawGlide(now);
+    // voices (hero demo lights a few until first real note)
+    const realN=this.activeMidi.size;
+    const n = realN || ((!this.everPlayed)? (3+Math.round(Math.sin(now/900))) : 0);
+    if(this.refsMap.voicesRef) this.refsMap.voicesRef.textContent='VOICES '+n+'/16';
+    if(this._voiceCells){ this._voiceCells.forEach((c,i)=>{ const on=i<n; c.style.background=on?'linear-gradient(#a9c2c4,#4a5759)':'rgba(40,34,24,.13)'; c.style.boxShadow=on?'0 0 6px rgba(122,150,152,.5)':'none'; }); }
+    // meters
+    const lvl=n>0?(0.3+0.5*Math.abs(Math.sin(now/180))):Math.max(0,(this._meter||0)-0.02);
+    this._meter=lvl;
+    if(this.refsMap.meterLRef) this.refsMap.meterLRef.style.width=(8+lvl*88)+'%';
+    if(this.refsMap.meterRRef) this.refsMap.meterRRef.style.width=(8+lvl*0.9*88)+'%';
+    // latency flicker
+    // recording timer
+    if(this.recording && this.refsMap.recLabelRef){ const s=((now-this.recT0)/1000); this.refsMap.recLabelRef.textContent='● CAPTURING  '+s.toFixed(1)+' s'; }
+    // 取色窗在录时:印章环缓转 + 标签同步(主窗大钮反映真实录音状态)
+    const _sb=this.refsMap.recBtnRef, _sl=this.refsMap.recLabelRef;
+    if(_sb) _sb.classList.toggle('capturing', !!this._capActive);
+    if(_sl && !this.recording){
+      if(this._capActive){ _sl.textContent='● CAPTURING…'; this._capLbl=true; }
+      else if(this._capLbl){ _sl.textContent='PRESS TO CAPTURE · ≤ 60 s'; this._capLbl=false; }
+    }
+    this.raf=requestAnimationFrame(this._loop);
+  }
+
+  cctx(ref){ const c=this.refsMap[ref]; if(!c) return null;
+    // keep backing-store resolution matched to displayed box so circles stay round & lines un-stretched
+    const r=c.getBoundingClientRect();
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    const w=Math.max(1,Math.round(r.width*dpr)), h=Math.max(1,Math.round(r.height*dpr));
+    if(c.width!==w||c.height!==h){ c.width=w; c.height=h; }
+    const x=c.getContext('2d'); x._w=c.width; x._h=c.height; return x; }
+
+  drawLive(now){
+    const x=this.cctx('liveCanvasRef'); if(!x) return; const W=x._w,H=x._h;
+    x.clearRect(0,0,W,H);
+    const real=this.activeMidi.size; const act=real||((!this.everPlayed)?2:0);
+    // two clear lanes: MIDI pitch band on top, pitch curve on bottom
+    const pitchTop=H*0.5;
+    // faint divider between the two lanes
+    x.strokeStyle='rgba(176,141,79,.08)'; x.lineWidth=1; x.beginPath(); x.moveTo(0,pitchTop); x.lineTo(W,pitchTop); x.stroke();
+    // --- MIDI pitch band (top lane): active notes light up + scroll left as history ---
+    const bandTop=H*0.08, bandBot=pitchTop-H*0.04, bandH=bandBot-bandTop;
+    const LO=40, HI=84; // pitch range mapped into the band
+    const yOf=(m)=> bandBot-((Math.max(LO,Math.min(HI,m))-LO)/(HI-LO))*bandH;
+    // faint pitch-lane guides (octaves)
+    x.strokeStyle='rgba(176,141,79,.05)'; x.lineWidth=1;
+    for(let m=LO;m<=HI;m+=12){ const y=yOf(m); x.beginPath(); x.moveTo(0,y); x.lineTo(W,y); x.stroke(); }
+    // current active set (hero demo lights a gentle chord until first real note)
+    let cur = real ? Array.from(this.activeMidi) : (!this.everPlayed ? [52,59,64] : []);
+    // scrolling history buffer
+    if(!this._pitchHist) this._pitchHist=[];
+    if(this.t%2===0){ this._pitchHist.push(cur.slice()); if(this._pitchHist.length>140) this._pitchHist.shift(); }
+    const colW=W/140, dotH=Math.max(3,bandH/((HI-LO)/2));
+    this._pitchHist.forEach((notes,ci)=>{ const age=ci/this._pitchHist.length; const xPos=ci*colW;
+      notes.forEach(m=>{ const y=yOf(m); const a=0.12+age*0.7;
+        x.fillStyle='rgba(214,205,177,'+a*0.5+')'; x.fillRect(xPos,y-dotH/2,colW+0.5,dotH); }); });
+    // bright leading edge for currently-held notes
+    cur.forEach(m=>{ const y=yOf(m); x.save(); x.shadowColor='rgba(237,175,184,.9)'; x.shadowBlur=12;
+      const g=x.createLinearGradient(W-44,0,W,0); g.addColorStop(0,'rgba(237,175,184,.15)'); g.addColorStop(1,'rgba(248,230,200,.95)');
+      x.fillStyle=g; x.fillRect(W-44,y-dotH/2,44,dotH);
+      x.fillStyle='#f8e6c8'; x.beginPath(); x.arc(W-3,y,dotH*0.7,0,Math.PI*2); x.fill(); x.restore(); });
+    // --- f0 PITCH curve : the hero (bottom lane) ---
+    const base=H*0.74;
+    const midi0=real?Array.from(this.activeMidi)[0]:64;
+    const targetY=base-(midi0-64)*3.4;
+    if(this._f0y==null) this._f0y=targetY;
+    this._f0y+=(targetY-this._f0y)*0.1;
+    const pts=[];
+    for(let i=0;i<=W;i+=4){ const t=i/W; const vib=Math.sin(t*22+now/85)*this.params.vibdepth*17*(act>0?1:0.7); const wander=real?0:Math.sin(now/650+t*3.2)*11; pts.push([i,this._f0y+vib+wander]); }
+    x.save(); x.shadowColor='rgba(176,106,114,.85)'; x.shadowBlur=16; x.lineWidth=3.2; x.lineJoin='round';
+    const lg=x.createLinearGradient(0,0,W,0); lg.addColorStop(0,'rgba(176,106,114,.25)'); lg.addColorStop(.5,'rgba(237,175,184,'+(act>0?1:.82)+')'); lg.addColorStop(1,'rgba(176,106,114,.25)');
+    x.strokeStyle=lg; x.beginPath(); pts.forEach((p,i)=> i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1])); x.stroke(); x.restore();
+    // playhead
+    const hp=pts[Math.min(Math.floor(((now/11)%W)/4),pts.length-1)];
+    if(hp){ x.save(); x.shadowColor='rgba(243,220,160,.95)'; x.shadowBlur=10; x.fillStyle='#f7e6bc'; x.beginPath(); x.arc(hp[0],hp[1],3.4,0,Math.PI*2); x.fill(); x.restore(); }
+    // baseline + note ticks
+    x.strokeStyle='rgba(176,141,79,.10)'; x.setLineDash([4,7]); x.beginPath(); x.moveTo(0,base); x.lineTo(W,base); x.stroke(); x.setLineDash([]);
+  }
+
+  drawSource(now){
+    const x=this.cctx('srcCanvasRef'); if(!x) return; const W=x._w,H=x._h; x.clearRect(0,0,W,H);
+    // 1) 实时录音监视:取色窗在录时,主窗 SOURCE 同步滚动显示真实输入电平(最新在右)
+    if(this._capActive && this._capHist && this._capHist.length){
+      const hist=this._capHist, n=hist.length, bw=W/150;
+      for(let i=0;i<n;i++){
+        const lv=Math.min(1, hist[i]*1.15), h=Math.max(2, H*0.92*lv);
+        const xp=W-(n-i)*bw;
+        x.fillStyle='rgba(201,168,106,'+(0.35+0.5*lv).toFixed(3)+')';
+        x.fillRect(xp, H/2-h/2, Math.max(1.6,bw*0.7), h);
+      }
+      x.fillStyle='rgba(224,192,137,.9)'; x.fillRect(W-1.5, 0, 1.5, H);   // 录音游标
+      return;
+    }
+    // 2) 已取色:真实包络落笔式展开(900ms)+ 静息微呼吸
+    const wv=window._quillWave;
+    if(wv && wv.length){
+      const prog=Math.min(1,(now-(window._quillWaveT0||0))/900);
+      const n=wv.length, bw=W/n, breath=1+0.025*Math.sin(now/800);
+      for(let i=0;i<n;i++){
+        const p=i/n; if(p>prog) break;
+        const edge=Math.min(1,(prog-p)*n/6);          // 展开前沿淡入(墨迹晕开)
+        const h=Math.max(2, H*0.92*wv[i]*breath);
+        x.fillStyle='rgba(201,168,106,'+(0.25+0.45*edge).toFixed(3)+')';
+        x.fillRect(i*bw, H/2-h/2, Math.max(1.6,bw*0.62), h);
+      }
+      return;
+    }
+    // 3) 静息:平缓呼吸基线(取代原来突兀的假波形——待命就该是安静的)
+    x.strokeStyle='rgba(201,168,106,.30)'; x.lineWidth=1.5; x.lineCap='round';
+    x.beginPath();
+    for(let i=0;i<=W;i+=3){ const y=H/2+Math.sin(i*0.05+now/1400)*H*0.05*(0.55+0.45*Math.sin(i*0.012)); i?x.lineTo(i,y):x.moveTo(0,y); }
+    x.stroke();
+  }
+
+  drawTone(now){
+    const x=this.cctx('toneCanvasRef'); if(!x) return; const W=x._w,H=x._h; x.clearRect(0,0,W,H);
+    // iPhone 金属漆(与音色库色卡同一公式):暗→冷银钢 中→香槟金 亮→玫瑰金,明亮通透;
+    // 噪声→往中性银褪(气声卡更"雾");叠 iOS 玻璃高光
+    const mix=(a,b,u)=>a.map((v,i)=>v+(b[i]-v)*u);
+    const S_T=[190,206,220],G_T=[226,192,110],R_T=[234,168,146];
+    const S_B=[116,150,184],G_B=[196,148,40], R_B=[212,106,82], SILV=[198,202,206];
+    const t=this.params.brightness;
+    let top = t<0.5?mix(S_T,G_T,t*2):mix(G_T,R_T,(t-0.5)*2);
+    let bot = t<0.5?mix(S_B,G_B,t*2):mix(G_B,R_B,(t-0.5)*2);
+    top=mix(top,SILV,this.params.noise*0.4); bot=mix(bot,SILV,this.params.noise*0.4);
+    const rgb=c=>'rgb('+c.map(v=>Math.round(v)).join(',')+')';
+    const g=x.createLinearGradient(0,0,W*0.3,H);
+    g.addColorStop(0,rgb(top)); g.addColorStop(1,rgb(bot));
+    x.fillStyle=g; x.fillRect(0,0,W,H);
+    const spec=x.createLinearGradient(0,0,0,H);        // 顶部金属镜面高光带(仿 VOICE 方块)
+    spec.addColorStop(0,'rgba(255,255,255,.42)'); spec.addColorStop(0.15,'rgba(255,255,255,.07)'); spec.addColorStop(0.34,'rgba(255,255,255,0)');
+    x.fillStyle=spec; x.fillRect(0,0,W,H);
+    const sh=x.createLinearGradient(0,H,0,H*0.55);     // 底部压暗=弧面阴影
+    sh.addColorStop(0,'rgba(40,30,14,.23)'); sh.addColorStop(1,'rgba(40,30,14,0)');
+    x.fillStyle=sh; x.fillRect(0,0,W,H);
+    // ink texture: noise specks
+    const spk=Math.floor(this.params.noise*260);
+    x.fillStyle='rgba(20,12,4,.16)';
+    for(let i=0;i<spk;i++){ const px=(i*97+ (now*0.02))%W; const py=(i*53)%H; x.fillRect(px,py,1.5,1.5); }
+    // capture inhale ripple
+    if(this._toneFlash){ const dt=(now-this._toneFlash)/700; if(dt<1){ x.strokeStyle='rgba(255,250,235,'+(0.6*(1-dt))+')'; x.lineWidth=2; x.beginPath(); x.arc(W*0.5,H*0.5,dt*W*0.6,0,Math.PI*2); x.stroke(); } else this._toneFlash=0; }
+  }
+
+  drawTilt(){
+    const x=this.cctx('tiltCanvasRef'); if(!x) return; const W=x._w,H=x._h; x.clearRect(0,0,W,H);
+    const pad=10; const cut=400+this.params.brightness*7000; const cutX=pad+(Math.log(cut/200)/Math.log(20000/200))*(W-2*pad);
+    // log grid
+    x.strokeStyle='rgba(138,109,48,.10)'; x.lineWidth=1;
+    [100,1000,10000].forEach(f=>{ const gx=pad+(Math.log(f/200)/Math.log(20000/200))*(W-2*pad); x.beginPath(); x.moveTo(gx,pad); x.lineTo(gx,H-pad); x.stroke(); });
+    for(let gy=0;gy<=2;gy++){ const yy=pad+(H-2*pad)*gy/2; x.beginPath(); x.moveTo(pad,yy); x.lineTo(W-pad,yy); x.stroke(); }
+    // response curve (lowpass tilt)
+    const grad=x.createLinearGradient(0,0,0,H); grad.addColorStop(0,'rgba(122,150,152,.30)'); grad.addColorStop(1,'rgba(122,150,152,.02)');
+    x.beginPath();
+    const ptY=(t)=>{ const fx=200*Math.pow(20000/200,t); const ratio=fx/cut; const roll=1/Math.sqrt(1+Math.pow(ratio,3)); const air=this.params.noise*0.22*Math.max(0,(t-0.55)); let mag=roll+air; mag=Math.max(0.02,Math.min(1.05,mag)); return (H-pad)-(H-2*pad)*mag; };
+    for(let i=0;i<=W;i+=3){ const t=i/W; const y=ptY(t); if(i===0)x.moveTo(i,y);else x.lineTo(i,y);} 
+    x.lineTo(W-pad,H-pad); x.lineTo(pad,H-pad); x.closePath(); x.fillStyle=grad; x.fill();
+    x.beginPath(); for(let i=0;i<=W;i+=3){ const t=i/W; const y=ptY(t); if(i===0)x.moveTo(i,y);else x.lineTo(i,y);} x.save(); x.shadowColor='rgba(122,150,152,.6)'; x.shadowBlur=9; const lgT=x.createLinearGradient(0,0,W,0); lgT.addColorStop(0,'#4a5759'); lgT.addColorStop(.5,'#a9c2c4'); lgT.addColorStop(1,'#4a5759'); x.strokeStyle=lgT; x.lineWidth=2.8; x.lineJoin='round'; x.stroke(); x.restore();
+    // cutoff handle
+    x.strokeStyle='rgba(180,70,60,.55)'; x.setLineDash([3,4]); x.beginPath(); x.moveTo(cutX,pad); x.lineTo(cutX,H-pad); x.stroke(); x.setLineDash([]);
+    x.fillStyle='#4a5759'; x.beginPath(); x.arc(cutX, ptY((Math.log(cut/200)/Math.log(20000/200))), 4,0,Math.PI*2); x.fill();
+  }
+
+  drawAdsr(){
+    const x=this.cctx('adsrCanvasRef'); if(!x) return; const W=x._w,H=x._h; x.clearRect(0,0,W,H);
+    const pad=11; const a=this.adsrVals.a,d=this.adsrVals.d,s=this.adsrVals.s,r=this.adsrVals.r;
+    x.strokeStyle='rgba(138,109,48,.10)'; x.lineWidth=1;
+    for(let gy=0;gy<=2;gy++){ const yy=pad+(H-2*pad)*gy/2; x.beginPath(); x.moveTo(pad,yy); x.lineTo(W-pad,yy); x.stroke(); }
+    const x0=pad, xa=pad+(W-2*pad)*0.26*a+9, xd=xa+(W-2*pad)*0.22*d+7, xs=W*0.64, xr=W-pad;
+    const yTop=pad, yBot=H-pad, ys=yBot-(yBot-yTop)*s;
+    const pts=[[x0,yBot],[xa,yTop],[xd,ys],[xs,ys],[xr,yBot]];
+    const g=x.createLinearGradient(0,yTop,0,yBot); g.addColorStop(0,'rgba(176,106,114,.34)'); g.addColorStop(1,'rgba(176,106,114,.02)');
+    x.beginPath(); pts.forEach((p,i)=> i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1])); x.lineTo(x0,yBot); x.closePath(); x.fillStyle=g; x.fill();
+    x.save(); x.shadowColor='rgba(176,106,114,.7)'; x.shadowBlur=10;
+    const lg=x.createLinearGradient(0,0,W,0); lg.addColorStop(0,'#b06a72'); lg.addColorStop(.5,'#edafb8'); lg.addColorStop(1,'#b06a72');
+    x.strokeStyle=lg; x.lineWidth=2.6; x.lineJoin='round'; x.beginPath(); pts.forEach((p,i)=> i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1])); x.stroke(); x.restore();
+    pts.slice(1,4).forEach(p=>{ x.fillStyle='#7a3f47'; x.beginPath(); x.arc(p[0],p[1],3.6,0,Math.PI*2); x.fill(); x.fillStyle='#f0d2c0'; x.beginPath(); x.arc(p[0],p[1],1.7,0,Math.PI*2); x.fill(); });
+  }
+
+  drawGlide(now){
+    const x=this.cctx('glideCanvasRef'); if(!x) return; const W=x._w,H=x._h; x.clearRect(0,0,W,H);
+    x.strokeStyle='rgba(176,141,79,.14)'; x.lineWidth=1;
+    for(let gy=H*0.25; gy<H; gy+=H*0.25){ x.beginPath(); x.moveTo(0,gy); x.lineTo(W,gy); x.stroke(); }
+    const playing=this.activeMidi.size>0; const sens=this.params.gsens;
+    x.strokeStyle='#7a9698'; x.lineWidth=2.4; x.beginPath();
+    for(let i=0;i<W;i++){ const t=i/W; const k=1/(1+Math.exp(-(t*12-6)/ (0.4+sens))); let y=H*0.78-(H*0.56)*k; if(playing){ y+=Math.sin(t*30+now/120)*this.params.vibdepth*6; } if(i===0)x.moveTo(i,y);else x.lineTo(i,y);} x.stroke();
+    // head dot
+    const hx=((now/26)%W); x.fillStyle='rgba(111,174,122,.9)';
+  }
+
+}
+</script>
+<script src="./pianoroll.js?v=14"></script>
+<script>
+(function(){                       // 主窗拖拽文件取色(拖到 app 任意处)
+  function api(){ return window.pywebview && window.pywebview.api; }
+  var veil=null;
+  function mkVeil(){ if(veil) return veil;
+    veil=document.createElement('div');
+    veil.style.cssText='display:none;position:fixed;inset:0;z-index:9999;background:rgba(21,19,14,.86);align-items:center;justify-content:center;text-align:center;border:2px dashed #c9a86a;';
+    veil.innerHTML='<div><div style="font-size:46px;color:#e0c089;">⤓</div><div style="font-family:Cormorant Garamond,serif;font-size:22px;color:#e0c089;margin-top:8px;">Drop to capture its colour</div><div style="font-size:13px;color:#8a7d5f;font-style:italic;margin-top:4px;">audio file · Quill picks the best moment</div></div>';
+    document.body.appendChild(veil); return veil;
+  }
+  var depth=0;
+  window.addEventListener('dragover', function(e){ e.preventDefault(); });
+  window.addEventListener('dragenter', function(e){ e.preventDefault(); depth++; mkVeil().style.display='flex'; });
+  window.addEventListener('dragleave', function(e){ e.preventDefault(); if(--depth<=0){depth=0; if(veil) veil.style.display='none';} });
+  window.addEventListener('drop', async function(e){
+    e.preventDefault(); depth=0; if(veil) veil.style.display='none';
+    var f=e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if(!f||!api()) return;
+    var tn=document.getElementById('quillToneName'); if(tn) tn.textContent='Analysing…';
+    if(f.path && api().capture_path){ await api().capture_path(f.path); }
+    else if(api().capture_bytes){
+      var buf=await f.arrayBuffer(), b=new Uint8Array(buf), bin='';
+      for(var i=0;i<b.length;i++) bin+=String.fromCharCode(b[i]);
+      await api().capture_bytes(btoa(bin), f.name||'drop');
+    }
+    if(window.quillRefreshTones) window.quillRefreshTones();
+  });
+})();
+</script>
+<script>
+(function(){                       // 状态栏真数据轮询:MIDI 设备名 + 实测输出流延迟(评委截图要求真数字)
+  function tick(){
+    if(window.pywebview&&window.pywebview.api&&window.pywebview.api.get_status){
+      window.pywebview.api.get_status().then(function(s){
+        var m=document.getElementById('quillMidiName');
+        if(m) m.textContent='MIDI IN · '+(s.midi||'no device');
+        var d=document.getElementById('quillMidiDot');
+        if(d) d.style.color = s.midi? '#6fae7a':'#8a6c2e';
+        var l=document.getElementById('quillLat');
+        if(l) l.textContent=(s.latency_ms!=null? Number(s.latency_ms).toFixed(1):'–');
+      }).catch(function(){});
+    }
+    setTimeout(tick, 2000);
+  }
+  tick();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# 生成的演示/快照/库（保留目录占位，不入大体积二进制）
+assets/demos/*.wav
+assets/demos/*.png
+assets/demos/*.tplib
+assets/snapshots/*.npz
+assets/libraries/*.tplib
+!assets/**/.gitkeep
+
+# 报告生成产物
+docs/report/*.pdf
+
+# 阶段3 黄金文件回归基线（本机每日比对用，二进制不入库）
+eval/golden/*.npy
+
+# OS
+.DS_Store
+assets/recordings/**/*.wav
+assets/recordings/**/*.mp3
+assets/recordings/**/*.m4a
+assets/recordings/**/*.aif
+assets/recordings/**/*.aiff
+assets/recordings/**/*.flac
+assets/recordings/**/*.aac
+assets/recordings/**/*.ogg
+
+# RAVE 模型/导出(大体积,研究材料另存)
+assets/rave/
+# demo 归档与训练权重(大体积;发布用权重单独 release)
+assets/demos/_archive/
+assets/demos/*.pt
+# 用户音色库(运行时生成)
+assets/user_tones/
+
+# 大体积训练/评估产物(模型、数据集切片、渲染音频)不入库
+checkpoints/
+data/
+tmp/
+assets/glass/
+assets/ear_tests/
+assets/user_styles/
+assets/user_tones/
+
+# Node
+companion/node_modules/
+companion/dist/
+companion/.env
+
+# 可重建的评估缓存
+results/atlas/snaps/
+
+# LaTeX 构建产物
+docs/ismir_lbd_2026/*.aux
+docs/ismir_lbd_2026/*.log
+docs/ismir_lbd_2026/*.blg
+docs/ismir_lbd_2026/missfont.log

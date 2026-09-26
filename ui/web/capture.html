@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* Capture — DAW 工具窗语言(参考 Logic 工具窗/Kontakt 面板):
+     持久布局(内容原地更新,不整幕切换)· 奶油工作面板 × 深色框架(与主窗同比重)
+     · 技术化短文案(标签,不是叙述)· 常驻电平/波形/读数 */
+  :root { --qe: cubic-bezier(.22,.61,.36,1);
+          --chrome:#15130e; --line:rgba(201,168,106,.16);
+          --ink:#e8e0cd; --ink2:#9a8a63; --gold:#b08d4f; --gold2:#c9a86a;
+          --rose:#b06a72; --rose2:#edafb8; --teal:#8aadae; --teal2:#a9c2c4; }   /* 主窗同源:粉金=TIMBRE 蓝金=ARTICULATION */
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body { background: var(--chrome); display: flex; flex-direction: column;
+         font-family: 'Cormorant Garamond', Georgia, serif; padding: 10px 12px 8px; gap: 8px;
+         -webkit-user-select: none; user-select: none; }
+  .mono { font-family: 'Spline Sans Mono', ui-monospace, monospace; }
+
+  /* 头部窄条(深色 chrome 只留这里和 FILES 条) */
+  .hdr { display: flex; align-items: baseline; gap: 10px; padding: 2px 4px; }
+  .hdr .ttl { font-family: 'Cormorant SC', serif; letter-spacing: .22em; font-size: 14px; color: var(--gold2); }
+  .hdr .sp { flex: 1; }
+  .hdr .io { font-size: 10px; letter-spacing: .06em; color: #8a7d5f; }
+  .hdr .led { color: #5a5342; margin-left: 5px; transition: color .15s; }
+  .hdr .led.hot { color: #6fae7a; text-shadow: 0 0 6px rgba(111,174,122,.8); }
+
+  /* 工作面板(奶油,主体比重) */
+  .panel { background: linear-gradient(165deg,#232019,#171410); border: 1px solid rgba(201,168,106,.14);
+           border-radius: 15px; padding: 12px 14px;
+           box-shadow: 0 10px 26px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05); }
+  .cap { font-family: 'Cormorant SC', serif; letter-spacing: .2em; font-size: 11.5px; color: var(--gold);
+         margin-bottom: 7px; display: flex; align-items: baseline;
+         text-shadow: 0 -1px 0 rgba(0,0,0,.6); }   /* 深底凸版:阴影上翻 */
+  .cap .sp { flex: 1; }
+  .cap .hint { font-size: 11.5px; letter-spacing: 0; font-style: italic; color: var(--ink2);
+               font-family: 'Cormorant Garamond', serif; }
+
+  /* SOURCE:走带行 + 波形 + 读数 */
+  .row { display: flex; align-items: center; gap: 9px; }
+  #rec { width: 76px; height: 30px; border-radius: 9px; border: 1px solid rgba(201,168,106,.32); cursor: pointer;
+         font-family: 'Spline Sans Mono', monospace; font-size: 11px; letter-spacing: .05em; white-space: nowrap;
+         background: linear-gradient(180deg,#332d22,#211c14); color: var(--ink);
+         transition: transform .12s var(--qe), background .15s; }
+  #rec:hover { transform: translateY(-1px); }
+  #rec:active { transform: scale(.97); }
+  #rec.recording { background: linear-gradient(180deg,#c9584a,#a13a2b); color: #fff3ea; border-color: #7e2d20;
+                   animation: recpulse 1.1s infinite; }
+  @keyframes recpulse { 0%,100% { box-shadow: 0 0 0 0 rgba(184,69,47,.35);} 50% { box-shadow: 0 0 0 5px rgba(184,69,47,0);} }
+  #playTk { width: 34px; height: 30px; border-radius: 9px; border: 1px solid rgba(201,168,106,.32);
+            cursor: pointer; font-family: 'Spline Sans Mono', monospace; font-size: 12px;
+            background: linear-gradient(180deg,#332d22,#211c14); color: var(--ink);
+            transition: transform .12s var(--qe); }
+  #playTk:hover { transform: translateY(-1px); }
+  #playTk:active { transform: scale(.95); }
+  #playTk.playing { background: linear-gradient(180deg,#3a4a4b,#283334); border-color: var(--teal);
+                    color: #bcd2d3; }                      /* 播放中=蓝金(动作语义) */
+  #meter { flex: 1; min-width: 0; height: 30px; background: #0c0a07; border-radius: 9px;
+           border: 1px solid rgba(201,168,106,.18); display: block; }
+  #clock { font-size: 12px; color: var(--ink); width: 52px; text-align: right; }
+  #wavebox { margin-top: 10px; height: 68px; background: #0c0a07; border-radius: 11px;
+             border: 1px solid rgba(201,168,106,.18); position: relative; overflow: hidden;
+             cursor: crosshair; }
+  .ti { flex: 1; min-width: 0; background: rgba(232,224,205,.06); border: 1px solid rgba(201,168,106,.28);
+        border-radius: 6px; padding: 6px 9px; color: var(--ink); font-size: 11px; outline: none; }
+  .ti::placeholder { color: #6a6353; font-style: italic; }
+  .ti:focus { border-color: rgba(201,168,106,.55); }
+  #wave { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #wave.reveal { animation: inkReveal .8s var(--qe); }                  /* 墨线从左到右写出 */
+  @keyframes inkReveal { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+  .stats { display: flex; gap: 8px; margin-top: 10px; }
+  .stat { flex: 1; background: rgba(232,224,205,.06); border-radius: 11px; padding: 6px 9px 7px;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 1px 3px rgba(0,0,0,.25);
+          display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .stat span { font-family: 'Spline Sans Mono', monospace; font-size: 8.5px; letter-spacing: .1em; color: var(--ink2); }
+  .stat b { font-family: 'Spline Sans Mono', monospace; font-size: 11.5px; color: var(--ink);
+            font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat.hot { background: radial-gradient(130% 150% at 50% 15%, rgba(176,106,114,.34), rgba(232,224,205,.05));
+              animation: chipBreath 3.2s ease-in-out infinite; }        /* 粉金=主窗 TIMBRE 语义 */
+  @keyframes chipBreath { 0%,100% { box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 1px 3px rgba(0,0,0,.25); }
+                          50%    { box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 2px 10px rgba(237,175,184,.28); } }
+  .stat b.pop { animation: valPop .4s var(--qe) both; }                 /* 读数落纸 */
+  .stat.flash { animation: chipFlash .9s var(--qe); }                   /* ♪TONE 试听时音高胶囊点亮 */
+  @keyframes chipFlash { 0% { box-shadow: 0 0 0 0 rgba(237,175,184,0); }
+    25% { box-shadow: 0 0 14px 2px rgba(237,175,184,.55); transform: translateY(-2px); }
+    100% { box-shadow: 0 0 0 0 rgba(237,175,184,0); transform: none; } }
+  @keyframes valPop { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  /* ANALYSIS:部分音谱 + 精修 */
+  .ctlrow { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
+  .lab { font-size: 10px; letter-spacing: .1em; color: var(--ink2); width: 44px; }
+  .b { border: 1px solid rgba(201,168,106,.3); background: linear-gradient(180deg,#332d22,#211c14); color: #cdc3a8;
+       font-family: 'Spline Sans Mono', monospace; font-size: 10.5px; padding: 4px 7px; border-radius: 5px;
+       white-space: nowrap;
+       cursor: pointer; transition: transform .12s var(--qe);
+       box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 1px 2px rgba(0,0,0,.3); }  /* 深色 letterpress */
+  .b:active { box-shadow: inset 0 1px 3px rgba(0,0,0,.5); }                          /* 按下=盖印 */
+  .b:hover { transform: translateY(-1px); border-color: rgba(138,173,174,.75);
+             box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 2px 6px rgba(138,173,174,.22); }
+  .b:active { transform: scale(.96); }
+  select.b.on { background: linear-gradient(180deg,#3a4a4b,#283334); border-color: var(--teal);
+                color: #bcd2d3; }                                                    /* 已选频段=蓝金 */
+  select.b { padding: 3px 5px; }
+  #hearP { background: linear-gradient(180deg,#caa86b,#9a7c40); color: #1a1208;
+           border-color: #8a6c2e; font-weight: 600; }              /* 试听捕捉=金色主按钮 */
+  #hearP:hover { border-color: #caa86b; box-shadow: 0 2px 8px rgba(201,168,106,.35); }
+  #partials { display: flex; gap: 2px; align-items: flex-end; height: 44px;
+              border-bottom: 1px solid var(--line); padding-bottom: 1px; }
+  #partials div { flex: 1; background: linear-gradient(rgba(237,175,184,.42), rgba(176,106,114,.2));
+                  border: 1px solid rgba(237,175,184,.5); border-bottom: none; border-radius: 2px 2px 0 0;
+                  transform-origin: bottom; animation: barUp .45s var(--qe) both; }   /* 粉金墨染+钢笔描边 */
+  @keyframes barUp { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+  /* FILES(深色窄条:拖放/打开/整歌分离,内容原地切换) */
+  .files { flex: 1; min-height: 60px; border: 1px dashed rgba(176,141,79,.35); border-radius: 7px;
+           display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 8px; }
+  .files .tip { font-size: 12.5px; color: #8a7d5f; font-style: italic; }
+  .db { border: 1px solid rgba(176,141,79,.4); background: rgba(232,224,205,.05); color: #cdc3a8;
+        font-family: 'Spline Sans Mono', monospace; font-size: 10.5px; padding: 6px 12px; border-radius: 6px;
+        cursor: pointer; transition: background .15s, transform .12s var(--qe); }
+  .db:hover { background: rgba(232,224,205,.12); transform: translateY(-1px); }
+  .stem { border: 1px solid rgba(138,173,174,.45); border-radius: 7px; padding: 5px 6px;
+          cursor: pointer; text-align: center; background: rgba(122,150,152,.12); min-width: 0;
+          transition: transform .14s var(--qe), background .18s; animation: barUp .3s var(--qe) both; }
+  .stem:hover { transform: translateY(-2px); background: rgba(122,150,152,.28); }
+  .stem .nm { font-family: 'Spline Sans Mono', monospace; font-size: 10.5px; color: var(--teal2); }
+  .stem .lvl { height: 3px; border-radius: 2px; background: rgba(232,224,205,.14); margin-top: 4px; overflow: hidden; }
+  .stem .lvl div { height: 100%; background: linear-gradient(90deg,var(--teal),#bcd2d3); }
+  .shimmer { width: 220px; height: 4px; border-radius: 2px; background: rgba(176,141,79,.18);
+             overflow: hidden; position: relative; }
+  .shimmer::after { content: ""; position: absolute; top: 0; left: -40%; height: 100%; width: 38%;
+    border-radius: 2px; background: linear-gradient(90deg, transparent, var(--rose2), var(--teal2), transparent);   /* 粉金→蓝金流光 */
+    animation: slide 1.15s ease-in-out infinite; }
+  @keyframes slide { from { left: -40%; } to { left: 105%; } }
+
+  #status { min-height: 16px; font-size: 11px; letter-spacing: .04em; color: #9a8a63; padding: 0 4px; }
+  #status.err { color: #d08a6a; }
+  #status.poem { font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 12.5px;
+                 letter-spacing: .03em; color: #8a7d5f; animation: poemIn .9s var(--qe); }
+  @keyframes poemIn { from { opacity: 0; } to { opacity: 1; } }
+
+  @keyframes dropBob { 0%,100% { transform: translateY(-3px); } 50% { transform: translateY(3px); } }
+  #dropveil { display: none; position: fixed; inset: 8px; z-index: 50; background: rgba(21,19,14,.88);
+              align-items: center; justify-content: center; text-align: center;
+              border: 1.5px dashed var(--gold2); border-radius: 10px; }
+</style>
+</head>
+<body>
+  <div class="hdr">
+    <img src="assets/q_gold.png" width="18" height="18" style="align-self:center;opacity:.9;" alt="Q">
+    <span class="ttl">CAPTURE</span>
+    <span class="sp"></span>
+    <span class="io mono">44.1 kHz · MONO · INPUT<span class="led" id="led">●</span></span>
+  </div>
+
+  <!-- SOURCE:走带 + 电平 + 波形 + 读数(常驻,原地更新) -->
+  <div class="panel">
+    <div class="cap">SOURCE<span class="sp"></span>
+      <button class="b mono" id="texBtn" title="Texture mode — capture unpitched sounds (rain, wind, machines)"
+              style="font-size:9.5px;padding:2px 8px;margin-right:8px;">TEXTURE · OFF</button>
+      <span class="hint" id="srcHint">hold one pitch · 3–5 s</span></div>
+    <div class="row">
+      <button id="rec" class="mono">● REC</button>
+      <button id="playTk" class="mono" title="Audition the take — plays the selected span if you dragged one">▶</button>
+      <canvas id="meter" width="480" height="60"></canvas>
+      <span id="clock" class="mono">0:00.0</span>
+    </div>
+    <div id="wavebox">
+      <img src="assets/q_gold.png" style="position:absolute;left:50%;top:50%;width:44px;transform:translate(-50%,-50%);opacity:.14;" alt="">
+      <canvas id="wave"></canvas>
+      <span id="waveHint" style="display:none;position:absolute;right:9px;bottom:4px;pointer-events:none;
+        font-style:italic;font-size:10px;color:rgba(232,224,205,.38);">drag to focus a span · dbl-click clears</span>
+    </div>
+    <div class="stats">
+      <div class="stat hot"><span style="display:flex;align-items:center;gap:4px;"><svg viewBox="0 0 20 20" width="11" height="11" fill="none" stroke="#d18a92" stroke-width="1.5" stroke-linecap="round"><path d="M7 3.2 v6.8 q0 3 3 3 q3 0 3.1 -3 V3"/><path d="M10 13 v4.4"/></svg>PITCH</span><b id="roPitch">—</b></div>
+      <div class="stat"><span style="display:flex;align-items:center;gap:4px;"><svg viewBox="0 0 20 20" width="11" height="11" fill="none" stroke="#9a7c40" stroke-width="1.5" stroke-linecap="round"><path d="M4 16.2 V10"/><path d="M8.7 16 V5.6"/><path d="M13.3 16.1 V11.8"/><path d="M17.6 16 V8.4"/></svg>PARTIALS</span><b id="roPart">—</b></div>
+      <div class="stat"><span style="display:flex;align-items:center;gap:4px;"><svg viewBox="0 0 20 20" width="11" height="11" fill="none" stroke="#9a8a63" stroke-width="1.5" stroke-linecap="round"><circle cx="10" cy="10.3" r="6.8"/><path d="M10 6.6 v3.9 l2.8 1.8"/></svg>TAKE</span><b id="roTake">—</b></div>
+      <div class="stat"><span style="display:flex;align-items:center;gap:4px;"><svg viewBox="0 0 20 20" width="11" height="11" fill="none" stroke="#8aadae" stroke-width="1.5" stroke-linecap="round"><path d="M3.2 5.6 v9 M16.9 5.4 v9"/><path d="M5.4 10.4 q2.3 -4.2 4.6 -0.2 q2.3 4 4.6 -0.1"/></svg>SEGMENT</span><b id="roUsed">—</b></div>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <input id="toneName" class="ti mono" placeholder="name this tone…" spellcheck="false">
+      <button class="b mono" id="saveBtn" title="Save to library — appears in SAVED TONES" style="padding:6px 12px;">✒ SAVE</button>
+    </div>
+  </div>
+
+  <!-- ANALYSIS:部分音谱 + 精修 -->
+  <div class="panel">
+    <div class="cap">ANALYSIS<span class="sp"></span><span class="hint">wrong octave? noisy? fix here</span></div>
+    <div style="background:radial-gradient(60% 100% at 28% 100%, rgba(209,138,146,.14), transparent),
+                           radial-gradient(70% 110% at 76% 100%, rgba(214,160,80,.15), transparent);
+                border-radius:11px;padding:6px 8px 0;">   <!-- 粉金×琥珀晨光 -->
+      <div id="partials"></div>
+    </div>
+    <div class="ctlrow" style="margin-top:9px;">
+      <span class="lab mono">PITCH</span>
+      <button class="b" id="octDn" title="Re-anchor one octave down">▼ 8va</button>
+      <button class="b" id="snapA" title="Snap to nearest concert pitch (A440)">♮ A440</button>
+      <button class="b" id="octUp" title="Re-anchor one octave up">▲ 8va</button>
+      <span style="flex:1;"></span>
+      <button class="b" id="refA" title="Play a pure A440 reference tone">♪ A440</button>
+      <button class="b" id="hearP" title="Audition the captured tone at its detected pitch — octave off? use 8va">♪ TONE</button>
+    </div>
+    <div class="ctlrow">
+      <span class="lab mono">CUT</span>
+      <select class="b mono" id="bandLo" title="Low cut (high-pass) — remove rumble, hum, handling noise"><option value="">LOW · off</option>
+        <option value="60">below 60</option><option value="120">below 120</option>
+        <option value="250">below 250</option><option value="500">below 500</option></select>
+      <select class="b mono" id="bandHi" title="High cut (low-pass) — remove hiss, bleed"><option value="">HIGH · off</option>
+        <option value="1500">above 1.5k</option><option value="3000">above 3k</option>
+        <option value="6000">above 6k</option><option value="10000">above 10k</option></select>
+    </div>
+    <div class="ctlrow" style="margin-bottom:0;">
+      <span class="lab mono">NOISE</span>
+      <select class="b mono" id="denoise" title="Spectral-gate denoise strength"><option value="auto">DENOISE · auto</option>
+        <option value="off">off — keep air</option><option value="strong">strong</option></select>
+      <span style="flex:1;"></span>
+      <button class="b" id="reana" title="Re-analyse the take with these settings">⟳ apply</button>
+    </div>
+  </div>
+
+  <!-- FILES:拖放 / 打开 / 整歌分离(内容原地切换:tip ↔ shimmer ↔ stems) -->
+  <div class="files" id="files">
+    <span class="tip">drop audio here — or</span>
+    <button class="db" id="openBtn">OPEN FILE…</button>
+    <button class="db" id="songBtn">SPLIT A SONG…</button>
+  </div>
+
+  <div id="status" class="mono poem">To capture is to remember.</div>
+
+  <div id="dropveil">
+    <div><div style="font-size:34px;color:var(--gold2);animation:dropBob 1.2s ease-in-out infinite;">⤓</div>
+      <div style="font-size:16px;color:var(--gold2);margin-top:6px;">Drop to capture</div></div>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    function api(){ return window.pywebview && window.pywebview.api; }
+    function st(msg, err, poem){ const e=$('status'); e.textContent=msg||'';
+      e.classList.toggle('err', !!err);
+      e.classList.remove('poem'); if(poem){ void e.offsetWidth; e.classList.add('poem'); } }
+    const POEM='To capture is to remember.';           // 品牌手书行:闲时是诗,忙时是术语
+
+    // ── 波形框:空网格(待命也有结构)/ take 包络 / 拖选段 ──
+    let sel=null, lastTakeS=null;                        // sel=[a,b] 0..1 分数;映射修剪后 take 秒
+    function drawWave(env){
+      window._lastEnv=env;
+      const wh=$('waveHint'); if(wh) wh.style.display=(env&&env.length)?'block':'none';
+      const cv=$('wave'), box=$('wavebox');
+      const dpr=window.devicePixelRatio||1, W=box.clientWidth*dpr, H=box.clientHeight*dpr;
+      cv.width=W; cv.height=H; const x=cv.getContext('2d');
+      x.clearRect(0,0,W,H);
+      x.strokeStyle='rgba(176,141,79,.13)'; x.lineWidth=dpr;
+      for(let i=1;i<4;i++){ x.beginPath(); x.moveTo(0,H*i/4); x.lineTo(W,H*i/4); x.stroke(); }
+      x.strokeStyle='rgba(176,141,79,.3)';
+      x.beginPath(); x.moveTo(0,H/2); x.lineTo(W,H/2); x.stroke();
+      if(!env||!env.length) return;
+      const n=env.length;
+      const jit=i=>0.05*Math.sin(i*3.7)+0.035*Math.sin(i*7.3);   // 手绘微抖(确定性,不是随机)
+      const yTop=i=>H/2-(env[i]*(0.44+jit(i)))*H;
+      const yBot=i=>H/2+(env[i]*(0.44-jit(i)*0.6))*H;
+      const X=i=>i/(n-1)*W;
+      x.beginPath();                                              // 墨水淡染(两线之间)
+      for(let i=0;i<n;i++){ i?x.lineTo(X(i),yTop(i)):x.moveTo(X(0),yTop(0)); }
+      for(let i=n-1;i>=0;i--) x.lineTo(X(i),yBot(i));
+      const wash=x.createLinearGradient(0,0,0,H);                 // 墨染:粉金→金(主窗 TIMBRE 语义)
+      wash.addColorStop(0,'rgba(237,175,184,.17)'); wash.addColorStop(1,'rgba(201,168,106,.13)');
+      x.closePath(); x.fillStyle=wash; x.fill();
+      const roseG=x.createLinearGradient(0,0,W,0);                // 上线=主窗电平表同款粉金渐变
+      roseG.addColorStop(0,'rgba(176,106,114,.95)'); roseG.addColorStop(.55,'rgba(237,175,184,.92)');
+      roseG.addColorStop(1,'rgba(240,210,192,.85)');
+      x.lineWidth=1.4*dpr; x.lineJoin='round'; x.lineCap='round';
+      x.strokeStyle=roseG;
+      x.beginPath(); for(let i=0;i<n;i++){ i?x.lineTo(X(i),yTop(i)):x.moveTo(X(0),yTop(0)); } x.stroke();
+      x.strokeStyle='rgba(224,192,137,.85)';                      // 下线=金,双色一呼一应
+      x.beginPath(); for(let i=0;i<n;i++){ i?x.lineTo(X(i),yBot(i)):x.moveTo(X(0),yBot(0)); } x.stroke();
+      if(window._playCursor!=null){                               // 播放游标(试听走带)
+        const px=window._playCursor*W;
+        x.strokeStyle='rgba(240,214,160,.95)'; x.lineWidth=1.6*dpr;
+        x.beginPath(); x.moveTo(px,0); x.lineTo(px,H); x.stroke();
+      }
+      if(sel){                                                    // 选区:区外压暗 + 粉金边界线
+        const a=sel[0]*W, b=sel[1]*W;
+        x.fillStyle='rgba(12,10,7,.62)';
+        x.fillRect(0,0,a,H); x.fillRect(b,0,W-b,H);
+        x.strokeStyle='rgba(237,175,184,.9)'; x.lineWidth=1.2*dpr;
+        x.beginPath(); x.moveTo(a,0); x.lineTo(a,H); x.moveTo(b,0); x.lineTo(b,H); x.stroke();
+      }
+    }
+    // 拖选:mousedown→拖→mouseup 圈定;双击清除;精修 ⟳ 只用选中段
+    (function(){
+      const box=$('wavebox'); let dragA=null;
+      const fx=e=>Math.max(0, Math.min(1, (e.clientX-box.getBoundingClientRect().left)/box.clientWidth));
+      box.addEventListener('mousedown', e=>{ if(!window._lastEnv) return; dragA=fx(e); });
+      window.addEventListener('mousemove', e=>{ if(dragA===null) return;
+        const b=fx(e); sel=[Math.min(dragA,b), Math.max(dragA,b)]; drawWave(window._lastEnv); segChip(); });
+      window.addEventListener('mouseup', e=>{ if(dragA===null) return;
+        const b=fx(e), a=dragA; dragA=null;
+        sel = Math.abs(b-a)<0.02 ? null : [Math.min(a,b), Math.max(a,b)];   // 点一下=清除,拖开=选段
+        drawWave(window._lastEnv); segChip();
+        if(sel&&lastTakeS) st('Span '+(sel[0]*lastTakeS).toFixed(1)+'–'+(sel[1]*lastTakeS).toFixed(1)+' s — ⟳ apply re-analyses it.');
+      });
+      box.addEventListener('dblclick', ()=>{ sel=null; drawWave(window._lastEnv); segChip(); st(POEM,false,true); });
+    })();
+    function segChip(){                                   // SEGMENT 胶囊卡跟随选区(紧凑格式防省略号)
+      const f=v=>v>=9.95?String(Math.round(v)):v.toFixed(1);
+      if(sel&&lastTakeS) $('roUsed').textContent=f(sel[0]*lastTakeS)+'–'+f(sel[1]*lastTakeS)+'s';
+      else if(window._lastWinUsed!==undefined) $('roUsed').textContent=window._lastWinUsed?'auto-pick':'full take';
+    }
+
+    // ── 电平表(录制中轮询;待命静止) ──
+    let levelTimer=null, clockTimer=null, recT0=0, meterHist=[];
+    function meterDraw(){
+      const cv=$('meter'), x=cv.getContext('2d');
+      const W=cv.width, H=cv.height;
+      x.clearRect(0,0,W,H);
+      if(!meterHist.length) return;
+      const X=i=>i/119*W, Y=v=>H-(0.1+v*0.8)*H;
+      x.beginPath();
+      meterHist.forEach((v,i)=>{ i?x.lineTo(X(i),Y(v)):x.moveTo(X(0),Y(v)); });
+      const g=x.createLinearGradient(0,0,W,0);                    // 主窗 meter 同款:#b06a72→#edafb8→#f0d2c0
+      g.addColorStop(0,'#b06a72'); g.addColorStop(.6,'#edafb8'); g.addColorStop(1,'#f0d2c0');
+      x.strokeStyle=meterHist[meterHist.length-1]>0.95?'rgba(224,112,94,.95)':g;
+      x.lineWidth=1.6; x.lineJoin='round'; x.stroke();
+      x.lineTo(X(meterHist.length-1),H); x.lineTo(0,H); x.closePath();
+      x.fillStyle='rgba(176,106,114,.13)'; x.fill();
+    }
+    function startMeter(){
+      meterHist=[]; recT0=performance.now();
+      levelTimer=setInterval(async ()=>{
+        let lv=0; try{ lv=await api().capture_level(); }catch(e){}
+        $('led').classList.toggle('hot', lv>0.02);
+        meterHist.push(lv); if(meterHist.length>120) meterHist.shift();
+        meterDraw();
+      }, 90);
+      clockTimer=setInterval(()=>{
+        const s=(performance.now()-recT0)/1000;
+        $('clock').textContent=Math.floor(s/60)+':'+String((s%60).toFixed(1)).padStart(4,'0');
+        if(s>=60) stopRec();
+      }, 100);
+    }
+    function stopMeter(){ clearInterval(levelTimer); clearInterval(clockTimer); $('led').classList.remove('hot'); }
+
+    // ── 结果:原地更新读数/谱/波形(不换幕) ──
+    const NOTE=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    function noteName(f){ if(!f) return '—'; const m=Math.round(69+12*Math.log2(f/440)); return NOTE[((m%12)+12)%12]+(Math.floor(m/12)-1); }
+    let lastF0=null, lastHint=null;
+    function showResult(r, fresh){
+      if(!(r&&r.ok)){ st((r&&r.msg)||'Capture failed.', true); return; }
+      if(fresh) lastHint=null;
+      lastF0=r.f0||lastF0;
+      lastTakeS=r.take_s||lastTakeS; sel=null;            // 新结果=新坐标系,清选区
+      window._lastWinUsed=!!r.win_used;
+      if(r.disp) $('toneName').placeholder=r.disp+'…';    // 建议名跟随取色结果
+      $('roPitch').textContent=noteName(r.f0)+' '+(r.f0?Math.round(r.f0):'—')+'Hz';
+      $('roPart').textContent=r.n_harm||'—';
+      $('roTake').textContent=(r.take_s||'—')+' s';
+      $('roUsed').textContent=r.win_used?'auto-pick':'full take';
+      ['roPitch','roPart','roTake','roUsed'].forEach((id,i)=>{     // 读数依次落纸
+        const e=$(id); e.classList.remove('pop'); void e.offsetWidth;
+        e.style.animationDelay=(i*60)+'ms'; e.classList.add('pop'); });
+      const pt=$('partials'); pt.innerHTML='';
+      (r.harm||[]).forEach((h,i)=>{ const b=document.createElement('div');
+        b.style.height=(6+h*38)+'px'; b.style.animationDelay=(i*12)+'ms'; pt.appendChild(b); });
+      drawWave(r.wave);
+      const wv=$('wave'); wv.classList.remove('reveal'); void wv.offsetWidth; wv.classList.add('reveal');
+      if(r.warn) st(r.warn); else st('To transform is to compose.', false, true);   // 取色成功=品牌第三行
+    }
+
+    // ── 走带 ──
+    let recording=false;
+    async function startRec(){
+      if(!api()){ st('Backend not connected.', true); return; }
+      if(window._playing){ try{ await api().stop_take(); }catch(e){} endPlay(); }
+      recording=true; $('rec').classList.add('recording'); $('rec').textContent='■ STOP';
+      st('Recording…'); await api().capture_start(); startMeter();
+    }
+    async function stopRec(){
+      if(!recording) return; recording=false;
+      stopMeter(); $('rec').classList.remove('recording'); $('rec').textContent='● REC';
+      st('Analysing…');
+      showResult(await api().capture_stop(), true);
+    }
+    $('rec').onclick=()=>recording?stopRec():startRec();
+
+    // ── 试听走带:▶ 播 take(有选区只播选区),波形跑游标,再点=停 ──
+    function endPlay(){ window._playing=false; window._playCursor=null; clearTimeout(window._playEndT);
+      const b=$('playTk'); b.textContent='▶'; b.classList.remove('playing');
+      if(window._lastEnv) drawWave(window._lastEnv); }
+    $('playTk').onclick=async ()=>{
+      if(!api()||!api().play_take){ st('Backend not connected.', true); return; }
+      if(window._playing){ await api().stop_take(); endPlay(); st(POEM,false,true); return; }
+      if(!window._lastEnv){ st('Capture first — then audition it here.'); return; }
+      const t0=sel&&lastTakeS?sel[0]*lastTakeS:null, t1=sel&&lastTakeS?sel[1]*lastTakeS:null;
+      const r=await api().play_take(t0, t1);
+      if(!(r&&r.ok)){ st((r&&r.msg)||'Nothing to play.', true); return; }
+      window._playing=true;
+      clearTimeout(window._playEndT);
+      window._playEndT=setTimeout(()=>{ if(window._playing) endPlay(); }, r.dur*1000+120);  // 兜底复位(rAF 节流也不卡在■)
+      const b=$('playTk'); b.textContent='■'; b.classList.add('playing');
+      st(sel?('Auditioning '+t0.toFixed(1)+'–'+t1.toFixed(1)+' s — drag again to adjust.')
+            :'Auditioning the take — drag on the wave to focus a span.');
+      const from=sel?sel[0]:0, to=sel?sel[1]:1, T0=performance.now();
+      (function tick(){
+        if(!window._playing) return;
+        const u=(performance.now()-T0)/1000/r.dur;
+        if(u>=1){ endPlay(); return; }
+        window._playCursor=from+(to-from)*u;
+        drawWave(window._lastEnv);
+        requestAnimationFrame(tick);
+      })();
+    };
+
+    // ── 命名保存(库同款接口;成功=品牌第二行) ──
+    $('saveBtn').onclick=async ()=>{
+      if(!api()||!api().save_timbre){ st('Backend not connected.', true); return; }
+      const inp=$('toneName');
+      const nm=(inp.value.trim()||inp.placeholder.replace(/…$/,'').trim()||'Capture');
+      const r=await api().save_timbre(nm);
+      if(!(r&&r.ok)){ st((r&&r.msg)||'Nothing to save yet — capture first.', true); return; }
+      inp.value=''; inp.placeholder=r.disp+'…';
+      st('Saved \u201c'+r.disp+'\u201d — to preserve is to honor.', false, true);
+    };
+
+    // ── Texture 模式:非乐音取色(雨/风/机器)——跳过守门/选窗,噪声层开大 ──
+    let texture=false;
+    $('texBtn').onclick=async ()=>{
+      texture=!texture;
+      if(api()&&api().set_capture_mode) await api().set_capture_mode(texture);
+      $('texBtn').textContent='TEXTURE · '+(texture?'ON':'OFF');
+      $('texBtn').style.background=texture?'linear-gradient(180deg,#3a4a4b,#283334)':'';
+      $('texBtn').style.color=texture?'#bcd2d3':'';
+      $('srcHint').textContent=texture?'any sound — rain, wind, machines':'hold one pitch · 3–5 s';
+      if(texture) st('Texture mode — pitch gate off.'); else st(POEM,false,true);
+    };
+
+    // ── Refine(反复精修不劣化;新 take 重置修正) ──
+    async function refine(hint){
+      if(!api()) return;
+      if(hint!==undefined) lastHint=hint;
+      if(window._playing){ try{ await api().stop_take(); }catch(e){} endPlay(); }
+      st('Re-analysing…');
+      const lo=$('bandLo').value, hi=$('bandHi').value;
+      const t0=sel&&lastTakeS?sel[0]*lastTakeS:null, t1=sel&&lastTakeS?sel[1]*lastTakeS:null;
+      const r=await api().refine_capture(lastHint, lo?+lo:null, hi?+hi:null, t0, t1, $('denoise').value);
+      if(!(r&&r.ok)){ st((r&&r.msg)||'Refine failed.', true); return; }
+      showResult(r, false);
+    }
+    ['bandLo','bandHi'].forEach(id=>{ $(id).onchange=()=>$(id).classList.toggle('on', !!$(id).value); });
+    $('denoise').onchange=()=>$('denoise').classList.toggle('on', $('denoise').value!=='auto');
+    // ── 试听:A440 纯参考(WebAudio,不经引擎)/ 引擎按检测音高发声(听八度对不对) ──
+    let _ac=null, _hearing=false;
+    $('refA').onclick=()=>{
+      try{
+        _ac=_ac||new (window.AudioContext||window.webkitAudioContext)();
+        if(_ac.state==='suspended') _ac.resume();
+        const o=_ac.createOscillator(), g=_ac.createGain(), t=_ac.currentTime;
+        o.frequency.value=440;
+        g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.14,t+0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001,t+0.9);
+        o.connect(g).connect(_ac.destination); o.start(t); o.stop(t+0.95);
+        st('A440 — concert pitch reference.');
+      }catch(e){ st('Audio blocked.', true); }
+    };
+    $('hearP').onclick=async ()=>{
+      if(!api()||!api().note_on){ st('Backend not connected.', true); return; }
+      if(!lastF0){ st('Capture first — then hear it at its detected pitch.'); return; }
+      if(_hearing) return;
+      _hearing=true;
+      const m=Math.max(21, Math.min(108, Math.round(69+12*Math.log2(lastF0/440))));
+      st('Auditioning your tone at '+noteName(lastF0)+' · '+Math.round(lastF0)+' Hz — compare with ▶ (your recording).');
+      const chip=$('roPitch').closest('.stat');                          // 音高就在 PITCH 胶囊:点亮它
+      if(chip){ chip.classList.remove('flash'); void chip.offsetWidth; chip.classList.add('flash'); }
+      await api().note_on(m, 100, 'pluck');
+      setTimeout(async ()=>{ try{ await api().note_off(m); }catch(e){} _hearing=false; }, 900);
+    };
+    $('octDn').onclick=()=>refine((lastF0||440)/2);
+    $('octUp').onclick=()=>refine((lastF0||440)*2);
+    $('snapA').onclick=()=>{ const f=lastF0||440; refine(440*Math.pow(2, Math.round(12*Math.log2(f/440))/12)); };
+    $('reana').onclick=()=>refine(undefined);
+
+    // ── FILES:打开 / 整歌分离(区域内容原地切换) ──
+    const ICONS={vocals:'VOX',guitar:'GTR',piano:'PNO',bass:'BASS',drums:'DRUMS',other:'OTHER'};
+    function filesIdle(){
+      const fb=$('files'); fb.style.display=''; fb.style.gridTemplateColumns=''; fb.style.gap=''; fb.style.alignContent='';
+      $('files').innerHTML='<span class="tip">drop audio here — or</span>'
+        +'<button class="db" id="openBtn">OPEN FILE…</button>'
+        +'<button class="db" id="songBtn">SPLIT A SONG…</button>';
+      $('openBtn').onclick=openFile; $('songBtn').onclick=fromSong;
+    }
+    async function openFile(){
+      if(!api()) return;
+      st('Choose an audio file…');
+      const r=await api().open_file_capture();
+      if(r&&r.msg==='No file chosen'){ st(POEM,false,true); return; }
+      showResult(r, true);
+    }
+    async function fromSong(){
+      if(!api()) return;
+      st('Choose a song — splitting into parts…');
+      $('files').innerHTML='<div class="shimmer"></div><span class="tip">drums · bass · vocals · guitar · piano</span>';
+      const r=await api().pick_song();
+      if(!(r&&r.ok)){ filesIdle(); st((r&&r.msg)||'No file.', (r&&r.msg)!=='No file chosen'); return; }
+      const box=$('files'); box.innerHTML='';
+      box.style.display='grid'; box.style.gridTemplateColumns='repeat(3,1fr)';   // 3 列网格:6 卡两行,不压状态栏
+      box.style.gap='7px'; box.style.alignContent='center';
+      const maxr=Math.max(...r.stems.map(s=>s.rms),1e-9);
+      r.stems.forEach((s,i)=>{
+        const c=document.createElement('div'); c.className='stem'; c.style.animationDelay=(i*50)+'ms';
+        c.innerHTML='<div class="nm">'+(ICONS[s.name]||s.name.toUpperCase())+'</div>'
+                   +'<div class="lvl"><div style="width:'+Math.round(100*s.rms/maxr)+'%"></div></div>';
+        c.title=s.name+' — click to capture';
+        c.onclick=async ()=>{ st('Analysing '+s.name+'…'); showResult(await api().capture_stem(s.path), true); };
+        box.appendChild(c);
+      });
+      const back=document.createElement('button'); back.className='db'; back.textContent='← back';
+      back.style.padding='5px 6px'; back.onclick=filesIdle; box.appendChild(back);
+      st('Pick the part to capture.');
+    }
+    $('openBtn').onclick=openFile;
+    $('songBtn').onclick=fromSong;
+
+    // ── 拖放 ──
+    const veil=$('dropveil'); let dragDepth=0;
+    window.addEventListener('dragover', e=>e.preventDefault());
+    window.addEventListener('dragenter', e=>{ e.preventDefault(); dragDepth++; veil.style.display='flex'; });
+    window.addEventListener('dragleave', e=>{ e.preventDefault(); if(--dragDepth<=0){ dragDepth=0; veil.style.display='none'; } });
+    window.addEventListener('drop', async e=>{
+      e.preventDefault(); dragDepth=0; veil.style.display='none';
+      const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+      if(!f||!api()) return;
+      st('Analysing '+(f.name||'file')+'…');
+      let r;
+      if(f.path && api().capture_path) r=await api().capture_path(f.path);
+      else if(api().capture_bytes){
+        const buf=await f.arrayBuffer(); let bin=''; const b=new Uint8Array(buf);
+        for(let i=0;i<b.length;i++) bin+=String.fromCharCode(b[i]);
+        r=await api().capture_bytes(btoa(bin), f.name||'drop');
+      } else { st('Drag not supported here.', true); return; }
+      showResult(r, true);
+    });
+
+    drawWave(null);
+    window.addEventListener('resize', ()=>drawWave(window._lastEnv||null));
+  </script>
+</body>
+</html>

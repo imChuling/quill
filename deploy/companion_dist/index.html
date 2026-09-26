@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quill × Audiotool</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital@0;1&family=Cormorant+SC:wght@500&family=Italianno&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:#080604; --shell:#100d08; --panel:#241f14; --well:#0c0a07;
+      --paper:#dedbd2; --paper2:#d3cfc4; --paper-ink:#23201a; --paper-mut:#6b6455;
+      --gold:#d4af6e; --gold-deep:#9a7c40; --gold-dim:#a8945f;
+      --cream:#f0e8d5; --ink:#1a1208; --muted:#8a7c5e;
+      --line:rgba(224,192,137,.45); --line2:rgba(224,192,137,.65);
+      --qe:cubic-bezier(.22,.61,.36,1);
+    }
+    * { box-sizing:border-box; margin:0; }
+    html,body { background:var(--bg); }
+    body { font-family:'Cormorant Garamond',serif; color:var(--cream);
+           display:flex; justify-content:center; padding:22px 14px 34px; }
+    .mono { font-family:'Spline Sans Mono',monospace; }
+    .sc { font-family:'Cormorant SC',serif; font-weight:500; }
+    .it { font-family:'Italianno',cursive; }
+
+    .shell { width:min(1180px,100%); background:var(--shell);
+             border:1px solid var(--line2); border-radius:12px;
+             box-shadow:0 40px 120px rgba(0,0,0,.55); overflow:hidden;
+             display:flex; flex-direction:column; }
+
+    /* ---- 顶栏(桌面同构:Q·QUILL·badge·tagline·状态)---- */
+    .top { display:flex; align-items:center; gap:16px; padding:13px 22px;
+           border-bottom:1px solid var(--line); }
+    .glyph { width:29px; height:29px; border-radius:50%; flex:none;
+             background:radial-gradient(circle at 38% 30%, #caa86b, #7d5f2c 75%);
+             display:flex; align-items:center; justify-content:center;
+             color:var(--ink); font-size:15px; }
+    .wordmark { font-size:20px; letter-spacing:.42em; color:var(--cream); }
+    .badge { font-size:10px; letter-spacing:.16em; color:var(--gold-dim);
+             border:1px solid var(--line2); border-radius:5px; padding:4px 10px;
+             white-space:nowrap; }
+    .tagline { font-size:23px; color:var(--gold); line-height:1; margin-left:auto; }
+    #quillStatus { font-size:10px; letter-spacing:.14em; white-space:nowrap; }
+    #quillStatus.ok::before { content:"● "; color:#7ec97e; }
+    #quillStatus.err::before { content:"● "; color:#e07a7a; }
+    @media (max-width:980px){ .tagline { display:none; } }
+
+    /* ---- 三栏主体(暗轨·亮纸·暗轨)---- */
+    .main { display:grid; grid-template-columns:252px 1fr 258px; gap:0; flex:1; }
+    @media (max-width:900px){ .main { grid-template-columns:1fr; } }
+    .rail { padding:16px 15px; display:flex; flex-direction:column; gap:11px; }
+    .rail.left { border-right:1px solid var(--line); }
+    .rail.right { border-left:1px solid var(--line); }
+    .rail h2 { font-family:'Cormorant SC',serif; font-size:12.5px; letter-spacing:.26em;
+               color:var(--gold); font-weight:500; }
+    .rail h2 .hint { float:right; font-family:'Italianno',cursive; font-size:18px;
+                     letter-spacing:0; color:var(--muted); font-weight:400; }
+    .rail .blurb { font-style:italic; font-size:14.5px; color:var(--gold-dim); line-height:1.35; }
+    .lbl { font-family:'Spline Sans Mono',monospace; font-size:9px; letter-spacing:.14em;
+           color:var(--muted); margin-top:4px; }
+
+    /* ---- 左轨:取色大圆钮 ---- */
+    .capcircle { width:118px; height:118px; border-radius:50%; margin:8px auto 2px;
+                 background:radial-gradient(circle at 38% 30%, #caa86b, #6f5527 78%);
+                 border:0; cursor:pointer; display:flex; align-items:center; justify-content:center;
+                 box-shadow:0 10px 30px rgba(0,0,0,.5), inset 0 2px 6px rgba(255,240,200,.35);
+                 transition:transform .18s var(--qe); }
+    .capcircle:hover { transform:scale(1.04); }
+    .capcircle img { width:46px; height:auto; }
+    .glyph img { width:15px; height:auto; }
+    .caphint { text-align:center; font-family:'Spline Sans Mono',monospace; font-size:9.5px;
+               letter-spacing:.1em; color:var(--gold-dim); line-height:1.7; }
+    #srcStrip { display:block; width:100%; height:44px; background:var(--well);
+                border:1px solid var(--line); border-radius:7px; }
+    #srcMeta { font-family:'Spline Sans Mono',monospace; font-size:8.5px; letter-spacing:.1em;
+               color:var(--muted); display:flex; justify-content:space-between; }
+    .tonecard { position:relative; height:64px; border-radius:9px; overflow:hidden;
+                background:linear-gradient(135deg,#caa86b,#8a6a30);
+                box-shadow:0 6px 16px rgba(0,0,0,.4); }
+    .tonecard .nm { position:absolute; left:11px; bottom:7px; font-style:italic; font-size:19px;
+                    color:rgba(255,250,238,.95); text-shadow:0 1px 5px rgba(0,0,0,.6); }
+    #timbreCards { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .tone { position:relative; height:46px; border-radius:7px; cursor:pointer;
+            border:1px solid var(--line); overflow:hidden; transition:all .18s var(--qe);
+            filter:saturate(.5) brightness(.7); }
+    .tone:hover { filter:saturate(.8) brightness(.9); }
+    .tone.on { filter:none; border-color:var(--gold);
+               box-shadow:0 0 0 1px var(--gold), 0 5px 14px rgba(0,0,0,.45); }
+    .tone .tname { position:absolute; left:8px; bottom:5px; font-style:italic; font-size:13.5px;
+                   color:rgba(255,250,238,.94); text-shadow:0 1px 4px rgba(0,0,0,.65);
+                   max-width:92%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .tone .tcheck { position:absolute; right:6px; top:4px; font-family:'Spline Sans Mono',monospace;
+                    font-size:10px; color:rgba(255,250,238,.9); opacity:0; }
+    .tone.on .tcheck { opacity:1; }
+    .tone.stale { opacity:.45; cursor:not-allowed; filter:grayscale(.6); }
+
+    /* ---- 旋钮控件(复刻桌面版深色金属质感)---- */
+    .knob-row { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }
+    .knob-wrap { display:flex; flex-direction:column; align-items:center; gap:8px; cursor:default; }
+    /* 旋钮:逐字复刻桌面版 quill.dc.html 配方 —— 双层钢圈(#3b3e44 + 亮钢
+       rgba(176,186,194,.5))是质感来源;主体暖褐 conic,顶部奶油高光。 */
+    .knob { width:48px; height:48px; border-radius:50%; position:relative; cursor:grab;
+            background:radial-gradient(circle at 50% 30%,rgba(255,246,224,.16),rgba(255,246,224,0) 50%),
+              conic-gradient(from 0deg,#34302a,#47423a,#272320,#47423a,#2b2722,
+                #1b1814,#47423a,#272320,#34302a),#2a2620;
+            box-shadow:0 0 0 1.5px #0c0a07, 0 0 0 3.5px #3b3e44,
+              0 0 0 4.5px rgba(176,186,194,.5), 0 5px 11px rgba(0,0,0,.5),
+              inset 0 2px 3px rgba(255,240,210,.2), inset 0 -5px 9px rgba(0,0,0,.6); }
+    .knob.big { width:60px; height:60px; }
+    .knob .needle { position:absolute; width:2.5px; height:13px;
+                    background:linear-gradient(#f3dca0,#c79a4e);
+                    box-shadow:0 0 4px rgba(243,220,160,.6);
+                    border-radius:2px; left:50%; bottom:50%; transform-origin:bottom center; }
+    .knob.big .needle { height:17px; }
+    .knob-label { font-family:'Spline Sans Mono',monospace; font-size:8px; letter-spacing:.1em;
+                  color:var(--muted); text-align:center; }
+    .knob-val { font-family:'Spline Sans Mono',monospace; font-size:9.5px; color:var(--cream); }
+
+    /* ---- 合成器 2×2 模块网格(复刻桌面版深色面板)---- */
+    .synth-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    @media (max-width:640px){ .synth-grid { grid-template-columns:1fr; } }
+    .smod { background:linear-gradient(165deg,#332a17 0%,#261f11 45%,#1b1509 100%);
+            border:1px solid rgba(224,192,137,.55); border-radius:9px;
+            box-shadow:inset 0 1px 0 rgba(255,240,200,.10), inset 0 0 24px rgba(201,168,106,.05),
+              0 4px 14px rgba(0,0,0,.5);
+            padding:10px 13px; display:flex; flex-direction:column; gap:8px; min-height:130px; }
+    .smod .smod-head { display:flex; align-items:baseline; gap:8px; }
+    .smod .smod-title { font-family:'Cormorant SC',serif; font-size:11px; letter-spacing:.22em;
+                        color:var(--cream); font-weight:500; }
+    .smod .smod-sub { font-family:'Spline Sans Mono',monospace; font-size:8px; letter-spacing:.1em;
+                      color:var(--muted); }
+    .smod .smod-hint { margin-left:auto; font-family:'Italianno',cursive; font-size:16px;
+                       color:var(--muted); }
+    .smod:nth-child(1) .smod-hint { color:#d18a92; }
+    .smod:nth-child(3) .smod-hint, .smod:nth-child(4) .smod-hint { color:#8aadae; }
+    .smod-body { display:flex; gap:12px; align-items:center; flex:1; }
+    .smod-knobs { display:flex; flex-direction:column; gap:10px; align-items:center; }
+    .smod-curve { flex:1; min-width:0; }
+    .smod-curve svg { width:100%; height:68px; display:block; }
+    .curve-bg { fill:var(--well); stroke:var(--line); rx:5; }
+    .curve-grid { stroke:rgba(201,168,106,.1); stroke-width:0.5; }
+    /* 曲线语义配色(桌面版):音色整形=粉 #edafb8,包络=亮金 #f3dca0,
+       演奏法/LFO=蓝青 #8aadae。 */
+    .curve-line { fill:none; stroke:var(--gold); stroke-width:1.5; }
+    .curve-fill { fill:rgba(201,168,106,.08); stroke:none; }
+    .smod:nth-child(1) .curve-line { stroke:#edafb8; filter:drop-shadow(0 0 3px rgba(237,175,184,.45)); }
+    .smod:nth-child(1) .curve-fill { fill:rgba(176,106,114,.16); }
+    .smod:nth-child(2) .curve-line { stroke:#f3dca0; filter:drop-shadow(0 0 3px rgba(243,220,160,.4)); }
+    .smod:nth-child(2) .curve-fill { fill:rgba(201,168,106,.12); }
+    .smod:nth-child(4) .curve-line { stroke:#8aadae; filter:drop-shadow(0 0 3px rgba(138,173,174,.45)); }
+    .smod:nth-child(4) .curve-fill { fill:rgba(74,87,89,.20); }
+    .curve-label { font-family:'Spline Sans Mono',monospace; font-size:6px;
+                   fill:var(--muted); }
+
+    /* voice 模块的复音格子 */
+    .voice-grid { display:grid; grid-template-columns:repeat(8,1fr); gap:3px; }
+    .voice-cell { aspect-ratio:1; border-radius:3px; border:1px solid var(--line); }
+    .voice-cell.on { background:linear-gradient(135deg,rgba(169,194,196,.55),rgba(74,87,89,.65));
+                     border-color:#8aadae; box-shadow:0 0 5px rgba(138,173,174,.35); }
+    .voice-cell.off { background:var(--well); }
+    .voice-info { display:flex; justify-content:space-between; align-items:baseline; }
+    .voice-info .vk { font-family:'Spline Sans Mono',monospace; font-size:8px;
+                      letter-spacing:.1em; color:var(--muted); }
+    .voice-info .vv { font-family:'Spline Sans Mono',monospace; font-size:11px;
+                      color:var(--cream); }
+
+    /* output 条 */
+    .output-strip { background:linear-gradient(165deg,#332a17 0%,#261f11 45%,#1b1509 100%);
+                    border:1px solid rgba(224,192,137,.55); border-radius:9px;
+                    box-shadow:inset 0 1px 0 rgba(255,240,200,.10), inset 0 0 24px rgba(201,168,106,.05),
+                      0 4px 14px rgba(0,0,0,.5);
+                    padding:10px 16px; display:flex; align-items:center; gap:16px; }
+    .output-strip .smod-title { font-family:'Cormorant SC',serif; font-size:11px;
+                                letter-spacing:.22em; color:var(--cream); font-weight:500; }
+
+    /* ---- 中央(复刻桌面深色底)---- */
+    .center { background:var(--shell); color:var(--cream); padding:15px 18px;
+              display:flex; flex-direction:column; gap:11px; }
+    .transport { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .transport .pbox { display:flex; align-items:center; gap:9px; background:var(--well);
+                       border:1px solid var(--line); border-radius:8px; padding:6px 12px; }
+    .transport .pbox .k { font-family:'Spline Sans Mono',monospace; font-size:9px;
+                          letter-spacing:.16em; color:var(--muted); }
+    select#projectPicker { font-family:'Spline Sans Mono',monospace; font-size:12px;
+                           background:transparent; color:var(--cream); border:0; outline:none;
+                           max-width:220px; cursor:pointer; }
+    select#projectPicker option { background:var(--panel); color:var(--cream); }
+    #tempoRead { font-family:'Spline Sans Mono',monospace; font-size:13px; color:var(--cream); }
+    #controls { display:flex; align-items:center; gap:8px; }
+    #controls button { font-family:'Spline Sans Mono',monospace; font-size:10.5px;
+                       background:var(--well); color:var(--cream);
+                       border:1px solid var(--line); border-radius:7px;
+                       padding:6px 13px; cursor:pointer; }
+    #controls button.gbtn { background:radial-gradient(circle at 40% 30%, #caa86b, #9a7c40 72%);
+                            color:var(--ink); border:0; }
+    #controls button:disabled { opacity:.4; cursor:default; }
+
+    .rolltitle { display:flex; align-items:baseline; gap:12px; }
+    .rolltitle .t { font-family:'Cormorant SC',serif; font-size:12px; letter-spacing:.22em;
+                    color:var(--cream); }
+    .rolltitle .s { font-family:'Spline Sans Mono',monospace; font-size:9px;
+                    letter-spacing:.1em; color:var(--muted); }
+    #regionList { display:flex; gap:7px; flex-wrap:wrap; }
+    .rcard { display:flex; align-items:baseline; gap:9px; padding:6px 11px;
+             background:var(--well); border:1px solid var(--line); border-radius:7px;
+             cursor:pointer; transition:all .18s var(--qe); color:var(--cream); }
+    .rcard:hover { border-color:var(--gold-deep); }
+    .rcard.on { border-color:var(--gold); background:var(--panel);
+                box-shadow:0 0 0 1px var(--gold); }
+    .rcard .rname { font-style:italic; font-size:15.5px; }
+    .rcard .rmeta { font-family:'Spline Sans Mono',monospace; font-size:8.5px;
+                    letter-spacing:.1em; color:var(--muted); }
+
+    #takes { display:flex; flex-direction:column; gap:6px; max-height:150px; overflow-y:auto; }
+    .take { display:flex; align-items:center; gap:11px; background:var(--well);
+            border:1px solid var(--line); border-radius:7px; padding:6px 11px; }
+    .take .tt { flex:1; font-style:italic; font-size:15px; white-space:nowrap;
+                overflow:hidden; text-overflow:ellipsis; color:var(--cream); }
+    .take .ts { font-family:'Spline Sans Mono',monospace; font-size:8.5px;
+                letter-spacing:.1em; color:var(--muted); flex:none; }
+    .take audio { height:24px; width:160px; flex:none; }
+    .take button { font-family:'Spline Sans Mono',monospace; font-size:10px;
+                   background:var(--panel); border:1px solid var(--line);
+                   border-radius:6px; padding:4px 11px; cursor:pointer; color:var(--cream); }
+    .take button:disabled { opacity:.4; }
+    .empty { font-family:'Italianno',cursive; font-size:20px; color:var(--muted); }
+    .rail .empty { color:var(--muted); }
+
+    /* ---- 右轨:ARTICULATION / 行为 ---- */
+    .nowbox { background:var(--well); border:1px solid var(--line); border-radius:9px;
+              padding:10px 13px; text-align:center; }
+    .nowbox .k { font-family:'Spline Sans Mono',monospace; font-size:8.5px;
+                 letter-spacing:.18em; color:var(--muted); }
+    .nowbox .v { font-style:italic; font-size:26px; color:var(--cream); line-height:1.25; }
+    #behChips { display:flex; flex-wrap:wrap; gap:7px; }
+    .bchip { font-family:'Spline Sans Mono',monospace; font-size:9.5px; letter-spacing:.08em;
+             border:1px solid var(--line2); border-radius:999px; padding:4px 11px;
+             cursor:pointer; color:var(--gold-dim); transition:all .15s var(--qe); }
+    .bchip.on { background:radial-gradient(circle at 40% 30%, #a9c2c4, #4a5759 70%);
+                color:#fff; border-color:transparent;
+                box-shadow:0 2px 6px rgba(74,87,89,.5); }
+    .bchip.stale { opacity:.45; cursor:not-allowed; filter:grayscale(.6); }
+    #contour { display:block; width:100%; height:74px; background:var(--well);
+               border:1px solid var(--line); border-radius:8px; }
+    #inkBtn { width:100%; padding:13px 0; border-radius:9px; border:0; cursor:pointer;
+              font-family:'Spline Sans Mono',monospace; font-size:12px; letter-spacing:.22em;
+              background:radial-gradient(circle at 40% 30%, #caa86b, #9a7c40 72%);
+              color:var(--ink); font-weight:500; margin-top:auto; }
+    #inkBtn:disabled { opacity:.35; cursor:default; }
+    #inkStatus { font-family:'Spline Sans Mono',monospace; font-size:9px; letter-spacing:.08em;
+                 color:var(--gold-dim); min-height:13px; }
+
+    /* ---- 底部状态条 ---- */
+    .foot { border-top:1px solid var(--line); padding:8px 22px 11px; }
+    .foot .bar { display:flex; gap:18px; font-family:'Spline Sans Mono',monospace;
+                 font-size:9px; letter-spacing:.14em; color:var(--muted); }
+    #log { font-family:'Spline Sans Mono',monospace; font-size:9.5px; letter-spacing:.02em;
+           white-space:pre-wrap; max-height:96px; overflow-y:auto; color:var(--gold-dim);
+           margin-top:7px; }
+    .ok { color:#7ec97e; } .err { color:#e07a7a; }
+
+    /* ---- CAPTURE 浮窗(桌面取色窗复刻)---- */
+    #capModal { position:fixed; inset:0; background:rgba(8,6,3,.66); display:none;
+                align-items:center; justify-content:center; z-index:50; }
+    #capModal.open { display:flex; }
+    .capwin { width:min(520px,94vw); background:#181510; border:1px solid var(--gold);
+              border-radius:13px; box-shadow:0 50px 140px rgba(0,0,0,.7); padding:18px 20px;
+              display:flex; flex-direction:column; gap:12px; }
+    .capwin .head { display:flex; align-items:center; gap:10px; }
+    .capwin .head .t { font-family:'Cormorant SC',serif; font-size:14px; letter-spacing:.26em;
+                       color:var(--cream); }
+    .capwin .head .m { margin-left:auto; font-family:'Spline Sans Mono',monospace;
+                       font-size:9px; letter-spacing:.14em; color:var(--muted); }
+    .caprow { display:flex; align-items:center; gap:9px; }
+    .caprow button { font-family:'Spline Sans Mono',monospace; font-size:10.5px;
+                     background:rgba(232,224,205,.06); color:var(--cream);
+                     border:1px solid var(--line2); border-radius:7px; padding:7px 13px;
+                     cursor:pointer; }
+    .caprow .hold { font-style:italic; font-size:13.5px; color:var(--gold-dim); margin-left:auto; }
+    #recBtn.rec { color:#e07a7a; border-color:#e07a7a; animation:blink 1s infinite; }
+    @keyframes blink { 50% { opacity:.5; } }
+    #capTimer { font-family:'Spline Sans Mono',monospace; font-size:12px; color:var(--cream); }
+    #capWave { display:block; width:100%; height:96px; background:var(--well);
+               border:1px solid var(--line); border-radius:8px; }
+    .capwave-hint { font-family:'Spline Sans Mono',monospace; font-size:8.5px; text-align:right;
+                    letter-spacing:.08em; color:var(--muted); }
+    .statrow { display:flex; gap:8px; }
+    .stat { flex:1; background:var(--well); border:1px solid var(--line); border-radius:7px;
+            padding:6px 9px; }
+    .stat .k { font-family:'Spline Sans Mono',monospace; font-size:8px; letter-spacing:.14em;
+               color:var(--muted); }
+    .stat .v { font-family:'Spline Sans Mono',monospace; font-size:12.5px; color:var(--cream); }
+    .stat.hot { border-color:var(--line2); } .stat.hot .v { color:var(--gold); }
+    .saverow { display:flex; gap:9px; }
+    #capName { flex:1; background:rgba(232,224,205,.06); border:1px solid var(--line2);
+               border-radius:7px; padding:8px 11px; color:var(--cream);
+               font-family:'Cormorant Garamond',serif; font-style:italic; font-size:16px; outline:none; }
+    #capSave { font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.1em;
+               background:radial-gradient(circle at 40% 30%, #caa86b, #9a7c40 72%);
+               color:var(--ink); border:0; border-radius:7px; padding:8px 20px; cursor:pointer; }
+    #capSave:disabled { opacity:.4; }
+    #dropZone { border:1.5px dashed var(--line2); border-radius:8px; padding:11px;
+                text-align:center; font-style:italic; font-size:15px; color:var(--gold-dim);
+                cursor:pointer; transition:all .18s var(--qe); }
+    #dropZone:hover, #dropZone.over { border-color:var(--gold); background:rgba(201,168,106,.05); }
+    #dropZone .mono { font-style:normal; font-size:10px; letter-spacing:.1em; }
+    #capStatus { font-family:'Spline Sans Mono',monospace; font-size:9px; letter-spacing:.08em;
+                 color:var(--gold-dim); min-height:12px; }
+    .capfoot { font-family:'Italianno',cursive; font-size:19px; color:var(--muted); text-align:center; }
+  </style>
+  <script type="module" crossorigin src="/assets/index-BZ_z2R1I.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <div class="top">
+      <div class="glyph"><img src="/quill-mark.png" alt="Quill"></div>
+      <div class="wordmark sc">QUILL</div>
+      <span class="badge mono">NEXUS · INK INTO AUDIOTOOL</span>
+      <div class="tagline it">Capture · Preserve · Transform</div>
+      <span id="quillStatus" class="mono"></span>
+    </div>
+
+    <div class="main">
+      <!-- ==== 左轨:CAPTURE the colour-pick ==== -->
+      <div class="rail left">
+        <h2>CAPTURE <span class="hint">the colour-pick</span></h2>
+        <div class="blurb">Drop any sound. Quill keeps its colour — and its hand.</div>
+        <button class="capcircle" id="capOpen"><img src="/quill-mark.png" alt="Quill"></button>
+        <div class="caphint">PRESS TO CAPTURE · ≤ 90 s<br>drag a file · or record</div>
+        <div class="lbl">SOURCE</div>
+        <canvas id="srcStrip" width="640" height="120"></canvas>
+        <div id="srcMeta" class="mono"><span>—</span><span></span></div>
+        <div class="lbl">TONE · COLOUR</div>
+        <div class="tonecard" id="toneCard"><span class="nm" id="toneCardName">violin</span></div>
+        <div class="lbl">SAVED TONES · CHOOSE ONE OR MORE</div>
+        <div id="timbreCards"><span class="empty">reaching the engine…</span></div>
+      </div>
+
+      <!-- ==== 中央亮纸:roll + takes ==== -->
+      <div class="center">
+        <div class="transport">
+          <div class="pbox"><span class="k">PROJECT</span>
+            <span id="controls"><button id="loginBtn" class="gbtn" disabled>Login to Audiotool</button></span>
+          </div>
+          <div class="pbox"><span class="k">TEMPO</span><span id="tempoRead">—</span></div>
+        </div>
+        <div class="rolltitle"><span class="t">REGIONS</span>
+          <span class="s">read from your Audiotool session</span></div>
+        <div id="regionList"><span class="empty">sign in to read your session…</span></div>
+
+        <!-- ==== 合成器 2×2 模块网格(复刻桌面版布局)==== -->
+        <div class="synth-grid">
+          <!-- ▸ FILTER(左上)— Brightness + Air/Noise + 响应曲线 -->
+          <div class="smod">
+            <div class="smod-head">
+              <span class="smod-title">FILTER</span>
+              <span class="smod-sub">SPECTRAL TILT · 12 dB/oct</span>
+              <span class="smod-hint">tone</span>
+            </div>
+            <div class="smod-body">
+              <div class="smod-knobs">
+                <div class="knob-wrap">
+                  <div class="knob" data-knob="brightness" data-min="0" data-max="1" data-val="0.5"><div class="needle"></div></div>
+                  <div class="knob-val" id="kv_brightness">50</div>
+                  <div class="knob-label">BRIGHTNESS</div>
+                </div>
+                <div class="knob-wrap">
+                  <div class="knob" data-knob="noise" data-min="0" data-max="1" data-val="0.6"><div class="needle"></div></div>
+                  <div class="knob-val" id="kv_noise">60</div>
+                  <div class="knob-label">AIR / NOISE</div>
+                </div>
+              </div>
+              <div class="smod-curve">
+                <svg id="filterCurve" viewBox="0 0 200 68">
+                  <rect class="curve-bg" x="0" y="0" width="200" height="68"/>
+                  <line class="curve-grid" x1="0" y1="34" x2="200" y2="34"/>
+                  <line class="curve-grid" x1="0" y1="17" x2="200" y2="17"/>
+                  <line class="curve-grid" x1="0" y1="51" x2="200" y2="51"/>
+                  <line class="curve-grid" x1="66" y1="0" x2="66" y2="68"/>
+                  <line class="curve-grid" x1="133" y1="0" x2="133" y2="68"/>
+                  <path id="filterFill" class="curve-fill" d=""/>
+                  <path id="filterPath" class="curve-line" d=""/>
+                  <text x="4" y="64" class="curve-label">20</text>
+                  <text x="60" y="64" class="curve-label">1k</text>
+                  <text x="127" y="64" class="curve-label">4k</text>
+                  <text x="186" y="64" class="curve-label">8k</text>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- ▸ AMP ENVELOPE(右上)— Master + 包络曲线 -->
+          <div class="smod">
+            <div class="smod-head">
+              <span class="smod-title">AMP ENVELOPE</span>
+            </div>
+            <div class="smod-body">
+              <div class="smod-knobs">
+                <div class="knob-wrap">
+                  <div class="knob big" data-knob="master" data-min="0" data-max="1" data-val="0.62"><div class="needle"></div></div>
+                  <div class="knob-val" id="kv_master">62</div>
+                  <div class="knob-label">MASTER</div>
+                </div>
+              </div>
+              <div class="smod-curve">
+                <svg id="envCurve" viewBox="0 0 200 68">
+                  <rect class="curve-bg" x="0" y="0" width="200" height="68"/>
+                  <line class="curve-grid" x1="0" y1="34" x2="200" y2="34"/>
+                  <path id="envPath" class="curve-line" d=""/>
+                  <path id="envFill" class="curve-fill" d=""/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <!-- ▸ VOICE(左下)— 复音格子 + Stealing -->
+          <div class="smod">
+            <div class="smod-head">
+              <span class="smod-title">VOICE</span>
+              <span class="smod-hint">solo</span>
+            </div>
+            <div class="voice-grid" id="voiceGrid"></div>
+            <div class="voice-info">
+              <span class="vk">POLYPHONY STEALING</span>
+              <span class="vv" id="voicePoly">1</span>
+              <span class="vk" style="margin-left:6px">mono</span>
+            </div>
+          </div>
+
+          <!-- ▸ LFO · MOTION(右下)— Depth + Rate + LFO 波形 -->
+          <div class="smod">
+            <div class="smod-head">
+              <span class="smod-title">LFO · MOTION</span>
+              <span class="smod-hint">vibrato</span>
+            </div>
+            <div class="smod-body">
+              <div class="smod-knobs">
+                <div class="knob-wrap">
+                  <div class="knob" data-knob="artint" data-min="0" data-max="1" data-val="0.6"><div class="needle"></div></div>
+                  <div class="knob-val" id="kv_artint">60</div>
+                  <div class="knob-label">DEPTH</div>
+                </div>
+                <div class="knob-wrap">
+                  <div class="knob" data-knob="vibrato" data-min="0" data-max="1" data-val="0.35"><div class="needle"></div></div>
+                  <div class="knob-val" id="kv_vibrato">0.55s</div>
+                  <div class="knob-label">THRESHOLD</div>
+                </div>
+              </div>
+              <div class="smod-curve">
+                <svg id="lfoCurve" viewBox="0 0 200 68">
+                  <rect class="curve-bg" x="0" y="0" width="200" height="68"/>
+                  <line class="curve-grid" x1="0" y1="34" x2="200" y2="34"/>
+                  <path id="lfoPath" class="curve-line" d=""/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- OUTPUT 条 -->
+        <div class="output-strip">
+          <span class="smod-title">OUTPUT</span>
+          <div class="knob-wrap">
+            <div class="knob" data-knob="reverb" data-min="0" data-max="1" data-val="0.0"><div class="needle"></div></div>
+            <div class="knob-val" id="kv_reverb">0</div>
+            <div class="knob-label">REVERB</div>
+          </div>
+        </div>
+
+        <div class="rolltitle"><span class="t">TAKES</span>
+          <span class="s">audition here · solo in Audiotool</span></div>
+        <div id="takes"><span class="empty">inked takes appear here</span></div>
+      </div>
+
+      <!-- ==== 右轨:ARTICULATION the hand ==== -->
+      <div class="rail right">
+        <h2>ARTICULATION <span class="hint">the hand</span></h2>
+        <div class="blurb">No synth plays like a player. Quill does.</div>
+        <div class="nowbox"><div class="k">BEHAVIOR</div><div class="v" id="nowBeh">own</div></div>
+        <div class="lbl">CHOOSE WHOSE HAND</div>
+        <div id="behChips"><span class="bchip on" data-beh="">own</span></div>
+        <div class="lbl">PITCH CURVE · SELECTED REGION</div>
+        <canvas id="contour" width="700" height="200"></canvas>
+        <button id="inkBtn" disabled>INK THIS REGION</button>
+        <div id="inkStatus"></div>
+      </div>
+    </div>
+
+    <div class="foot">
+      <div class="bar">
+        <span id="footAuth">AUDIOTOOL · not connected</span>
+        <span id="footEngine">RENDER · —</span>
+        <span style="margin-left:auto;">QUILL COMPANION · LET'S BUILD 2026</span>
+      </div>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <!-- ==== CAPTURE 浮窗 ==== -->
+  <div id="capModal">
+    <div class="capwin">
+      <div class="head"><div class="glyph sc">Q</div><span class="t">CAPTURE</span>
+        <span class="m">ANY AUDIO · MONO · 1–90 s</span></div>
+      <div class="caprow">
+        <button id="recBtn">● REC</button>
+        <button id="capPlay" disabled>▶</button>
+        <span id="capTimer">0:00.0</span>
+        <span class="hold">hold one pitch — or play a phrase</span>
+      </div>
+      <canvas id="capWave" width="960" height="192"></canvas>
+      <div class="capwave-hint">waveform · what Quill will learn from</div>
+      <div class="statrow">
+        <div class="stat hot"><div class="k">PITCH</div><div class="v" id="statPitch">—</div></div>
+        <div class="stat"><div class="k">PARTIALS</div><div class="v" id="statPartials">—</div></div>
+        <div class="stat"><div class="k">TAKE</div><div class="v" id="statTake">—</div></div>
+        <div class="stat"><div class="k">BEHAVIOR</div><div class="v" id="statNotes">—</div></div>
+      </div>
+      <div class="saverow">
+        <input id="capName" placeholder="Warm Capture…">
+        <button id="capSave" disabled>⌁ SAVE</button>
+      </div>
+      <div id="dropZone">drop audio here — or <span class="mono">OPEN FILE…</span></div>
+      <input type="file" id="capFile" accept="audio/*" style="display:none">
+      <div id="capStatus"></div>
+      <div class="capfoot">To transform is to compose.</div>
+    </div>
+  </div>
+</body>
+</html>

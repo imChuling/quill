@@ -1,0 +1,44 @@
+# Quill 依赖（版本对齐 conda 环境 `mt`，2026-06 实测）
+# 阶段1 实际用到：numpy scipy librosa matplotlib pyyaml soundfile + pesto-pitch(torch) + pytest
+# 其余为后续阶段（实时/MIDI/分类）预装，附录 B 技术栈。
+
+# --- 核心 DSP ---
+numpy==2.2.6
+scipy==1.15.3
+librosa==0.11.0
+numba==0.63.1
+soundfile==0.13.1
+
+# --- 实时 / MIDI（阶段3 起） ---
+sounddevice==0.5.5
+mido==1.3.3
+python-rtmidi==1.5.8
+
+# --- f0（PESTO 主力，torch 为其依赖） ---
+pesto-pitch==2.0.1
+torch==2.10.0
+
+# --- 可视化 / 配置 / 测试 ---
+matplotlib==3.10.8
+PyYAML==6.0.3
+pytest==9.0.3
+
+# --- FR-5 转录（阶段4 已安装） ---
+basic-pitch==0.4.0    # Spotify ICASSP 2022，带 pitch-bend；macOS 走 coremltools 后端
+mir-eval==0.8.2       # 音符匹配/召回（随 basic-pitch 装）
+
+# --- FR-6 兜底（阶段5）---
+scikit-learn          # 随机森林兜底 + 规则 vs 森林 ablation（mt 环境已自带）
+
+# --- FR-6 前沿升级 MERT 探针（阶段8 提前；M8）---
+transformers          # HuggingFace；m-a-p/MERT-v1-95M 权重首次自动下载
+nnAudio               # MERT 的 CQT 前端依赖
+
+# --- 桌面 App（FR-12,实际实现 = pywebview 而非 PyQt） ---
+pywebview==6.2.1
+
+# --- Mode 3 从编曲提取（Demucs 6-stem 分离） ---
+demucs==4.0.1
+
+# --- 后续阶段（按需） ---
+# 数据集（手动下载，多 GB）：IDMT-SMT-Guitar（阶段5 loader）/ GuitarSet（阶段8）
