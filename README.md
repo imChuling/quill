@@ -1,6 +1,6 @@
 # Quill
 
-[![Live App](https://img.shields.io/badge/Live_App-Quill-ffd700?style=flat&labelColor=100d08)](https://chuling-li-cs--quill-render-serve.modal.run/) [![ISMIR 2026](https://img.shields.io/badge/ISMIR_2026-Late--Breaking_Demo-ffd700?style=flat&labelColor=241f14)](https://ismir.net/) [![License](https://img.shields.io/badge/License-CC_BY--NC_4.0-e6be4d?style=flat&labelColor=100d08)](https://creativecommons.org/licenses/by-nc/4.0/)
+[![Live App](https://img.shields.io/badge/Live_App-Quill-daa520?style=flat&labelColor=100d08)](https://chuling-li-cs--quill-render-serve.modal.run/) [![ISMIR 2026](https://img.shields.io/badge/ISMIR_2026-Late--Breaking_Demo-daa520?style=flat&labelColor=241f14)](https://ismir.net/) [![License](https://img.shields.io/badge/License-CC_BY--NC_4.0-c5962b?style=flat&labelColor=100d08)](https://creativecommons.org/licenses/by-nc/4.0/)
 
 Neural tone capture for [Audiotool](https://www.audiotool.com/). Record a few seconds of any sound. Quill extracts the timbre and the playing style as two separate assets, then re-renders your Audiotool MIDI regions in that sound, with slides, legato, and vibrato that a sampler can't do.
 
