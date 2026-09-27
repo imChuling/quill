@@ -1,4 +1,4 @@
-# Quill
+<a href="https://chuling-li-cs--quill-render-serve.modal.run/"><img src="assets/quill-logo-gold.svg" alt="Quill" width="280"></a>
 
 [![Live App](https://img.shields.io/badge/Live_App-Quill-daa520?style=flat&labelColor=100d08)](https://chuling-li-cs--quill-render-serve.modal.run/) [![ISMIR 2026](https://img.shields.io/badge/ISMIR_2026-Late--Breaking_Demo-daa520?style=flat&labelColor=241f14)](https://ismir.net/) [![License](https://img.shields.io/badge/License-CC_BY--NC_4.0-c5962b?style=flat&labelColor=100d08)](https://creativecommons.org/licenses/by-nc/4.0/)
 
