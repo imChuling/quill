@@ -67,14 +67,25 @@ def _sha256(path):
     return h.hexdigest()
 
 
+# Files derived from URMP are not in the public release (see README, Checkpoints).
+NOT_RELEASED = {
+    "ddsp_urmp_vn_12k.pt", "ddsp_urmp_tpt_12k.pt",
+    "urmp_vn_trajectories.npz", "urmp_tpt_trajectories.npz",
+    "behavior_distilled.pt", "vibrato_model.pt",
+}
+
+
 def verify_checkpoints():
+    """Hash every checkpoint that is present. Returns (no_mismatch, missing_names)."""
     ok = True
+    missing = []
     ckpt = QUILL / "checkpoints"
     for name, expected in CHECKPOINT_HASHES.items():
         p = ckpt / name
         if not p.exists():
-            print(f"  MISS  {name}")
-            ok = False
+            note = "not in the public release" if name in NOT_RELEASED else "missing"
+            print(f"  --    {name}  ({note})")
+            missing.append(name)
             continue
         got = _sha256(p)
         match = got == expected
@@ -84,7 +95,7 @@ def verify_checkpoints():
             print(f"         expected {expected}")
             print(f"         got      {got}")
             ok = False
-    return ok
+    return ok, missing
 
 
 def verify_eval_structure(stored):
@@ -142,11 +153,22 @@ def main():
 
     if args.check_only:
         print("1/2  Verifying checkpoint integrity...")
-        ok1 = verify_checkpoints()
+        ok1, missing = verify_checkpoints()
         print("\n2/2  Verifying eval_results.json structure...")
         ok2 = verify_eval_structure(stored)
         ok = ok1 and ok2
+        if ok and missing:
+            print(f"\nPASS: hashes and stored results check out; {len(missing)} of "
+                  f"{len(CHECKPOINT_HASHES)} checkpoints not present.")
+            print("      The full reproduction needs them; the URMP-derived ones must be "
+                  "rebuilt locally (see README, Checkpoints).")
+            return 0
     else:
+        _, missing = verify_checkpoints()
+        if missing:
+            print(f"\nCannot run the full reproduction: {len(missing)} checkpoints missing "
+                  f"({', '.join(missing)}). Rebuild the URMP-derived files first; see README.")
+            return 1
         print("Re-running full evaluation (this takes several minutes)...")
         from tools.eval_quill import main as run_eval
 
