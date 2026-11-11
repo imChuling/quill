@@ -1,12 +1,12 @@
-"""听测 v2 答案码解码:粘贴的答案码 → 匿名 CSV。
+"""Listening test v2 answer-code decoder: pasted answer codes -> anonymous CSV.
 
-用法:
-  把参与者发回的答案码逐行存入 eval/listening/raw_codes_v2.txt(一行一人),
-  然后跑: conda run -n mt python tools/decode_study_v2.py
-产出:
+Usage:
+  store the answer codes sent back by participants line by line in eval/listening/raw_codes_v2.txt (one line per participant),
+  then run: conda run -n mt python tools/decode_study_v2.py
+Outputs:
   eval/listening/responses_main_v2.csv
   eval/listening/responses_abx_v2.csv
-剔除规则按 prereg_v2.md:重复编号取第一份;无法解码整人剔除并报告。
+Exclusion rules per prereg_v2.md: duplicate IDs keep the first submission; participants whose code cannot be decoded are excluded entirely and reported.
 """
 
 import csv
@@ -39,7 +39,7 @@ def parse_line(line):
 def main():
     raw = LST / "raw_codes_v2.txt"
     if not raw.exists():
-        print(f"先把答案码逐行存入 {raw}")
+        print(f"First store the answer codes line by line in {raw}")
         sys.exit(1)
     lines = [l for l in raw.read_text().splitlines() if l.strip()]
     seen, rows, bad = set(), [], 0
@@ -48,11 +48,11 @@ def main():
         if d is None:
             bad += 1
             continue
-        if d["id"] in seen:  # 重复编号取第一份(预注册)
+        if d["id"] in seen:  # duplicate ID: keep the first submission (preregistered)
             continue
         seen.add(d["id"])
         rows.append(d)
-    print(f"共 {len(lines)} 行,解码成功 {len(rows)} 人,无法解码 {bad} 行(整人剔除)")
+    print(f"total {len(lines)} lines, {len(rows)} participants decoded, {bad} lines undecodable (participant excluded)")
 
     with open(LST / "responses_main_v2.csv", "w", newline="") as f:
         w = csv.writer(f)
@@ -87,7 +87,7 @@ def main():
                 else:
                     resp = "nonmatch"
                 w.writerow([pid, qid, resp])
-    print(f"已写 responses_main_v2.csv / responses_abx_v2.csv -> {LST}/")
+    print(f"Wrote responses_main_v2.csv / responses_abx_v2.csv -> {LST}/")
 
 
 if __name__ == "__main__":

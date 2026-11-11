@@ -1,9 +1,9 @@
-"""E4: 新默认参数 vs 论文默认参数对比。
+"""E4: new default parameters vs the paper's default parameters.
 
-论文默认: concat_lambda=0, contiguity=0
-新默认:   concat_lambda=1, contiguity=1 (UI_RENDER_DEFAULTS)
+Paper defaults: concat_lambda=0, contiguity=0
+New defaults:   concat_lambda=1, contiguity=1 (UI_RENDER_DEFAULTS)
 
-跑四条证据链的客观部分(控制保真度、配对反事实),确认不劣化。
+Runs the objective parts of the four evidence chains (control fidelity, paired counterfactual) to confirm there is no degradation.
 """
 
 import json

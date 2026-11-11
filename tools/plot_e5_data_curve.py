@@ -1,6 +1,6 @@
-"""E5: 行为库规模曲线 — 对比度 vs 库大小。
+"""E5: behaviour library size curve: contrast vs library size.
 
-产出: docs/report/fig_e5_data_curve.png
+Outputs: docs/report/fig_e5_data_curve.png
 """
 
 import json

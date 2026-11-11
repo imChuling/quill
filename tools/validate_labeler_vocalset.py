@@ -1,19 +1,19 @@
-"""标注器真实数据验证:VocalSet 歌唱技法标签 vs classify_articulation。
+"""Labeler validation on real data: VocalSet singing technique labels vs classify_articulation.
 
-VocalSet(Wilkins et al., ISMIR 2018)的 vibrato / straight 技法子集:
-整个文件用同一技法演唱 → 文件级真值。走完整生产管线(extract_style 的
-segment_notes 自动切分 + event_trajectories + classify_articulation),统计:
+The vibrato / straight technique subsets of VocalSet (Wilkins et al., ISMIR 2018):
+each file is sung with one technique -> file-level ground truth. Runs the full production pipeline (extract_style's
+segment_notes automatic segmentation + event_trajectories + classify_articulation) and reports:
 
-  - 音符级:vibrato 文件中被标 vibrato 的音符占比 vs straight 文件中的占比
-  - 文件级:多数票分类(文件内 vibrato 音符占比 > 阈值 → vibrato)的准确率
+  - note level: fraction of notes labelled vibrato in vibrato files vs in straight files
+  - file level: accuracy of majority-vote classification (vibrato-note fraction within the file > threshold -> vibrato)
 
-歌声是跨域测试(库为器乐设计):起音上挑(scoop)可能触发 slide,
-按论文口径 slide 单独统计,不并入 plain。
+Singing is a cross-domain test (the library is designed for instruments): attack scoops may trigger slide,
+so per the paper's criterion slide is counted separately and not merged into plain.
 
     conda run -n mt python tools/validate_labeler_vocalset.py \
         --vocalset $QUILL_DATASETS/vocalset/FULL
 
-产出: checkpoints/eval/labeler_validation_vocalset.json
+Outputs: checkpoints/eval/labeler_validation_vocalset.json
 """
 
 import argparse
@@ -27,14 +27,14 @@ import numpy as np
 
 QUILL = Path(__file__).resolve().parent.parent
 ART_NAMES = {0: "plain", 1: "vibrato", 2: "slide"}
-MIN_DUR = 0.25  # 与合成验证同口径:短于一个揉弦周期的音不计
+MIN_DUR = 0.25  # same criterion as the synthetic validation: notes shorter than one vibrato cycle are not counted
 
 
 def _segment_stable_notes(f0, f0_times, min_dur=0.35, tol_semi=0.5, smooth_s=0.31):
-    """验证侧切分:0.3s 中值滤波抹平揉弦(5-6Hz 周期 0.17-0.2s)后取稳定音高段。
+    """Validation-side segmentation: a 0.3s median filter flattens vibrato (5-6Hz, period 0.17-0.2s), then stable pitch segments are taken.
 
-    production 的 segment_notes 是给器乐调的(静音地板在呼吸声/气声上误触发),
-    这里的目标是隔离标注器——切分基于平滑轨迹,打标仍走生产管线原始音频。
+    production's segment_notes is tuned for instruments (its silence floor triggers falsely on breath/breathy voice),
+    while the goal here is to isolate the labeler: segmentation uses the smoothed track, labelling still uses the production pipeline on the raw audio.
     """
     semi = 12.0 * np.log2(np.maximum(f0, 1e-6) / 440.0) + 69.0
     n = len(semi)
@@ -60,7 +60,7 @@ def _segment_stable_notes(f0, f0_times, min_dur=0.35, tol_semi=0.5, smooth_s=0.3
             start, ref = j, v
         elif start is not None:
             ref = 0.95 * ref + 0.05 * v
-    # 掐头去尾 50ms(过渡帧),再过滤过短段
+    # drop 50ms at each end (transition frames), then filter out segments that are too short
     out = []
     for a, b in notes:
         a, b = a + 0.05, b - 0.05
@@ -105,7 +105,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--vocalset", required=True)
     ap.add_argument("--subset", default="scales", choices=["scales", "arpeggios", "all"])
-    ap.add_argument("--limit-per-class", type=int, default=0, help="0=全部")
+    ap.add_argument("--limit-per-class", type=int, default=0, help="0=all")
     ap.add_argument("--file-vote-threshold", type=float, default=0.5)
     ap.add_argument(
         "--out", default=str(QUILL / "checkpoints/eval/labeler_validation_vocalset.json")
@@ -172,13 +172,13 @@ def main():
         }
         file_rows.extend({**pf, "tech": tech} for pf in per_file)
         print(
-            f"  音符级 (n={len(note_preds)}): plain {dist['plain']:.2f} "
+            f"  note level (n={len(note_preds)}): plain {dist['plain']:.2f} "
             f"vibrato {dist['vibrato']:.2f} slide {dist['slide']:.2f}"
         )
-        print(f"  文件级多数票准确率: {file_acc:.2f} ({len(per_file)} files)")
+        print(f"  file-level majority-vote accuracy: {file_acc:.2f} ({len(per_file)} files)")
 
-    # ---- 跨域阈值分析:判别特征(pitch range,揉弦周期性门控)的可分性 ----
-    # 生产阈值 30c 为器乐标定;人声直音天然抖 50-90c → 报 AUC 与最优阈值。
+    # ---- Cross-domain threshold analysis: separability of the discriminative feature (pitch range, vibrato periodicity gate) ----
+    # the production threshold 30c is calibrated for instruments; straight singing naturally wobbles by 50-90c -> report AUC and the optimal threshold.
     y_true, y_score = [], []
     for pf in file_rows:
         is_vib = pf["tech"] == "vibrato"
@@ -207,16 +207,16 @@ def main():
             "acc_at_best_thr": best_acc,
             "n_notes": int(len(y_true)),
         }
-        print(f"\n=== 跨域阈值分析 (n={len(y_true)}) ===")
-        print(f"  AUC(range, 周期门控) = {auc:.3f}")
-        print(f"  器乐阈值 30c 准确率 = {acc_at_30:.2f}")
-        print(f"  最优阈值 {best_thr:.0f}c 准确率 = {best_acc:.2f}")
+        print(f"\n=== Cross-domain threshold analysis (n={len(y_true)}) ===")
+        print(f"  AUC(range, periodicity gate) = {auc:.3f}")
+        print(f"  accuracy at the instrument threshold 30c = {acc_at_30:.2f}")
+        print(f"  optimal threshold {best_thr:.0f}c accuracy = {best_acc:.2f}")
 
     report["files"] = file_rows
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=1, ensure_ascii=False))
-    print(f"\n结果已存 {out}")
+    print(f"\nResults saved to {out}")
 
 
 if __name__ == "__main__":

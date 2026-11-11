@@ -1,6 +1,6 @@
-"""升级行为库 npz 到 v1.0 格式:加 format_version / source / license / fps 元字段。
+"""Upgrade behaviour library npz files to the v1.0 format: add format_version / source / license / fps metadata fields.
 
-幂等:已有 format_version 的文件跳过。
+Idempotent: files that already have format_version are skipped.
 """
 
 import sys

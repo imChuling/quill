@@ -1,6 +1,6 @@
-"""B1: 库本身的对比度 — 按库和时值分箱的条形图。
+"""B1: contrast of the library itself: bar chart binned by library and note duration.
 
-产出: docs/report/fig_b1_library_contrast.png
+Outputs: docs/report/fig_b1_library_contrast.png
 """
 
 import json

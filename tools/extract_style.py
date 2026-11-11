@@ -1,15 +1,15 @@
-"""一条命令从录音建演奏法库(style library):wav 进,npz 出。
+"""Build an articulation library (style library) from a recording in one command: wav in, npz out.
 
     python tools/extract_style.py input.wav -o my_style.npz
 
-输出格式与 urmp_vn_trajectories.npz 完全一致(NeuralTake/ConditionedNN 直接可用):
+The output format is exactly the same as urmp_vn_trajectories.npz (usable directly by NeuralTake/ConditionedNN):
   features(N,7): midi, dur, prev_gap, next_gap, is_first, is_last, articulation
   trajectories(N,4,48), confidence(N,4), meta(json), traj_keys
 
-与 tools/extract_trajectories_urmp.py(URMP 库的构建脚本)的区别:没有 ground-truth 音符标注,
-音符切分全自动(单音假设):
-  librosa onset(backtrack) ∪ pyin f0 跳变边界 → 音符段;
-  演奏法标签沿用同一套启发式(揉弦=往复振荡,滑音=单向大位移)。
+Difference from tools/extract_trajectories_urmp.py (the URMP library build script): there are no ground-truth note annotations,
+so note segmentation is fully automatic (monophonic assumption):
+  librosa onset(backtrack) ∪ pyin f0 jump boundaries -> note segments;
+  articulation labels use the same heuristics (vibrato = back-and-forth oscillation, slide = large one-way displacement).
 """
 
 import argparse
@@ -27,14 +27,14 @@ from analysis.tplib import _TRAJ_KEYS, event_trajectories
 ART_PLAIN, ART_VIBRATO, ART_SLIDE = 0, 1, 2
 ART_NAMES = {0: "plain", 1: "vibrato", 2: "slide"}
 
-F0_HOP = 256  # pyin 帧移(高时间分辨率,f0 跳变边界更准)
-MIN_NOTE_DUR = 0.10  # 短于此的段丢弃(秒)
-PITCH_SPLIT_SEMI = 0.7  # 相邻稳定音高差超过此半音数 → 在 onset 之外补一条边界
-STABLE_FRAMES = 4  # 音高需连续稳定这么多帧才算"新音"(防揉弦被切碎)
+F0_HOP = 256  # pyin hop (high time resolution, more accurate f0 jump boundaries)
+MIN_NOTE_DUR = 0.10  # segments shorter than this are dropped (seconds)
+PITCH_SPLIT_SEMI = 0.7  # if adjacent stable pitches differ by more than this many semitones -> add a boundary besides the onsets
+STABLE_FRAMES = 4  # the pitch must be stable for this many consecutive frames to count as a "new note" (prevents vibrato being chopped up)
 
 
 def classify_articulation(pitch_traj_cents, confidence):
-    """与 extract_trajectories_urmp.py 相同的规则(保持库间标签一致)。"""
+    """The same rules as extract_trajectories_urmp.py (keeps labels consistent across libraries)."""
     if confidence < 0.5:
         return ART_PLAIN
     p = pitch_traj_cents
@@ -54,7 +54,7 @@ def classify_articulation(pitch_traj_cents, confidence):
 
 
 def track_f0(y, sr):
-    """全曲连续 f0(pyin)。返回 (hz[N], times[N]),无声帧为 NaN。"""
+    """Continuous f0 over the whole piece (pyin). Returns (hz[N], times[N]), unvoiced frames are NaN."""
     import librosa
 
     hz, vflag, _ = librosa.pyin(
@@ -66,9 +66,9 @@ def track_f0(y, sr):
 
 
 def segment_notes(y, sr, f0, f0_times):
-    """单音音符切分:onset 边界 ∪ f0 台阶跳变边界 → [(t_on, t_off, midi)]。
+    """Monophonic note segmentation: onset boundaries ∪ f0 step-jump boundaries -> [(t_on, t_off, midi)].
 
-    onset 抓重新起音(拨/换弓/断奏);f0 跳变抓 legato 换音(onset 检不到)。
+    Onsets catch re-attacks (pluck/bow change/staccato); f0 jumps catch legato note changes (which onset detection misses).
     """
     import librosa
 
@@ -76,7 +76,7 @@ def segment_notes(y, sr, f0, f0_times):
     onsets = librosa.onset.onset_detect(y=y, sr=sr, hop_length=512, backtrack=True, units="time")
     boundaries = set(float(t) for t in onsets)
 
-    # f0 跳变边界:3 帧中值滤波后,semitone 域台阶检测
+    # f0 jump boundaries: after a 3-frame median filter, step detection in the semitone domain
     semi = 12.0 * np.log2(np.maximum(f0, 1e-6) / 440.0) + 69.0
     m = semi.copy()
     for j in range(1, len(semi) - 1):
@@ -101,9 +101,9 @@ def segment_notes(y, sr, f0, f0_times):
                 boundaries.add(float(f0_times[j - STABLE_FRAMES + 1]))
             prev_stable = stable
 
-    # 无声段(能量地板)作为音符终点候选。
-    # 地板 = 峰值 -35dB(相对全局峰值的 10% 对分轨太高,44% 的帧会被误判静音);
-    # 且需连续 SILENCE_FRAMES 帧低于地板才算真静音(防颤音/换弓瞬时凹陷截断音尾)。
+    # unvoiced segments (energy floor) as note-end candidates.
+    # floor = peak -35dB (10% of the global peak is too high for a separated stem, 44% of frames would be misjudged as silent);
+    # and it must stay below the floor for SILENCE_FRAMES consecutive frames to count as real silence (prevents vibrato/bow-change dips from cutting the note tail).
     rms = librosa.feature.rms(y=y, hop_length=512)[0]
     rms_t = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=512)
     floor = float(np.max(rms)) * 10 ** (-35 / 20) if rms.size else 0.0
@@ -120,7 +120,7 @@ def segment_notes(y, sr, f0, f0_times):
     notes = []
     for i, t_on in enumerate(bounds):
         next_b = bounds[i + 1] if i + 1 < len(bounds) else dur_total
-        # offset = 持续静音起点 或 下一边界,先到者
+        # offset = start of sustained silence or the next boundary, whichever comes first
         seg_m = (rms_t >= t_on) & (rms_t < next_b)
         t_off = next_b
         below = np.where(seg_m & sustained)[0]
@@ -128,7 +128,7 @@ def segment_notes(y, sr, f0, f0_times):
             t_off = max(float(rms_t[below[0]]), t_on + 0.03)
         if t_off - t_on < MIN_NOTE_DUR:
             continue
-        # 音高 = 段内(掐头 30ms)f0 中位
+        # pitch = median f0 within the segment (first 30ms dropped)
         msk = (f0_times >= t_on + 0.03) & (f0_times <= t_off) & np.isfinite(f0)
         if msk.sum() < 3:
             continue

@@ -1,12 +1,12 @@
-"""Glass 双资产构建(可溯源):13 段 studio wav → 拼接 → style library。
+"""Glass two-asset build (traceable): 13 studio wav clips -> concatenation -> style library.
 
-跑: conda run -n mt python tools/build_glass_assets.py
-产出:
-  assets/glass/glass_perf_studio.wav        拼接音频(0.5s 静音间隔)
-  assets/glass/glass_concat_manifest.json   逐文件时间轴(溯源)
+Run: conda run -n mt python tools/build_glass_assets.py
+Outputs:
+  assets/glass/glass_perf_studio.wav        concatenated audio (0.5s silence between clips)
+  assets/glass/glass_concat_manifest.json   per-file timeline (provenance)
   checkpoints/glass_style.npz               24-note style library
 
-Timbre 模型训练(同一批文件):
+Timbre model training (the same set of files):
   python -W ignore -m neural.train_ddsp --glob "assets/glass/timbre_train/*.wav" \
       --name glass --steps 6000 --out assets/glass/tracer2
 """

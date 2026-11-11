@@ -1,10 +1,10 @@
-"""验证 GuitarSet solo_mic 上的逐音符轨迹提取质量。
+"""Validate the quality of per-note trajectory extraction on GuitarSet solo_mic.
 
-在 3 个 solo 文件上跑 event_trajectories,检查:
-1. JAMS 标注能正确读取音符 onset/offset
-2. f0 跟踪在单旋律吉他上稳定
-3. 4×48 轨迹的 confidence 分布合理(>0.8 占多数)
-4. 输出统计:总音符数、有效轨迹比例、轨迹 std 分布
+Runs event_trajectories on 3 solo files and checks:
+1. JAMS annotations correctly yield note onset/offset
+2. f0 tracking is stable on monophonic guitar
+3. the confidence distribution of the 4×48 trajectories is reasonable (>0.8 for the majority)
+4. output statistics: total notes, fraction of valid trajectories, distribution of trajectory std
 """
 
 import os

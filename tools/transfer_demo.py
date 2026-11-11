@@ -1,13 +1,13 @@
-"""跨乐器行为迁移 demo:行为(检索库+包络)与音色(DDSP)解耦的反事实组合。
+"""Cross-instrument behaviour transfer demo: counterfactual combinations of decoupled behaviour (retrieval library + envelope) and timbre (DDSP).
 
-2×2 矩阵,同一段 MIDI:
-  vnB_vnT   小提琴行为 × 小提琴音色(本尊)
-  gtB_gtT   吉他行为   × 吉他音色(本尊)
-  gtB_vnT   吉他行为   × 小提琴音色 ← "小提琴被当吉他弹"(拨弦包络+吉他微观动态)
-  vnB_gtT   小提琴行为 × 吉他音色   ← "吉他被当小提琴拉"(持续包络+揉弦)
+2×2 matrix, the same MIDI:
+  vnB_vnT   violin behaviour × violin timbre (the original)
+  gtB_gtT   guitar behaviour × guitar timbre (the original)
+  gtB_vnT   guitar behaviour × violin timbre <- "violin played like a guitar" (pluck envelope + guitar micro-dynamics)
+  vnB_gtT   violin behaviour × guitar timbre <- "guitar bowed like a violin" (sustain envelope + vibrato)
 
-叙事(ISMIR LBD):行为轨迹是乐器无关的表示,可作用于任何音色模型。
-跑: cd quill && python tools/transfer_demo.py
+Narrative (ISMIR LBD): behaviour trajectories are an instrument-independent representation that can drive any timbre model.
+Run: cd quill && python tools/transfer_demo.py
 """
 
 import sys
@@ -22,7 +22,7 @@ from neural.neural_take import NeuralTake
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "checkpoints" / "transfer_demo"
 
-# 中速旋律:既有短音(吉他拨弦感清晰)也有长音(小提琴揉弦/持续感清晰)
+# medium-tempo melody: has both short notes (clear guitar pluck feel) and long notes (clear violin vibrato/sustain feel)
 MELODY = [
     {"midi": 62, "start": 0.0, "len": 0.4, "vel": 100},
     {"midi": 65, "start": 0.4, "len": 0.4, "vel": 105},
@@ -30,7 +30,7 @@ MELODY = [
     {"midi": 67, "start": 1.6, "len": 0.4, "vel": 100},
     {"midi": 65, "start": 2.0, "len": 0.4, "vel": 100},
     {"midi": 62, "start": 2.4, "len": 1.2, "vel": 108, "art": "vibrato"},
-    # 乐句 2(隔 0.3s)
+    # phrase 2 (after 0.3s)
     {"midi": 69, "start": 3.9, "len": 0.4, "vel": 105},
     {"midi": 72, "start": 4.3, "len": 0.4, "vel": 110, "art": "slide"},
     {"midi": 74, "start": 4.7, "len": 1.6, "vel": 115, "art": "vibrato"},
@@ -58,7 +58,7 @@ def main():
         )
     print(f"\n=== Transfer Demo Complete -> {OUT_DIR} ===")
     print(
-        "耳测: gtB_vnT 应有拨弦式起音+吉他微观动态但小提琴音色;vnB_gtT 应有持续包络+揉弦但吉他音色"
+        "Ear test: gtB_vnT should have plucked attacks + guitar micro-dynamics but a violin timbre; vnB_gtT should have a sustain envelope + vibrato but a guitar timbre"
     )
 
 

@@ -1,10 +1,10 @@
-"""批量从 GuitarSet solo_mic 提取逐音符行为轨迹,产出训练集 .npz。
+"""Batch-extract per-note behaviour trajectories from GuitarSet solo_mic and produce a training set .npz.
 
-输出: datasets/guitarset_trajectories.npz
-  - features: (N, F) float32 — 每音符特征向量
-  - trajectories: (N, 4, 48) float32 — pitch/energy/brightness/noise 轨迹
-  - confidence: (N, 4) float32 — 每条轨迹的 confidence
-  - meta: json string — track_id, note_idx, pitch_hz, duration 等
+Output: datasets/guitarset_trajectories.npz
+  - features: (N, F) float32 — per-note feature vector
+  - trajectories: (N, 4, 48) float32 — pitch/energy/brightness/noise trajectories
+  - confidence: (N, 4) float32 — confidence of each trajectory
+  - meta: json string — track_id, note_idx, pitch_hz, duration, etc.
 """
 
 import os
@@ -55,7 +55,7 @@ for idx, tid in enumerate(solo_ids):
     pitches = notes.pitches
     n_extracted = 0
 
-    # mirdata guitarset notes_all 的 pitch_unit == "midi"(音号,非 Hz)
+    # pitch_unit of mirdata guitarset notes_all == "midi" (note number, not Hz)
     for i, (interval, pitch_midi) in enumerate(zip(intervals, pitches)):
         t_on, t_off = float(interval[0]), float(interval[1])
         dur = t_off - t_on

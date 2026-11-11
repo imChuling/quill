@@ -1,14 +1,14 @@
-"""B2: 渲染管线各步的损耗 — 四个条件逐步加。
+"""B2: loss at each step of the render pipeline: four conditions added step by step.
 
-条件:
-  ①raw:检索轨迹原样,不拉伸不锚定
-  ②+stretch:时间拉伸到音符时值
-  ③+anchor:+音准锚定(减均值)
-  ④+label_proc:+标签后处理(=full)
+Conditions:
+  (1) raw: retrieved trajectories as is, no stretching, no anchoring
+  (2) +stretch: time-stretched to the note duration
+  (3) +anchor: + intonation anchoring (mean subtracted)
+  (4) +label_proc: + label post-processing (=full)
 
-同 29 对配对音(与 processing_ablation 同协议),每步算配对中位比。
+The same 29 paired notes (same protocol as processing_ablation); the paired median ratio is computed at each step.
 
-产出: checkpoints/eval/pipeline_ablation.json + 终端表
+Outputs: checkpoints/eval/pipeline_ablation.json + a terminal table
 """
 
 import json
@@ -146,7 +146,7 @@ def main():
     conditions = ["raw", "stretch", "anchor", "label_proc"]
     results = {}
 
-    print("=== B2: 渲染管线各步损耗(配对反事实) ===\n")
+    print("=== B2: loss at each render pipeline step (paired counterfactual) ===\n")
 
     for cond in conditions:
         logr_all = []

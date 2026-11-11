@@ -1,10 +1,10 @@
-"""LBD 用图:读 eval_results.json 生成可编辑的矢量图。
+"""Figures for the LBD: read eval_results.json and generate editable vector figures.
 
-  fig_datacurve.pdf   数据效率曲线(库规模 → 对比度)
-  fig_decoupling.pdf/.svg  行为×音色来源归属比
-  fig_pipeline.pdf    系统 pipeline 示意
+  fig_datacurve.pdf   data efficiency curve (library size -> contrast)
+  fig_decoupling.pdf/.svg  behaviour × timbre source attribution ratios
+  fig_pipeline.pdf    system pipeline schematic
 
-跑: PATH="/Library/TeX/texbin:$PATH" conda run -n mt python tools/make_figures.py
+Run: PATH="/Library/TeX/texbin:$PATH" conda run -n mt python tools/make_figures.py
 """
 
 import json
@@ -26,7 +26,7 @@ EVAL = QUILL / "checkpoints" / "eval"
 OUT = QUILL / "docs" / "figures"
 PAPER_OUT = QUILL / "docs" / "ismir_lbd_2026"
 
-# ---- SciencePlots + IEEE + LaTeX 渲染 ---- #
+# ---- SciencePlots + IEEE + LaTeX rendering ---- #
 plt.style.use(["science", "ieee"])
 
 # Preserve labels as editable text in SVG and embed TrueType fonts in PDF.

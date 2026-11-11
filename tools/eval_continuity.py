@@ -1,17 +1,17 @@
-"""序列连续性:相邻音符轨迹端点不连续度 + concatenation cost 改善。
+"""Sequence continuity: endpoint discontinuity between adjacent note trajectories + concatenation cost improvement.
 
-Plan D 确认的真瓶颈:逐音符独立检索导致相邻行为不连贯。
-本脚本量化基线(λ=0)和 concatenation cost reranking 后的改善。
+The real bottleneck confirmed by Plan D: independent per-note retrieval makes adjacent behaviour incoherent.
+This script quantifies the baseline (λ=0) and the improvement after concatenation cost reranking.
 
-指标 continuity cost(per note boundary):
-  pitch_d:  |traj_i pitch 末 4 帧均值 − traj_{i+1} pitch 首 4 帧均值|   (cents)
-  energy_d: |traj_i energy 末 4 帧均值 − traj_{i+1} energy 首 4 帧均值|  (dB-like)
+Metric continuity cost (per note boundary):
+  pitch_d:  |mean of the last 4 pitch frames of traj_i − mean of the first 4 pitch frames of traj_{i+1}|   (cents)
+  energy_d: |mean of the last 4 energy frames of traj_i − mean of the first 4 energy frames of traj_{i+1}|  (dB-like)
 
---sweep: λ ∈ {0, 0.5, 1.0, 2.0} 全跑,输出改善比例
---eartest: 生成 A/B wav(λ=0 vs λ=best)
+--sweep: run all λ ∈ {0, 0.5, 1.0, 2.0}, report the improvement ratio
+--eartest: generate A/B wavs (λ=0 vs λ=best)
 
-跑: conda run -n mt python tools/eval_continuity.py --sweep --eartest
-产出: checkpoints/eval/continuity_results.json + checkpoints/eval_continuity/*.wav
+Run: conda run -n mt python tools/eval_continuity.py --sweep --eartest
+Outputs: checkpoints/eval/continuity_results.json + checkpoints/eval_continuity/*.wav
 """
 
 import json
@@ -70,7 +70,7 @@ def continuity_costs(score, nn, concat_lambda=0.0):
 
 
 def unique_source_fraction(score, nn, concat_lambda=0.0):
-    """检索多样性:不同源轨迹占比。λ 过大会导致同几条轨迹反复选中。"""
+    """Retrieval diversity: fraction of distinct source trajectories. Too large a λ makes the same few trajectories get picked repeatedly."""
     n = len(score)
     onsets = []
     t = 0.0
@@ -161,7 +161,7 @@ def main():
             s["unique_source_fraction"] = round(float(np.mean(usf_list)), 3)
             results[lam_key][beh] = s
             print(
-                f"  {beh} 全局: pitch mean={s['pitch_mean']}c  "
+                f"  {beh} overall: pitch mean={s['pitch_mean']}c  "
                 f"p90={s['pitch_p90']}c  usf={s['unique_source_fraction']}"
             )
 
@@ -192,7 +192,7 @@ def main():
                     wavs.append(name)
                     print(f"  eartest: {name}")
         results["ear_test_wavs"] = wavs
-        print(f"耳测 {len(wavs)} 条 -> {WAV_DIR}")
+        print(f"ear test {len(wavs)} clips -> {WAV_DIR}")
 
     RESULTS.parent.mkdir(parents=True, exist_ok=True)
     RESULTS.write_text(json.dumps(results, indent=1, ensure_ascii=False))

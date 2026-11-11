@@ -1,21 +1,21 @@
-"""标注器验证:MIDI-DDSP 受控渲染 → 逐音真值 vs classify_articulation 输出。
+"""Labeler validation: MIDI-DDSP controlled rendering -> per-note ground truth vs classify_articulation output.
 
-数据由 NBE_1 上 export_labeler_validation.py 生成(每曲 × vibrato ∈ {0.0,0.3,0.6}
-整曲重渲染,合成噪声种子跨档匹配),同步到 --data-dir 后本地跑:
+Data is generated on NBE_1 by export_labeler_validation.py (each piece × vibrato ∈ {0.0,0.3,0.6}
+re-rendered in full, synthesis noise seeds matched across levels), synced to --data-dir and run locally:
 
     conda run -n mt python tools/validate_labeler.py --data-dir <dir>
 
-评分路径与生产完全一致(extract_style.extract 的逐段调用):
+The scoring path is identical to production (the per-segment calls of extract_style.extract):
   event_trajectories(y, sr, t_on, t_off) → classify_articulation(pitch_traj, conf)
-音符边界用真值(隔离标注器与切分器);切分器另测。
+note boundaries use the ground truth (isolating the labeler from the segmenter); the segmenter is tested separately.
 
-真值映射:vibrato=0.0 → 期望 plain;vibrato=0.6 → 期望 vibrato。
-0.3 档为灵敏度参考(自然渲染的 vibrato 上限 ~0.32),单独报告不计主指标。
+Ground-truth mapping: vibrato=0.0 -> expect plain; vibrato=0.6 -> expect vibrato.
+The 0.3 level is a sensitivity reference (the vibrato ceiling of natural renders is ~0.32), reported separately and not counted in the main metric.
 
-操纵检查(manipulation check):渲染 f0 的 3.5–9Hz 调制带能量须随 vibrato
-参数单调上升,否则该曲对照失效(教师不服从控制),从主指标剔除并报告。
+Manipulation check: the 3.5–9Hz modulation band energy of the rendered f0 must rise monotonically with the vibrato
+parameter, otherwise that piece's control is invalid (the teacher does not obey the control), and it is excluded from the main metric and reported.
 
-产出: checkpoints/eval/labeler_validation.json
+Outputs: checkpoints/eval/labeler_validation.json
 """
 
 import argparse
@@ -30,11 +30,11 @@ import numpy as np
 QUILL = Path(__file__).resolve().parent.parent
 ART_NAMES = {0: "plain", 1: "vibrato", 2: "slide"}
 FRAME_RATE = 250.0
-MIN_DUR_FULL = 0.25  # 短于一个揉弦周期的音不计 vibrato 召回主指标
+MIN_DUR_FULL = 0.25  # notes shorter than one vibrato cycle do not count toward the vibrato recall main metric
 
 
 def mod_band_energy(f0_hz, fps=FRAME_RATE, lo=3.5, hi=9.0):
-    """f0(Hz 帧序列) → cents 去趋势后 3.5–9Hz 带能量(操纵检查用,与论文口径一致)。"""
+    """f0 (Hz frame sequence) -> 3.5–9Hz band energy after cents detrending (for the manipulation check, same criterion as the paper)."""
     hz = np.asarray(f0_hz, np.float64)
     hz = hz[hz > 20]
     if len(hz) < int(fps * 0.3):
@@ -63,8 +63,8 @@ def main():
     manifest = json.loads((data_dir / "manifest.json").read_text())
     print(f"{len(manifest)} renders in manifest")
 
-    # ---- 操纵检查:逐音符配对 f0 调制带能量(注意不能用整曲——
-    # 130-200BPM 的音符切换率本身落在 3.5-9Hz 带内,会淹没揉弦信号) ----
+    # ---- Manipulation check: per-note paired f0 modulation band energy (note: the whole piece cannot be used:
+    # the note change rate at 130-200BPM itself falls in the 3.5-9Hz band and would swamp the vibrato signal) ----
     mel_level_energy = {}
     gt_notes_by_mel = {}
     for rec in manifest:
@@ -85,7 +85,7 @@ def main():
             float(np.nanmedian(energies)) if energies else np.nan
         )
     valid_melodies = set()
-    print("\n操纵检查(长音符逐音 3.5-9Hz 带能量中位, 须随档位单调上升):")
+    print("\nManipulation check (median per-note 3.5-9Hz band energy of long notes, must rise monotonically with the level):")
     for name, by_level in sorted(mel_level_energy.items()):
         levels = sorted(by_level)
         vals = [by_level[l] for l in levels]
@@ -95,12 +95,12 @@ def main():
         print(
             f"  {name:28s} "
             + "  ".join(f"{l}:{v:10.1f}" for l, v in zip(levels, vals))
-            + ("  OK" if ok else "  FAIL(剔除)")
+            + ("  OK" if ok else "  FAIL (excluded)")
         )
         if ok:
             valid_melodies.add(name)
 
-    # ---- 逐音打标 ----
+    # ---- Per-note labelling ----
     rows = []
     for rec in manifest:
         tag = f"vib{rec['level']:.2f}".replace(".", "p")
@@ -134,7 +134,7 @@ def main():
             )
         print(f"  labeled {rec['name']} {tag}: {len(gt['notes'])} notes")
 
-    # ---- 汇总 ----
+    # ---- Summary ----
     def subset(level, min_dur=0.0, valid_only=True):
         return [
             r
@@ -160,7 +160,7 @@ def main():
         "results": {},
     }
 
-    print("\n=== 主指标(操纵检查通过的曲目) ===")
+    print("\n=== Main metric (pieces that passed the manipulation check) ===")
     for level, expect in [(0.0, "plain"), (0.6, "vibrato")]:
         for min_dur, tag in [(MIN_DUR_FULL, f"dur>={MIN_DUR_FULL}s"), (0.0, "all")]:
             rs = subset(level, min_dur)
@@ -171,19 +171,19 @@ def main():
             print(
                 f"  vibrato={level} ({tag:12s}) n={d['n']:3d}  "
                 f"plain {d['plain']:.2f}  vibrato {d['vibrato']:.2f}  "
-                f"slide {d['slide']:.2f}   -> {expect} 命中率 {acc:.2f}"
+                f"slide {d['slide']:.2f}   -> {expect} hit rate {acc:.2f}"
             )
     rs = subset(0.3, MIN_DUR_FULL)
     report["results"]["level0.3_sensitivity"] = dist(rs)
     d = dist(rs)
     print(
-        f"  vibrato=0.3 (灵敏度参考) n={d['n']:3d}  "
+        f"  vibrato=0.3 (sensitivity reference) n={d['n']:3d}  "
         f"plain {d['plain']:.2f}  vibrato {d['vibrato']:.2f}  slide {d['slide']:.2f}"
     )
 
-    # ---- 阈值无关分析:特征可分性(0.0 vs 0.6,长音符) ----
-    # 生产规则 = sign_changes>=4 AND rng>=30c;30c 为 URMP 小提琴(±50-100c)
-    # 标定,MIDI-DDSP 0.6 档为温和揉弦(±25c)。报特征 AUC 与最优阈值。
+    # ---- Threshold-free analysis: feature separability (0.0 vs 0.6, long notes) ----
+    # production rule = sign_changes>=4 AND rng>=30c; 30c is calibrated on URMP violin (±50-100c),
+    # while the MIDI-DDSP 0.6 level is a gentle vibrato (±25c). Report feature AUC and the optimal threshold.
     pos = subset(0.6, MIN_DUR_FULL)
     neg = subset(0.0, MIN_DUR_FULL)
     if pos and neg:
@@ -219,15 +219,15 @@ def main():
             "n_pos": len(pos),
             "n_neg": len(neg),
         }
-        print(f"\n=== 特征可分性(0.0 vs 0.6, dur>={MIN_DUR_FULL}s) ===")
-        print(f"  AUC: sign_changes {auc_sc:.3f}  range {auc_rng:.3f}  规则得分 {auc_gated:.3f}")
-        print(f"  最优 range 阈值 {best_rng:.0f}c(保留 sc>=4 门) → 准确率 {best_acc:.3f}")
+        print(f"\n=== Feature separability (0.0 vs 0.6, dur>={MIN_DUR_FULL}s) ===")
+        print(f"  AUC: sign_changes {auc_sc:.3f}  range {auc_rng:.3f}  rule score {auc_gated:.3f}")
+        print(f"  optimal range threshold {best_rng:.0f}c (keeping the sc>=4 gate) -> accuracy {best_acc:.3f}")
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     report["rows"] = rows
     out.write_text(json.dumps(report, indent=1, ensure_ascii=False))
-    print(f"\n结果已存 {out}")
+    print(f"\nResults saved to {out}")
 
 
 if __name__ == "__main__":

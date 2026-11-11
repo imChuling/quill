@@ -1,14 +1,14 @@
-"""Timbre fidelity 交叉验证:4-fold leave-one-take-out + leave-one-glass-out。
+"""Timbre fidelity cross-validation: 4-fold leave-one-take-out + leave-one-glass-out.
 
-- LOTO:三只多 take 杯子(Amaltheus/Auburn/C#6-073 各 4 takes),第 k 折留出
-  每杯的 take k(k=1..4),训练 6k 步,对留出 take 测重建 → n=12,
-  take 级泛化(同杯其他 take 在训练集)。
-- LOGO:整杯留出(训练只见其他杯+Fishbowl),测未见杯/未见音高的重建
-  → 乐器级泛化基线,回应"测试音频来自训练中出现过的同一只杯子"的质疑。
-- 错配参照:violin/trumpet 预训练模型重建同一素材。
+- LOTO: three glasses with several takes (Amaltheus/Auburn/C#6-073, 4 takes each); fold k holds out
+  take k of each glass (k=1..4), trains 6k steps, tests reconstruction on the held-out take -> n=12,
+  take-level generalisation (the glass's other takes are in the training set).
+- LOGO: hold out a whole glass (training sees only the other glasses + Fishbowl), test reconstruction of an unseen glass/unseen pitch
+  -> instrument-level generalisation baseline, answering the objection that "the test audio comes from the same glass seen in training".
+- Mismatched reference: violin/trumpet pretrained models reconstruct the same material.
 
-跑: conda run -n mt python tools/eval_timbre_cv.py
-产出: checkpoints/eval/timbre_fidelity_cv.json
+Run: conda run -n mt python tools/eval_timbre_cv.py
+Outputs: checkpoints/eval/timbre_fidelity_cv.json
 """
 
 import json
@@ -30,7 +30,7 @@ GLASSES = {
     "auburn": [f"Auburn Road Wine Glass Note {i}.wav" for i in (1, 2, 3, 4)],
     "c5": [f"C#6-073-0{i}.wav" for i in (1, 2, 3, 4)],
 }
-SINGLETONS = ["Fishbowl-1.wav"]  # 单 take,永远在训练集
+SINGLETONS = ["Fishbowl-1.wav"]  # single take, always in the training set
 
 
 def load_ref_model(ck):
@@ -69,14 +69,14 @@ def main():
     from neural.ddsp import extract_features
     from neural.train_ddsp import _trim_silence, build_dataset, train
 
-    # 错配参照模型:trumpet checkpoint 已随代码清理删除;论文引用的完整
-    # 双参照结果存档于 checkpoints/eval/timbre_fidelity_cv.json(已入 git)
+    # mismatched reference models: the trumpet checkpoint was deleted in a code cleanup; the complete
+    # two-reference results cited in the paper are archived in checkpoints/eval/timbre_fidelity_cv.json (tracked in git)
     foreign = {}
     for fname, ck in [("violin", "ddsp_urmp_vn_12k.pt"), ("trumpet", "ddsp_urmp_tpt_12k.pt")]:
         if (CKPT / ck).exists():
             foreign[fname] = load_ref_model(CKPT / ck)
         else:
-            print(f"[warn] {ck} 缺失,跳过 {fname} 错配参照")
+            print(f"[warn] {ck} missing, skipping the {fname} mismatched reference")
 
     def eval_files(model, names, fold_tag, rows):
         for name in names:
@@ -103,24 +103,24 @@ def main():
         train_files = [
             str(TRAIN_DIR / n) for names in GLASSES.values() for n in names if n not in held
         ] + [str(TRAIN_DIR / s) for s in SINGLETONS]
-        print(f"\n=== LOTO fold {fold}: 留出 {held} | 训练 {len(train_files)} 段 ===")
+        print(f"\n=== LOTO fold {fold}: held out {held} | training on {len(train_files)} clips ===")
         data = build_dataset(train_files, cache=None, verbose=False)
         model, _losses, best_val, _vi = train(data, steps=6000, verbose=False)
         model = model.cpu().eval()
-        print(f"  训练完成 best_val={best_val:.2f}")
+        print(f"  training done best_val={best_val:.2f}")
         eval_files(model, held, f"loto{fold}", loto_rows)
 
-    # ---- LOGO: leave-one-glass-out(乐器级泛化基线) ----
+    # ---- LOGO: leave-one-glass-out (instrument-level generalisation baseline) ----
     logo_rows = []
     for gname, names in GLASSES.items():
         train_files = [
             str(TRAIN_DIR / n) for g2, ns in GLASSES.items() if g2 != gname for n in ns
         ] + [str(TRAIN_DIR / s) for s in SINGLETONS]
-        print(f"\n=== LOGO: 整杯留出 {gname} | 训练 {len(train_files)} 段 ===")
+        print(f"\n=== LOGO: glass held out {gname} | training on {len(train_files)} clips ===")
         data = build_dataset(train_files, cache=None, verbose=False)
         model, _losses, best_val, _vi = train(data, steps=6000, verbose=False)
         model = model.cpu().eval()
-        print(f"  训练完成 best_val={best_val:.2f}")
+        print(f"  training done best_val={best_val:.2f}")
         eval_files(model, names, f"logo_{gname}", logo_rows)
 
     def med(rows, k):
@@ -129,18 +129,18 @@ def main():
     out_res = {}
     ref_keys = ["own"] + list(foreign)
     for tag, rows in [("loto", loto_rows), ("logo", logo_rows)]:
-        print(f"\n=== {tag.upper()} 汇总 (n={len(rows)}) ===")
+        print(f"\n=== {tag.upper()} summary (n={len(rows)}) ===")
         for k in ref_keys:
             print(
-                f"  {k:>8s}: 谱损失中位 {med(rows, f'msl_{k}'):.2f}  "
-                f"MFCC 中位 {med(rows, f'mfcc_{k}'):.1f}"
+                f"  {k:>8s}: median spectral loss {med(rows, f'msl_{k}'):.2f}  "
+                f"median MFCC {med(rows, f'mfcc_{k}'):.1f}"
             )
         wins = (
             sum(1 for r in rows if r["msl_own"] < min(r[f"msl_{fn}"] for fn in foreign))
             if foreign
             else 0
         )
-        print(f"  own 谱损失最优: {wins}/{len(rows)}")
+        print(f"  own has the best spectral loss: {wins}/{len(rows)}")
         out_res[tag] = {
             "rows": rows,
             "median": {
@@ -153,7 +153,7 @@ def main():
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(str(out), "w") as f:
         json.dump(out_res, f, indent=2, ensure_ascii=False)
-    print(f"结果已存 {out}")
+    print(f"Results saved to {out}")
 
 
 if __name__ == "__main__":

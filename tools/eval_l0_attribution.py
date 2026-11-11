@@ -1,10 +1,10 @@
-"""E3: 解码器无关证据 — L0 取色音色的来源归因。
+"""E3: decoder-independent evidence: source attribution for the L0 capture timbre.
 
-用 glass_studio (L0 取色 DDSP) 作为第 4 个音色，跑与 exp2/exp7 同协议的
-2×2 行为×音色归因矩阵（两条旋律 × 配对）。验证行为/音色解耦在非训练集
-DDSP 解码器上仍然成立。
+Uses glass_studio (L0 capture DDSP) as a 4th timbre and runs the same protocol as exp2/exp7,
+a 2×2 behaviour × timbre attribution matrix (two melodies × pairs). Verifies that behaviour/timbre decoupling still holds on a DDSP decoder
+outside the training set.
 
-跑法: cd ~/Desktop/MT/project/quill && python tools/eval_l0_attribution.py
+Run: cd ~/Desktop/MT/project/quill && python tools/eval_l0_attribution.py
 """
 
 import json
@@ -150,7 +150,7 @@ def main():
     TR = 12
     bsig, tsig = {}, {}
 
-    print("\n=== E3: L0 取色解码器无关证据 (glass_l0×violin 2×2) ===")
+    print("\n=== E3: L0 capture decoder-independent evidence (glass_l0×violin 2×2) ===")
     for mname in ["lyrical", "folk"]:
         score = [(m + TR, d, 0 if a == 2 else a) for (m, d, a) in MELODIES[mname]]
         for beh in ["glass", "violin"]:

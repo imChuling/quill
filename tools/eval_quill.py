@@ -1,13 +1,13 @@
-"""量化评测:把三条核心主张变成数字。
+"""Quantitative evaluation: turn the three core claims into numbers.
 
-  1. 可控性:演奏法条件 → 输出音频真实呈现该演奏法的比例(控制保真度矩阵)
-     渲染后用 pyin 重新提取 f0,逐音符测 vibrato(3.5-9Hz 微观摆动)和 slide(净漂移)。
-  2. 解耦性:2×2 迁移矩阵,f0 微观动态距离应沿"行为源"聚类,
-     MFCC 音色距离应沿"音色源"聚类——两轴正交 = 解耦的定量证明。
-  3. 数据效率:行为库规模 50→全量,控制保真度曲线。
+  1. Controllability: articulation condition -> fraction of output audio that actually exhibits that articulation (control fidelity matrix)
+     After rendering, f0 is re-extracted with pyin and vibrato (3.5-9Hz micro oscillation) and slide (net drift) are measured per note.
+  2. Decoupling: 2×2 transfer matrix; f0 micro-dynamics distance should cluster by "behaviour source",
+     MFCC timbre distance should cluster by "timbre source": orthogonal axes = quantitative proof of decoupling.
+  3. Data efficiency: control fidelity curve as the behaviour library grows from 50 to full size.
 
-跑(本机): cd ~/Desktop/MT/project/quill && conda run -n mt python tools/eval_quill.py
-产出: checkpoints/eval/ 下渲染音频 + eval_results.json + 终端表格
+Run (locally): cd ~/Desktop/MT/project/quill && conda run -n mt python tools/eval_quill.py
+Outputs: rendered audio under checkpoints/eval/ + eval_results.json + terminal tables
 """
 
 import json
@@ -27,9 +27,9 @@ OUT = CKPT / "eval"
 SR = 16000
 FPS = 250
 
-# ---- 测试旋律集:4 段不同风格(midi, dur_s, art) ---- #
+# ---- Test melody set: 4 phrases in different styles (midi, dur_s, art) ---- #
 MELODIES = {
-    "lyrical": [  # 慢板长音,vibrato 为主 + 一处 slide
+    "lyrical": [  # slow, long notes, mostly vibrato + one slide
         (62, 0.8, 1),
         (65, 0.4, 0),
         (67, 1.2, 1),
@@ -39,7 +39,7 @@ MELODIES = {
         (67, 0.8, 0),
         (62, 1.6, 1),
     ],
-    "scale_run": [  # 快速级进,全 plain,末音长 vibrato
+    "scale_run": [  # fast stepwise motion, all plain, long vibrato on the last note
         (62, 0.2, 0),
         (64, 0.2, 0),
         (65, 0.2, 0),
@@ -52,7 +52,7 @@ MELODIES = {
         (74, 0.4, 0),
         (72, 1.6, 1),
     ],
-    "leaps": [  # 跳进 + 两处 slide
+    "leaps": [  # leaps + two slides
         (57, 0.4, 0),
         (64, 0.4, 0),
         (62, 0.4, 2),
@@ -62,7 +62,7 @@ MELODIES = {
         (71, 0.8, 0),
         (64, 1.2, 1),
     ],
-    "folk": [  # 民谣句式,混合
+    "folk": [  # folk phrasing, mixed
         (69, 0.4, 0),
         (71, 0.2, 0),
         (72, 0.4, 0),
@@ -82,7 +82,7 @@ def strip_art(score):
     return [(m, d, 0) for (m, d, _a) in score]
 
 
-# ---- 渲染器 ---- #
+# ---- Renderer ---- #
 class Renderer:
     def __init__(self):
         from neural.ddsp import DDSP
@@ -108,7 +108,7 @@ class Renderer:
         self.vn_feats, self.vn_trajs = d["features"], d["trajectories"]
 
     def render(self, score, timbre="violin", behavior=None, source="v0", nn_override=None):
-        """source: v0(检索) / v1(生成) / flat(无行为)。返回 (audio, note_bounds_sec)。"""
+        """source: v0 (retrieval) / v1 (generative) / flat (no behaviour). Returns (audio, note_bounds_sec)."""
         from neural.perform import control_from_behavior
 
         behavior = behavior or timbre
@@ -157,9 +157,9 @@ class Renderer:
         return y, bounds
 
 
-# ---- 逐音符 f0 分析 ---- #
+# ---- Per-note f0 analysis ---- #
 def analyze(audio, bounds):
-    """pyin 提取 f0 → 每音符 {micro_rms(cents), rate(Hz), drift(cents), rng(cents)}"""
+    """pyin f0 extraction -> per note {micro_rms(cents), rate(Hz), drift(cents), rng(cents)}"""
     import librosa
 
     hop = 160  # 100 fps
@@ -173,8 +173,8 @@ def analyze(audio, bounds):
     f0i = np.interp(t_f, t_f[good], f0[good])
 
     out = []
-    TRIM = 5  # 掐掉首尾各 50ms(5 frames @100fps),过滤音符过渡区 f0 跳变
-    F_RATE = 100  # pyin 帧率
+    TRIM = 5  # drop 50ms at each end (5 frames @100fps), filtering f0 jumps in note transitions
+    F_RATE = 100  # pyin frame rate
     for t0, t1 in bounds:
         if (t1 - t0) < 0.3:
             out.append({"vib_energy": 0.0, "rate": 0.0, "drift": 0.0, "total_rms": 0.0})
@@ -188,19 +188,19 @@ def analyze(audio, bounds):
             continue
         cents = 1200 * np.log2(seg / (np.median(seg) + 1e-9) + 1e-12)
 
-        # 频域 vibrato 检测:Hann-windowed FFT → 3.5-9Hz band 能量
+        # frequency-domain vibrato detection: Hann-windowed FFT -> 3.5-9Hz band energy
         win = np.hanning(len(cents))
         spec = np.abs(np.fft.rfft((cents - cents.mean()) * win))
         freqs = np.fft.rfftfreq(len(cents), d=1.0 / F_RATE)
         vib_band = (freqs >= 3.5) & (freqs <= 9.0)
         N = max(len(cents), 1)
         vib_energy = float(np.sqrt((spec[vib_band] ** 2).sum() / N**2))
-        # 主频率(仅 vib band 内)
+        # dominant frequency (within the vib band only)
         if vib_band.any() and spec[vib_band].max() > 0:
             rate = float(freqs[vib_band][int(np.argmax(spec[vib_band]))])
         else:
             rate = 0.0
-        # 净漂移:首 1/4 中位 → 尾 1/4 中位
+        # net drift: median of the first 1/4 -> median of the last 1/4
         q = max(2, len(cents) // 4)
         drift = float(np.median(cents[-q:]) - np.median(cents[:q]))
         total_rms = float(np.sqrt((cents**2).mean()))
@@ -216,21 +216,21 @@ def is_slide(a):
     return abs(a["drift"]) > 60.0
 
 
-# ---- 实验 1:控制保真度(控制信号级分析) ---- #
+# ---- Experiment 1: control fidelity (control-signal-level analysis) ---- #
 def analyze_control(f0_np, score):
-    """直接分析进入 DDSP 之前的 f0 控制信号(250Hz),不受 DDSP 音质干扰。
-    使用每个音符的中间 60% 区间,避开 crossfade 重叠区和首尾过渡。"""
+    """Analyse the f0 control signal (250Hz) directly before DDSP, unaffected by DDSP audio quality.
+    Uses the middle 60% of each note, avoiding the crossfade overlap and the start/end transitions."""
     FPS_CTRL = 250
-    CF = 5  # control_from_behavior 的 crossfade 帧数(20ms@250Hz),重叠会累积,必须对齐
+    CF = 5  # crossfade frames of control_from_behavior (20ms@250Hz); overlaps accumulate and must be aligned
     out = []
     t_frame = 0
     prev_T = None
     for _m, dur, art in score:
         T = max(4, int(dur * FPS_CTRL))
         if prev_T is not None:
-            t_frame -= min(CF, prev_T // 2, T // 2)  # 与 control_from_behavior 同步的重叠
-        # vibrato/plain 取中间 60%(避开 crossfade + attack/release);
-        # slide 的现象在音符头部(前 40% 滑入),头部只跳过 crossfade(~24ms)。
+            t_frame -= min(CF, prev_T // 2, T // 2)  # overlap in sync with control_from_behavior
+        # vibrato/plain take the middle 60% (avoiding crossfade + attack/release);
+        # a slide happens at the note head (slide-in over the first 40%), so the head only skips the crossfade (~24ms).
         margin = max(12, T // 5)
         i0 = t_frame + (6 if art == 2 else margin)
         i1 = t_frame + T - margin
@@ -251,7 +251,7 @@ def analyze_control(f0_np, score):
         vib_e = float(np.sqrt((spec[vib_band] ** 2).sum() / Nc**2))
         total_rms = float(np.sqrt((cents**2).mean()))
         q = max(2, len(cents) // 4)
-        # 起点取窗口头 4 帧(不是前 1/4 中位):快滑 80ms 内完成,长窗中位会把滑音吞掉
+        # start from the first 4 frames of the window (not the median of the first 1/4): a fast slide finishes within 80ms, and a long-window median would swallow it
         qh = max(2, min(4, len(cents) // 8))
         drift = float(np.median(cents[-q:]) - np.median(cents[:qh]))
         out.append(
@@ -261,7 +261,7 @@ def analyze_control(f0_np, score):
 
 
 class RandSameLabel:
-    """消融基线:标签过滤 ✓ context 检索 ✗ —— 同标签池内随机取轨迹。"""
+    """Ablation baseline: label filtering ✓ context retrieval ✗: random trajectory from the same-label pool."""
 
     def __init__(self, nn, seed=42):
         self.nn = nn
@@ -277,7 +277,7 @@ class RandSameLabel:
 
 
 class NNNoLabel:
-    """消融基线:标签过滤 ✗ context 检索 ✓ —— 全库 6-D 最近邻,忽略标签。"""
+    """Ablation baseline: label filtering ✗ context retrieval ✓: whole-library 6-D nearest neighbour, labels ignored."""
 
     def __init__(self, nn):
         self.nn = nn
@@ -289,13 +289,13 @@ class NNNoLabel:
 
 
 def exp1_controllability(R):
-    print("\n=== 实验 1:演奏法控制保真度(控制信号级,4 段旋律) ===")
+    print("\n=== Experiment 1: articulation control fidelity (control-signal level, 4 melodies) ===")
     from neural.perform import control_from_behavior
 
     results = {}
     ablations = {"nn_nolabel": NNNoLabel(R.nns["violin"])}
-    # v1(VAE)/v2(参数化)基线模型已随代码清理移除;其历史数字保留在
-    # checkpoints/eval/eval_results.json(论文 Sec.2 的 unpaired 对比引用自该存档)
+    # the v1 (VAE)/v2 (parametric) baseline models were removed in a code cleanup; their historical numbers are kept in
+    # checkpoints/eval/eval_results.json (the unpaired comparison in Sec.2 of the paper cites that archive)
     for source in ["v0", "nn_nolabel"]:
         vib_es, plain_es, slide_drifts = [], [], []
         slide_ok, slide_n = 0, 0
@@ -306,7 +306,7 @@ def exp1_controllability(R):
                 notes, beh_model, pitch_glide=False, envelope="sustain", traj_gain=1.0
             )
             f0_np = f0.numpy()[0, :, 0]
-            # 同时渲染保存音频(给耳测用;消融基线只做控制层分析)
+            # also render and save audio (for ear tests; ablation baselines only do control-level analysis)
             if source == "v0":
                 audio, bounds = R.render(score, source=source)
                 sf.write(str(OUT / f"{mname}_{source}.wav"), audio, SR)
@@ -337,12 +337,12 @@ def exp1_controllability(R):
         }
         results[source] = r
         print(
-            f"  {source:>10s}  vib中位数 {vib_m:.0f}c  plain中位数 {plain_m:.0f}c  "
-            f"对比度 {contrast:.1f}×   "
-            f"slide命中 {slide_ok}/{slide_n}"
+            f"  {source:>10s}  vib median {vib_m:.0f}c  plain median {plain_m:.0f}c  "
+            f"contrast {contrast:.1f}×   "
+            f"slide hits {slide_ok}/{slide_n}"
         )
 
-    # rand_label 消融:100 个随机种子,报分布而非单点(单种子结论不可靠)
+    # rand_label ablation: 100 random seeds, report the distribution instead of a single point (single-seed conclusions are unreliable)
     from neural.perform import control_from_behavior
 
     rand_contrasts = []
@@ -373,36 +373,36 @@ def exp1_controllability(R):
         "frac_gt1": round(float((rc > 1).mean()), 2),
     }
     print(
-        f"  rand_label(100 种子)  中位 {np.median(rc):.2f}×  "
-        f"95% 范围 [{np.percentile(rc, 2.5):.2f}, {np.percentile(rc, 97.5):.2f}]  "
-        f"{int((rc > 1).sum())}/100 种子 >1"
+        f"  rand_label (100 seeds)  median {np.median(rc):.2f}×  "
+        f"95% range [{np.percentile(rc, 2.5):.2f}, {np.percentile(rc, 97.5):.2f}]  "
+        f"{int((rc > 1).sum())}/100 seeds >1"
     )
 
     # flat baseline
     for mname, score in MELODIES.items():
         audio, bounds = R.render(score, source="flat")
         sf.write(str(OUT / f"{mname}_flat.wav"), audio, SR)
-    print("  flat  (无行为轨迹,所有指标=0,已保存音频)")
+    print("  flat  (no behaviour trajectories, all metrics=0, audio saved)")
     return results
 
 
-# ---- 实验 2:解耦性(2×2 迁移矩阵) ---- #
+# ---- Experiment 2: decoupling (2×2 transfer matrix) ---- #
 def behavior_sig(ana):
-    """行为签名 = 逐音符 [vib_energy, drift, total_rms]"""
+    """Behaviour signature = per note [vib_energy, drift, total_rms]"""
     return np.array([[a["vib_energy"], a["drift"], a["total_rms"]] for a in ana]).ravel()
 
 
 def timbre_sig(audio):
     import librosa
 
-    mf = librosa.feature.mfcc(y=audio, sr=SR, n_mfcc=13)[1:]  # 去 c0(能量)
+    mf = librosa.feature.mfcc(y=audio, sr=SR, n_mfcc=13)[1:]  # drop c0 (energy)
     return mf.mean(axis=1)
 
 
 def exp2_decoupling(R):
-    insts = list(R.models.keys())  # violin / guitar / cello(有 checkpoint 才进)
+    insts = list(R.models.keys())  # violin / guitar / cello (only those with a checkpoint)
     n = len(insts)
-    print(f"\n=== 实验 2:行为×音色解耦({n}×{n},lyrical+folk 汇总) ===")
+    print(f"\n=== Experiment 2: behaviour × timbre decoupling ({n}×{n}, lyrical+folk pooled) ===")
     bsig, tsig = {}, {}
     for mname in ["lyrical", "folk"]:
         score = MELODIES[mname]
@@ -417,9 +417,9 @@ def exp2_decoupling(R):
     def dist(sig, k1, k2):
         return float(np.mean([np.linalg.norm(a - b) for a, b in zip(sig[k1], sig[k2])]))
 
-    # 对每个跨乐器组合 (behB, timT) 做双检验:
-    #   行为距离(到同行为对角 bB×bT) < 行为距离(到同音色对角 tB×tT) → 行为跟随行为源
-    #   音色距离(到同音色对角 tB×tT) < 音色距离(到同行为对角 bB×bT) → 音色跟随音色源
+    # for each cross-instrument combination (behB, timT) run a double test:
+    #   behaviour distance (to the same-behaviour diagonal bB×bT) < behaviour distance (to the same-timbre diagonal tB×tT) -> behaviour follows the behaviour source
+    #   timbre distance (to the same-timbre diagonal tB×tT) < timbre distance (to the same-behaviour diagonal bB×bT) -> timbre follows the timbre source
     results, ok = {}, 0
     total = 0
     for beh in insts:
@@ -443,24 +443,24 @@ def exp2_decoupling(R):
                 "timbre_follows": bool(c2),
             }
             print(
-                f"  {beh:>6s}行为 × {tim:>6s}音色:  "
-                f"行为跟随行为源 {'✓' if c1 else '✗'} ({b_beh:.0f} vs {b_tim:.0f})   "
-                f"音色跟随音色源 {'✓' if c2 else '✗'} ({t_tim:.0f} vs {t_beh:.0f})"
+                f"  {beh:>6s} behaviour × {tim:>6s} timbre:  "
+                f"behaviour follows behaviour source {'✓' if c1 else '✗'} ({b_beh:.0f} vs {b_tim:.0f})   "
+                f"timbre follows timbre source {'✓' if c2 else '✗'} ({t_tim:.0f} vs {t_beh:.0f})"
             )
-    print(f"  通过 {ok}/{total} 项检验")
+    print(f"  passed {ok}/{total} tests")
     results["passed"] = f"{ok}/{total}"
     return results
 
 
-# ---- 实验 3:行为库规模曲线 ---- #
+# ---- Experiment 3: behaviour library size curve ---- #
 def exp3_datacurve(R):
-    """控制信号层分析(与实验 1 同口径):不受 DDSP 音质/pyin 重提取噪声干扰。"""
+    """Control-signal-level analysis (same criterion as experiment 1): unaffected by DDSP audio quality/pyin re-extraction noise."""
     from neural.neural_take import ConditionedNN
     from neural.perform import control_from_behavior
 
-    print("\n=== 实验 3:行为库规模 → 控制保真度(控制信号级) ===")
+    print("\n=== Experiment 3: behaviour library size -> control fidelity (control-signal level) ===")
     sizes = [50, 150, 500, 1500, 7582]
-    n_seeds = 8  # 子采样噪声大(库小时检索命中随机),多种子平均
+    n_seeds = 8  # subsampling is noisy (retrieval hits are random with a small library), average over several seeds
     curve = []
     for n in sizes:
         c_list, s_list, v_list, p_list = [], [], [], []
@@ -500,17 +500,17 @@ def exp3_datacurve(R):
         }
         curve.append(row)
         print(
-            f"  {row['n']:>5d} notes  对比度 {row['contrast']:.1f}×±{row['contrast_std']:.1f}  "
-            f"slide命中 {row['slide_hit']:.0%}"
+            f"  {row['n']:>5d} notes  contrast {row['contrast']:.1f}×±{row['contrast_std']:.1f}  "
+            f"slide hits {row['slide_hit']:.0%}"
         )
     return curve
 
 
-# ---- 实验 4:音频级演奏法验证(pYIN 重提取) ---- #
+# ---- Experiment 4: audio-level articulation validation (pYIN re-extraction) ---- #
 def exp4_audio_controllability(R):
-    """对渲染后的 WAV 跑 pYIN,逐音符测 vibrato band energy,
-    验证控制信号层的对比度在音频端依然成立。"""
-    print("\n=== 实验 4:音频级演奏法验证(pYIN 重提取) ===")
+    """Run pYIN on the rendered WAVs and measure vibrato band energy per note,
+    verifying that the control-signal-level contrast still holds at the audio end."""
+    print("\n=== Experiment 4: audio-level articulation validation (pYIN re-extraction) ===")
     results = {}
     for source in ["v0", "flat"]:
         vib_es, plain_es = [], []
@@ -536,13 +536,13 @@ def exp4_audio_controllability(R):
             "n_plain": len(plain_es),
         }
         print(
-            f"  {source:>4s}  vib中位数 {vib_m:.1f}c  plain中位数 {plain_m:.1f}c  "
-            f"对比度 {contrast:.1f}×  (n_vib={len(vib_es)}, n_plain={len(plain_es)})"
+            f"  {source:>4s}  vib median {vib_m:.1f}c  plain median {plain_m:.1f}c  "
+            f"contrast {contrast:.1f}×  (n_vib={len(vib_es)}, n_plain={len(plain_es)})"
         )
     return results
 
 
-# ---- 实验 5:配对反事实(同音符换标签) ---- #
+# ---- Experiment 5: paired counterfactual (same note, swapped label) ---- #
 def _bootstrap_median_ci(arr, n_boot=10000, alpha=0.05):
     rng = np.random.default_rng(42)
     medians = np.array(
@@ -554,13 +554,13 @@ def _bootstrap_median_ci(arr, n_boot=10000, alpha=0.05):
 
 
 def exp5_paired_counterfactual(R):
-    """对每段旋律的每个音符,分别赋 vibrato 和 plain 标签渲染,
-    配对比较 vib_energy → 消除时长/音高/位置混杂。
-    使用 log-ratio + epsilon 保留全部预定义合格音符(无 outcome-dependent exclusion);
-    音频端每对旋律前重置 torch seed 确保相同 DDSP noise realization。"""
+    """For every note of every melody, render once with a vibrato and once with a plain label,
+    and compare vib_energy pairwise -> removes duration/pitch/position confounds.
+    Uses log-ratio + epsilon to keep all predefined eligible notes (no outcome-dependent exclusion);
+    on the audio side the torch seed is reset before each melody pair to guarantee the same DDSP noise realisation."""
     from neural.perform import control_from_behavior
 
-    print("\n=== 实验 5:配对反事实(同音符 vibrato vs plain,控制信号级+音频级) ===")
+    print("\n=== Experiment 5: paired counterfactual (same note vibrato vs plain, control-signal level + audio level) ===")
 
     EPS = 1e-4
     ctrl_logr, audio_logr = [], []
@@ -618,11 +618,11 @@ def exp5_paired_counterfactual(R):
     audio_ci = tuple(float(2**x) for x in _bootstrap_median_ci(audio_arr))
 
     print(
-        f"  控制信号: 配对中位比 {ctrl_med:.1f}× bootstrap 95% CI [{ctrl_ci[0]:.1f}, {ctrl_ci[1]:.1f}]  "
+        f"  control signal: paired median ratio {ctrl_med:.1f}× bootstrap 95% CI [{ctrl_ci[0]:.1f}, {ctrl_ci[1]:.1f}]  "
         f"{ctrl_gt1}/{len(ctrl_logr)} ratio>1"
     )
     print(
-        f"  音频端:   配对中位比 {audio_med:.1f}× bootstrap 95% CI [{audio_ci[0]:.1f}, {audio_ci[1]:.1f}]  "
+        f"  audio:   paired median ratio {audio_med:.1f}× bootstrap 95% CI [{audio_ci[0]:.1f}, {audio_ci[1]:.1f}]  "
         f"{audio_gt1}/{len(audio_logr)} ratio>1"
     )
 
@@ -635,8 +635,8 @@ def exp5_paired_counterfactual(R):
         "audio_bootstrap_ci95": [round(audio_ci[0], 2), round(audio_ci[1], 2)],
         "audio_n": len(audio_logr),
         "audio_gt1": audio_gt1,
-        # 逐旋律中位比:音符共享旋律上下文(item CI 有伪重复),
-        # cluster 只有 4 个,直接报逐旋律值供读者判断稳健性
+        # per-melody median ratio: notes share melodic context (the item CI has pseudo-replication),
+        # and there are only 4 clusters, so per-melody values are reported directly for readers to judge robustness
         "control_per_melody": {
             m: round(float(2 ** np.median(v)), 2) for m, v in ctrl_by_mel.items() if v
         },
@@ -644,18 +644,18 @@ def exp5_paired_counterfactual(R):
             m: round(float(2 ** np.median(v)), 2) for m, v in audio_by_mel.items() if v
         },
     }
-    print("  逐旋律(控制):", results["control_per_melody"])
-    print("  逐旋律(音频):", results["audio_per_melody"])
+    print("  per melody (control):", results["control_per_melody"])
+    print("  per melody (audio):", results["audio_per_melody"])
     return results
 
 
-# ---- 实验 6:后处理归因消融(配对反事实 × 三种后处理模式) ---- #
+# ---- Experiment 6: post-processing attribution ablation (paired counterfactual × three post-processing modes) ---- #
 def exp6_processing_ablation(R):
-    """回答"对比度来自检索还是手写滤波":同一配对反事实协议,
-    对比 label_processing = none(检索原样)/ uniform(统一处理)/ full(完整)。"""
+    """Answers "does the contrast come from retrieval or from hand-written filtering": the same paired counterfactual protocol,
+    comparing label_processing = none (retrieval as is) / uniform (uniform processing) / full (complete)."""
     from neural.perform import control_from_behavior
 
-    print("\n=== 实验 6:后处理归因(配对反事实,控制信号级) ===")
+    print("\n=== Experiment 6: post-processing attribution (paired counterfactual, control-signal level) ===")
     results = {}
     for mode in ["none", "uniform", "full"]:
         logr, gt1 = [], 0
@@ -698,8 +698,8 @@ def exp6_processing_ablation(R):
         arr = np.array(logr)
         med = float(2 ** np.median(arr))
         ci = tuple(float(2**x) for x in _bootstrap_median_ci(arr))
-        # 旋律级:每旋律的配对中位比(音符共享旋律上下文,item CI 有伪重复,
-        # 4 个 cluster 不足以做稳定 cluster bootstrap → 直接报逐旋律值)
+        # melody level: paired median ratio per melody (notes share melodic context, the item CI has pseudo-replication,
+        # 4 clusters are not enough for a stable cluster bootstrap -> report per-melody values directly)
         per_mel = {m: round(float(2 ** np.median(v)), 2) for m, v in by_melody.items() if v}
         results[mode] = {
             "paired_median_ratio": round(med, 2),
@@ -710,16 +710,16 @@ def exp6_processing_ablation(R):
         }
         pm_str = " ".join(f"{m}:{v:.1f}×" for m, v in per_mel.items())
         print(
-            f"  {mode:>8s}: 配对中位比 {med:.1f}× item-CI [{ci[0]:.1f}, {ci[1]:.1f}]  "
-            f"{gt1}/{len(logr)} ratio>1  | 逐旋律 {pm_str}"
+            f"  {mode:>8s}: paired median ratio {med:.1f}× item-CI [{ci[0]:.1f}, {ci[1]:.1f}]  "
+            f"{gt1}/{len(logr)} ratio>1  | per melody {pm_str}"
         )
     return results
 
 
-# ---- 实验 7:glass×violin 2×2 正式归因 ---- #
+# ---- Experiment 7: glass×violin 2×2 formal attribution ---- #
 def exp7_glass_2x2(R):
-    """glass/violin 双资产 2×2:行为签名跟随行为源、音色签名跟随音色源。
-    全部 cell 移高八度(glass 天然音域),包络统一 sustain 保证可比性。"""
+    """glass/violin two-asset 2×2: the behaviour signature follows the behaviour source, the timbre signature follows the timbre source.
+    All cells are shifted up an octave (glass's natural range), and the envelope is uniformly sustain for comparability."""
     from neural.ddsp import DDSP
     from neural.neural_take import ConditionedNN
     from neural.perform import control_from_behavior
@@ -727,9 +727,9 @@ def exp7_glass_2x2(R):
     ck = CKPT / "ddsp_glass.pt"
     st = CKPT / "glass_style.npz"
     if not ck.exists() or not st.exists():
-        print("\n=== 实验 7:跳过(glass checkpoint 缺失) ===")
+        print("\n=== Experiment 7: skipped (glass checkpoint missing) ===")
         return {"skipped": True}
-    print("\n=== 实验 7:glass×violin 2×2 归因 ===")
+    print("\n=== Experiment 7: glass×violin 2×2 attribution ===")
     glass = DDSP(dropout=0.0)
     glass.load_state_dict(torch.load(str(ck), map_location="cpu", weights_only=True))
     glass.eval()
@@ -741,8 +741,8 @@ def exp7_glass_2x2(R):
     TR = 12
     bsig, tsig = {}, {}
     for mname in ["lyrical", "folk"]:
-        # slide 音符改 plain:glass 库无 slide 池,ConditionedNN 会静默回退全库
-        # 且 slide 主要由手写规则重建 → 保留会污染"行为交换"的归因
+        # slide notes become plain: the glass library has no slide pool, ConditionedNN would silently fall back to the whole library,
+        # and slides are mostly rebuilt by hand-written rules -> keeping them would contaminate the attribution of the "behaviour swap"
         score = [(m + TR, d, 0 if a == 2 else a) for (m, d, a) in MELODIES[mname]]
         for beh in ["glass", "violin"]:
             for tim in ["glass", "violin"]:
@@ -790,11 +790,11 @@ def exp7_glass_2x2(R):
             "timbre_follows": bool(c2),
         }
         print(
-            f"  {beh:>6s}行为 × {tim:>6s}音色:  "
-            f"行为跟随 {'✓' if c1 else '✗'} ({b_beh:.0f} vs {b_tim:.0f})   "
-            f"音色跟随 {'✓' if c2 else '✗'} ({t_tim:.0f} vs {t_beh:.0f})"
+            f"  {beh:>6s} behaviour × {tim:>6s} timbre:  "
+            f"behaviour follows {'✓' if c1 else '✗'} ({b_beh:.0f} vs {b_tim:.0f})   "
+            f"timbre follows {'✓' if c2 else '✗'} ({t_tim:.0f} vs {t_beh:.0f})"
         )
-    print(f"  通过 {ok}/{total}")
+    print(f"  passed {ok}/{total}")
     results["passed"] = f"{ok}/{total}"
     return results
 
@@ -815,7 +815,7 @@ def main():
     }
     with open(str(OUT / "eval_results.json"), "w") as f:
         json.dump(res, f, indent=2, ensure_ascii=False)
-    print(f"\n结果已存 {OUT / 'eval_results.json'};渲染音频在 {OUT}/")
+    print(f"\nResults saved to {OUT / 'eval_results.json'}; rendered audio in {OUT}/")
 
 
 if __name__ == "__main__":

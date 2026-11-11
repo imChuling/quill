@@ -1,14 +1,14 @@
-"""生成 cross-instrument style identity ABX 听测页(音频 base64 内嵌)。
+"""Generate the cross-instrument style identity ABX listening page (audio embedded as base64).
 
-设计: 每题给一个 Reference(performer A, instrument X),
-      再给两个 Candidate(都是 instrument Y 音色):
-        - 一个用 A 的 style library
-        - 一个用 B 的 style library
-      问: 哪个 candidate 的演奏风格更像 reference?
+Design: each question gives a Reference (performer A, instrument X),
+      then two Candidates (both with the instrument Y timbre):
+        - one uses A's style library
+        - one uses B's style library
+      Question: which candidate's playing style is closer to the reference?
 
-如果听众显著选择 A-style, 说明 style 跨乐器后仍可识别。
+If listeners significantly choose the A-style, style remains identifiable across instruments.
 
-跑: cd ~/Desktop/MT/project/quill && conda run -n mt python tools/build_abx_study.py
+Run: cd ~/Desktop/MT/project/quill && conda run -n mt python tools/build_abx_study.py
 """
 
 import base64
@@ -33,7 +33,7 @@ TRIALS = [
         EV / "x_lyrical_viB_viT.wav",  # ref: violin behavior × violin timbre
         EV / "x_lyrical_viB_trT.wav",  # match: violin behavior × trumpet timbre
         EV / "x_lyrical_trB_trT.wav",  # foil: trumpet behavior × trumpet timbre
-        "Reference 是小提琴演奏。两个 Candidate 都是小号音色。哪个的演奏风格更像 Reference?",
+        "The Reference is a violin performance. Both Candidates have a trumpet timbre. Whose playing style is closer to the Reference?",
     ),
     # Q2: same but folk melody
     (
@@ -41,7 +41,7 @@ TRIALS = [
         EV / "x_folk_viB_viT.wav",
         EV / "x_folk_viB_trT.wav",
         EV / "x_folk_trB_trT.wav",
-        "Reference 是小提琴演奏。两个 Candidate 都是小号音色。哪个的演奏风格更像 Reference?",
+        "The Reference is a violin performance. Both Candidates have a trumpet timbre. Whose playing style is closer to the Reference?",
     ),
     # Q3: trumpet behavior — can you recognize it on violin?
     (
@@ -49,7 +49,7 @@ TRIALS = [
         EV / "x_lyrical_trB_trT.wav",  # ref: trumpet behavior × trumpet timbre
         EV / "x_lyrical_trB_viT.wav",  # match: trumpet behavior × violin timbre
         EV / "x_lyrical_viB_viT.wav",  # foil: violin behavior × violin timbre
-        "Reference 是小号演奏。两个 Candidate 都是小提琴音色。哪个的演奏风格更像 Reference?",
+        "The Reference is a trumpet performance. Both Candidates have a violin timbre. Whose playing style is closer to the Reference?",
     ),
     # Q4: folk melody, trumpet → violin
     (
@@ -57,7 +57,7 @@ TRIALS = [
         EV / "x_folk_trB_trT.wav",
         EV / "x_folk_trB_viT.wav",
         EV / "x_folk_viB_viT.wav",
-        "Reference 是小号演奏。两个 Candidate 都是小提琴音色。哪个的演奏风格更像 Reference?",
+        "The Reference is a trumpet performance. Both Candidates have a violin timbre. Whose playing style is closer to the Reference?",
     ),
     # Q5: guitar behavior — recognize on violin?
     (
@@ -65,7 +65,7 @@ TRIALS = [
         EV / "x_lyrical_guB_guT.wav",  # ref: guitar behavior × guitar timbre
         EV / "x_lyrical_guB_viT.wav",  # match: guitar behavior × violin timbre
         EV / "x_lyrical_viB_viT.wav",  # foil: violin behavior × violin timbre
-        "Reference 是吉他演奏。两个 Candidate 都是小提琴音色。哪个的演奏风格更像 Reference?",
+        "The Reference is a guitar performance. Both Candidates have a violin timbre. Whose playing style is closer to the Reference?",
     ),
     # Q6: violin behavior — recognize on guitar?
     (
@@ -73,7 +73,7 @@ TRIALS = [
         EV / "x_folk_viB_viT.wav",
         EV / "x_folk_viB_guT.wav",
         EV / "x_folk_guB_guT.wav",
-        "Reference 是小提琴演奏。两个 Candidate 都是吉他音色。哪个的演奏风格更像 Reference?",
+        "The Reference is a violin performance. Both Candidates have a guitar timbre. Whose playing style is closer to the Reference?",
     ),
 ]
 
@@ -99,10 +99,10 @@ def main():
         # randomize A/B order
         if random.random() < 0.5:
             a64, b64_ = m64, f64
-            key[qid] = "A=match(正确) B=foil"
+            key[qid] = "A=match(correct) B=foil"
         else:
             a64, b64_ = f64, m64
-            key[qid] = "A=foil B=match(正确)"
+            key[qid] = "A=foil B=match(correct)"
 
         qs_html.append(f'''
     <div class="q">
@@ -113,9 +113,9 @@ def main():
         <div><strong>Candidate B:</strong> <audio controls preload="none" src="data:audio/wav;base64,{b64_}"></audio></div>
       </div>
       <div class="opts">
-        <label><input type="radio" name="{qid}" value="A"> A 更像 Reference</label>
-        <label><input type="radio" name="{qid}" value="B"> B 更像 Reference</label>
-        <label><input type="radio" name="{qid}" value="unsure"> 说不好</label>
+        <label><input type="radio" name="{qid}" value="A"> A is closer to the Reference</label>
+        <label><input type="radio" name="{qid}" value="B"> B is closer to the Reference</label>
+        <label><input type="radio" name="{qid}" value="unsure"> Not sure</label>
       </div>
     </div>''')
 
@@ -125,7 +125,7 @@ def main():
 <html lang="zh">
 <head>
 <meta charset="utf-8">
-<title>Quill 听测 II — 演奏风格辨认(约 10 分钟)</title>
+<title>Quill Listening Test II — Playing Style Identification (about 10 minutes)</title>
 <style>
   body {{ font-family: -apple-system, sans-serif; max-width: 720px; margin: 2em auto;
          padding: 0 1em; line-height: 1.6; }}
@@ -139,20 +139,20 @@ def main():
 </style>
 </head>
 <body>
-<h2>Quill 听测 II — 演奏风格辨认</h2>
+<h2>Quill Listening Test II — Playing Style Identification</h2>
 <div class="info">
-<p><strong>请戴耳机。</strong>每题有三段音频:</p>
+<p><strong>Please wear headphones.</strong> Each question has three audio clips:</p>
 <ul>
-  <li><strong>Reference</strong>: 一位演奏者在某种乐器上的演奏</li>
-  <li><strong>Candidate A / B</strong>: 两段<em>不同乐器</em>音色的渲染</li>
+  <li><strong>Reference</strong>: a performer playing a certain instrument</li>
+  <li><strong>Candidate A / B</strong>: two renderings with the timbre of a <em>different instrument</em></li>
 </ul>
-<p>请判断: 哪个 Candidate 的<strong>演奏风格</strong>(揉弦、力度变化、节奏感觉)更像 Reference?<br>
-忽略音色差异,只关注演奏方式。可重复播放。大约 10 分钟。</p>
+<p>Please judge: which Candidate's <strong>playing style</strong> (vibrato, dynamics, sense of rhythm) is closer to the Reference?<br>
+Ignore the timbre difference and focus only on the way of playing. You can replay as often as you like. About 10 minutes.</p>
 </div>
 {"".join(qs_html)}
-<h3>完成后点这里,把生成的文本发回给我:</h3>
-<button onclick="collect()">生成答案</button>
-<textarea id="result" readonly placeholder="答案会出现在这里,全选复制发回即可"></textarea>
+<h3>When finished, click here and send the generated text back to me:</h3>
+<button onclick="collect()">Generate answers</button>
+<textarea id="result" readonly placeholder="Answers appear here; select all, copy and send back"></textarea>
 <script>
 function collect() {{
   const names = [{names_js}];
@@ -168,12 +168,12 @@ function collect() {{
 </html>"""
     OUT.write_text(html)
     print(f"saved -> {OUT}  ({OUT.stat().st_size / 1e6:.1f} MB)")
-    print("\n=== 答案 KEY(别发给参与者) ===")
+    print("\n=== Answer KEY (do not send to participants) ===")
     for k, v in key.items():
         print(f"  {k}: {v}")
-    print("\n6 题, 每题三选一(A/B/unsure)")
-    print("chance level = 50% (排除 unsure 后)")
-    print("N>=13, binomial test p<0.05 需要 >=10/13 正确")
+    print("\n6 questions, each with three options (A/B/unsure)")
+    print("chance level = 50% (after excluding unsure)")
+    print("N>=13, binomial test p<0.05 needs >=10/13 correct")
 
 
 if __name__ == "__main__":

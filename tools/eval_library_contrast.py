@@ -1,6 +1,6 @@
-"""B1: 库本身的对比度 — vibrato 池 vs plain 池的 pitch 3–9 Hz 调制能量。
+"""B1: contrast of the library itself: pitch 3–9 Hz modulation energy of the vibrato pool vs the plain pool.
 
-产出: checkpoints/eval/library_contrast.json + 终端表
+Outputs: checkpoints/eval/library_contrast.json + a terminal table
 """
 
 import json
@@ -26,7 +26,7 @@ DUR_LABELS = ["<0.3s", "0.3–0.6s", "0.6–1.0s", ">1.0s"]
 
 
 def vib_energy_48(traj_pitch, dur):
-    """从 48 帧时间归一化 pitch 轨迹提取 3–9 Hz 调制能量。"""
+    """Extract 3–9 Hz modulation energy from a 48-frame time-normalised pitch trajectory."""
     N = len(traj_pitch)
     if N < 8 or dur < 0.1:
         return 0.0
