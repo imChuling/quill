@@ -1,15 +1,15 @@
-"""手势解释器：MIDI 演奏手势 -> 演奏法事件。
+"""Gesture interpreter: MIDI performance gestures -> articulation events.
 
-    note_on 无 held              -> pluck（普通起音）
-    note_on 有 held: |音程|≤2半音 -> legato（不重触发，快滑过渡）
-                     |音程|>2半音 -> slide（f0=f0_start·2^(g(t/T)·interval/12)，力度→滑速）
-    <80ms 内 ≥3 音               -> strum（弦序时差错峰触发，力度→扫速）
-    pitch_bend                   -> f0 直驱
-    CC1                          -> vibrato 深度（速率取库实测值）
+    note_on with nothing held       -> pluck (normal attack)
+    note_on while held: |interval|≤2 st -> legato (no retrigger, fast slide transition)
+                        |interval|>2 st -> slide (f0=f0_start·2^(g(t/T)·interval/12), velocity -> slide speed)
+    ≥3 notes within <80ms           -> strum (staggered by string order, velocity -> strum speed)
+    pitch_bend                      -> drives f0 directly
+    CC1                             -> vibrato depth (rate from library measurement)
 
-产物是 Engine 能消费的 cooked 事件（on/off/slide/legato/bend/vibrato/pedal）。阈值来自
-config.yaml 的 articulation / gesture 节；slide 曲线与 strum 模板可从 .tplib 注入。
-只依赖 numpy。
+Output is cooked events the Engine can consume (on/off/slide/legato/bend/vibrato/pedal). Thresholds come from the
+articulation / gesture sections of config.yaml; slide curve and strum template can be injected from .tplib.
+Depends only on numpy.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ def _ms(d, k, default):
 
 
 def canonical_slide_curve(lib, max_interval_st=7.0):
-    """从库里挑干净的 slide（|音程|小、单调）取平均形状 g(τ)∈[0,1]；无则返回 None（线性）。"""
+    """Pick clean slides from the library (small |interval|, monotonic) and average their shape g(τ)∈[0,1]; return None (linear) if none."""
     if not lib or not lib.get("slide"):
         return None
     curves = [
@@ -44,14 +44,14 @@ def canonical_slide_curve(lib, max_interval_st=7.0):
     g = np.mean(
         [np.interp(np.linspace(0, 1, n), np.linspace(0, 1, len(c)), c) for c in curves], axis=0
     )
-    # 单调化并归一到 [0,1]，抑制个别噪声
+    # make monotonic and normalise to [0,1], suppressing individual noise
     g = np.maximum.accumulate(g)
     g = (g - g[0]) / (g[-1] - g[0]) if g[-1] > g[0] else np.linspace(0, 1, n)
     return g.astype(np.float64)
 
 
 def strum_offsets(lib):
-    """库里的 strum 时差向量（ms）与方向；无则 (None, None)。"""
+    """The library's strum offset vector (ms) and direction; (None, None) if none."""
     if lib and lib.get("strum"):
         st = lib["strum"][0]
         return np.asarray(st["offsets_ms"], dtype=np.float64), st.get("direction", "down")
@@ -59,7 +59,7 @@ def strum_offsets(lib):
 
 
 class GestureInterpreter:
-    """MIDI 手势 -> 演奏法事件。offline: process(raw)；realtime: feed(ev,t)。"""
+    """MIDI gestures -> articulation events. offline: process(raw); realtime: feed(ev,t)."""
 
     def __init__(self, library=None, cfg=None):
         a = (cfg or {}).get("articulation", _A) if cfg else _A
@@ -77,17 +77,17 @@ class GestureInterpreter:
         self._strum_off, self._strum_dir = strum_offsets(library)
 
     def apply_to_engine(self, engine):
-        """把 slide 曲线 / 颤音速率注入引擎。"""
+        """Inject the slide curve / vibrato rate into the engine."""
         engine.set_gesture_templates(slide_curve=self.slide_curve)
         engine.vib_max_cents = self.vib_max_cents
 
     def _slide_dur(self, vel):
-        """力度→滑速：力度越大滑得越快（时长越短）。"""
+        """Velocity -> slide speed: higher velocity slides faster (shorter duration)."""
         f = max(0, min(127, vel)) / 127.0
         return self.slide_dur_min + (self.slide_dur - self.slide_dur_min) * (1 - f)
 
     def _strum_event_offsets(self, n, vel):
-        """n 弦的错峰时差（秒），力度越大越紧。"""
+        """Staggered offsets (seconds) for n strings; higher velocity is tighter."""
         if self._strum_off is not None and len(self._strum_off) >= 2:
             base = (
                 np.interp(
@@ -103,12 +103,12 @@ class GestureInterpreter:
         return base * (1.3 - 0.6 * f)
 
     def process(self, raw_events):
-        """raw: [(t_sec, kind, note, vel)]，kind∈{on,off,bend,cc} -> cooked 事件列表。
+        """raw: [(t_sec, kind, note, vel)], kind∈{on,off,bend,cc} -> cooked event list.
 
-        cooked: [(t, kind, note, vel, value, note2)]，可直接喂 Engine.render_offline。
+        cooked: [(t, kind, note, vel, value, note2)], can be fed straight to Engine.render_offline.
         """
         evs = sorted(raw_events, key=lambda e: (e[0], 0 if e[1] != "on" else 1))
-        # 预扫 strum 簇：连续 note_on 落在 window 内且数量 ≥ strum_min
+        # pre-scan strum clusters: consecutive note_on within window and count ≥ strum_min
         on_idx = [i for i, e in enumerate(evs) if e[1] == "on"]
         strum_member = set()
         i = 0
@@ -128,9 +128,9 @@ class GestureInterpreter:
             else:
                 i += 1
 
-        # ---- 走一遍，发 cooked 事件 ----
+        # ---- single pass, emit cooked events ----
         cooked = []
-        held = []  # 当前按下的物理键（有序）
+        held = []  # physical keys currently pressed (ordered)
         done_clusters = set()
         for idx, e in enumerate(evs):
             t, kind = e[0], e[1]
@@ -140,10 +140,10 @@ class GestureInterpreter:
                 if idx in strum_member:
                     cl = next(c for c in clusters if idx in c)
                     if id(cl) in done_clusters:
-                        continue  # 簇内后续音已在首音处理时入 held，勿重复
+                        continue  # later notes of the cluster were added to held when the first note was handled, do not repeat
                     done_clusters.add(id(cl))
                     notes = [(evs[k][2], evs[k][3] if len(evs[k]) > 3 else 90) for k in cl]
-                    order = sorted(range(len(notes)), key=lambda x: notes[x][0])  # 低→高
+                    order = sorted(range(len(notes)), key=lambda x: notes[x][0])  # low -> high
                     if self._strum_dir == "down":
                         order = order[::-1]
                     offs = self._strum_event_offsets(len(notes), vel)
@@ -153,7 +153,7 @@ class GestureInterpreter:
                         cooked.append((t0 + offs[rank], "on", nn, vv, 0.0, -1))
                         held.append(nn)
                     continue
-                # 非 strum：有 held 则 legato/slide，否则 pluck
+                # not a strum: legato/slide if something is held, otherwise pluck
                 frm = held[-1] if held else None
                 if frm is not None and frm != note:
                     interval = abs(note - frm)
@@ -173,14 +173,14 @@ class GestureInterpreter:
             elif kind == "cc":
                 depth = (e[4] if len(e) > 4 else vel) / 127.0
                 cooked.append((t, "vibrato", -1, 0, float(depth), -1))
-            elif kind == "pedal":  # CC64 延音踏板，直通引擎
+            elif kind == "pedal":  # CC64 sustain pedal, passed straight to the engine
                 cooked.append((t, "pedal", -1, 0, float(e[4] if len(e) > 4 else vel), -1))
         cooked.sort(key=lambda x: x[0])
         return cooked
 
-    # ---- 卷帘/DAW 音符（带显式演奏法标签）→ cooked 事件 ----
+    # ---- Piano-roll/DAW notes (with explicit articulation labels) -> cooked events ----
     def strum_offsets(self, seq):
-        """按 start 排好序的音符里，同一簇内标 strum 的音按出现顺序错峰 k×spread（秒），其余 0。"""
+        """For notes sorted by start, offset notes marked strum within one cluster by k×spread (seconds) in order of appearance; others 0."""
         offs, cl_t0, k = [], None, -1
         for nt in seq:
             t0 = float(nt["start"])
@@ -196,10 +196,10 @@ class GestureInterpreter:
         return offs
 
     def notes_to_events(self, notes):
-        """[{midi,start,len,vel,art}] → [(t_sec, kind, note, vel, value, note2)]。
+        """[{midi,start,len,vel,art}] -> [(t_sec, kind, note, vel, value, note2)].
 
-        slide/legato 续接上一音（时长按力度与旋钮），strum 错峰，其余普通起音。卷帘回放、
-        导出与网页渲染共用这一个函数。
+        slide/legato continue from the previous note (duration from velocity and knob), strum is staggered, the rest are normal attacks.
+        Piano-roll playback, export and web rendering all share this one function.
         """
         seq = sorted(notes, key=lambda x: float(x["start"]))
         evs, prev = [], -1

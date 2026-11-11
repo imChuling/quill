@@ -1,18 +1,18 @@
-"""实时音频引擎：块基声部池与事件调度。
+"""Real-time audio engine: block-based voice pool and event scheduling.
 
-`process_block` 是实时回调与离线渲染共用的唯一代码路径：`render_offline` 不开声卡，
-喂事件列表跑同一函数，是单测、回归与试听刺激音的生成基座。
+`process_block` is the single code path shared by the real-time callback and offline rendering: `render_offline` opens no sound card,
+feeds an event list through the same function, and is the basis for unit tests, regression and listening-stimulus generation.
 
-实时路径的约束：
-  演奏模式下 gc.freeze() + gc.disable()，stop 时恢复；
-  事件带采样时间戳，块内按采样偏移分段触发，strum 的 5–15 ms 时差经得起块边界；
-  loudness/f0 块内线性斜坡、包络尾清零在 voice 内；
-  母线 nan_to_num + tanh 软限幅；
-  回调内不分配内存、不加锁、不做 IO，UI 与音频线程之间只走队列和原子引用替换；
-  热切换乐器 = 原子重绑 instrument 引用；
-  回调最外层 try/except，出错则静音并置错误标志；numba 预热防首音 xrun。
+Real-time path constraints:
+  in performance mode gc.freeze() + gc.disable(), restored on stop;
+  events carry sample timestamps and fire at sample offsets within a block, so strum's 5–15 ms offsets survive block boundaries;
+  loudness/f0 linear ramps within a block and envelope-tail clearing live in voice;
+  bus nan_to_num + tanh soft limiting;
+  no allocation, locks or IO in the callback; the UI and audio threads communicate only through queues and atomic reference swaps;
+  instrument hot swap = atomic rebind of the instrument reference;
+  outermost try/except in the callback, on error mute and set an error flag; numba warm-up prevents a first-note xrun.
 
-本模块只依赖 numpy 和 numba；mido 只在 midi_in.py。
+This module depends only on numpy and numba; mido is only used in midi_in.py.
 """
 
 from __future__ import annotations
@@ -39,20 +39,20 @@ try:
 except Exception:  # pragma: no cover
     CFG = None
 
-# 事件：kind in {"on","off","bend","cc","slide","legato","vibrato","ctl","retrig"}
-#   slide/legato: note=目标音, note2=起始音(从其声部续奏), value=时长秒
-#   vibrato: value=深度 0-1
-#   ctl: 起音并进入控制驱动, value=(f0_hz[T], amp[T], fps);retrig: 该声部重放起音颗粒
+# Events: kind in {"on","off","bend","cc","slide","legato","vibrato","ctl","retrig"}
+#   slide/legato: note=target note, note2=start note (continued from its voice), value=duration in seconds
+#   vibrato: value=depth 0-1
+#   ctl: attack and enter control-driven mode, value=(f0_hz[T], amp[T], fps); retrig: that voice replays its attack grain
 Event = namedtuple("Event", ["kind", "note", "vel", "value", "note2"], defaults=[-1])
 
 
-LOUD_GAIN = 0.4  # z-score 响度 → 线性幅度的动态范围（±2σ ≈ ±7 dB）
+LOUD_GAIN = 0.4  # dynamic range of z-score loudness -> linear amplitude (±2σ ≈ ±7 dB)
 
 
 def loud_to_amp(loud, gain: float = LOUD_GAIN):
-    """z-score log-RMS 响度（neural/perform.py 的口径）→ 线性幅度，峰值归一到 1。
+    """z-score log-RMS loudness (the neural/perform.py convention) -> linear amplitude, peak-normalised to 1.
 
-    离线 render_control 与实时行为模式共用；动态范围只在这一处定义。
+    Shared by offline render_control and the real-time behaviour mode; the dynamic range is defined only here.
     """
     loud = np.asarray(loud, np.float64)
     return np.exp(float(gain) * (loud - loud.max()))
@@ -74,7 +74,7 @@ def _runtime_cfg(cfg):
 
 class Engine:
     def __init__(self, instrument, cfg=CFG, eval_mode: bool = False):
-        self.instrument = instrument  # 热切换时原子重绑
+        self.instrument = instrument  # atomically rebound on hot swap
         self.sr = int(instrument.sr)
         self.eval_mode = bool(eval_mode)
         c = cfg if cfg is not None else {}
@@ -92,10 +92,10 @@ class Engine:
         self.pool = [Voice(K, self.sr) for _ in range(self.max_voices)]
         self._note2voice = {}
         self._age = 0
-        # 通道级弯音状态（半音）：新 note_on 必须继承，否则推轮时每个新音先从原始音高
-        # chirp 到弯音位
+        # channel-level pitch-bend state (semitones): a new note_on must inherit it, otherwise while the wheel is pushed every new note
+        # first chirps from the original pitch to the bent pitch
         self._bend_st = 0.0
-        # 通道级揉弦深度（0–1）：控制驱动的声部起音时继承，库轨迹走完后 LFO 接力
+        # channel-level vibrato depth (0–1): inherited by control-driven voices at attack, the LFO takes over after the library trajectory ends
         self._vib_st = 0.0
         self.error_flag = False
 
@@ -110,34 +110,34 @@ class Engine:
         _ges = c.get("gesture", {}) if isinstance(c, dict) else {}
         set_vibrato_shape(_ges.get("vibrato_onset_ms", 110.0), _ges.get("vibrato_ramp_ms", 220.0))
 
-        # 预分配：回调内不分配内存
+        # preallocation: no allocation in the callback
         self._buf = np.zeros(self.blocksize, dtype=np.float64)
 
-        # 手势模板：slide 曲线与颤音速率，可由 .tplib 注入
-        self.slide_curve = None  # g(τ)∈[0,1]，None 为线性
-        # CC1 颤音速率优先取源片段实测值（snapshot.vibrato.rate_hz），否则默认
+        # gesture templates: slide curve and vibrato rate, can be injected from .tplib
+        self.slide_curve = None  # g(τ)∈[0,1], None means linear
+        # CC1 vibrato rate prefers the source clip measurement (snapshot.vibrato.rate_hz), otherwise the default
         self.vib_rate_hz = float(getattr(instrument, "vib_rate", None) or 5.5)
-        self.vib_max_cents = 50.0  # CC1=1 时的最大颤音深度
-        # CC64 延音踏板
+        self.vib_max_cents = 50.0  # maximum vibrato depth at CC1=1
+        # CC64 sustain pedal
         self._pedal_down = False
         self._pedal_sustained = set()
 
-        # 事件调度
-        self._sched = []  # 离线：[(t_samp, Event)]，升序
+        # event scheduling
+        self._sched = []  # offline: [(t_samp, Event)], ascending
         self._sched_i = 0
-        self._queue = None  # 实时：midi_in 注入的 SimpleQueue
+        self._queue = None  # real time: SimpleQueue fed by midi_in
         self._stream = None
         self._stream_samples = 0
         self._rng = np.random.default_rng(0)
 
-        _osc_warmup()  # JIT 预热，防首音 xrun
+        _osc_warmup()  # JIT warm-up, prevents a first-note xrun
 
     def set_instrument(self, inst):
-        """热切换乐器：CPython 引用赋值是原子的，回调线程读到的要么是旧的要么是新的。"""
+        """Hot-swap the instrument: CPython reference assignment is atomic, so the callback thread sees either the old or the new one."""
         self.instrument = inst
 
     def _alloc_voice(self) -> Voice:
-        """空闲声部优先；否则偷最旧的释放中声部；再否则偷最旧的。"""
+        """Prefer an idle voice; otherwise steal the oldest releasing voice; otherwise steal the oldest."""
         for v in self.pool:
             if not v.active:
                 return v
@@ -154,7 +154,7 @@ class Engine:
     def _apply_event(self, ev: Event):
         if ev.kind in ("on", "ctl"):
             v = self._alloc_voice()
-            # 若偷的是仍在响的音，先解绑它的 note 映射
+            # if the stolen voice is still sounding, unbind its note mapping first
             if v.active and v.note in self._note2voice and self._note2voice[v.note] is v:
                 self._note2voice.pop(v.note, None)
             self._age += 1
@@ -168,10 +168,10 @@ class Engine:
                 self._age,
                 self._noise_pos0(),
             )
-            v.init_bend(self._bend_st)  # 继承通道弯音，瞬时到位
+            v.init_bend(self._bend_st)  # inherit the channel pitch bend, applied instantly
             if ev.kind == "ctl":
                 v.drive(*ev.value)
-                if self._vib_st > 0.0:  # 库轨迹走完后由 LFO 接力揉弦，走完前 Voice 门控不叠加
+                if self._vib_st > 0.0:  # the LFO takes over vibrato after the library trajectory ends; before that the Voice gate prevents stacking
                     v.set_vibrato(self._vib_st * self.vib_max_cents, self.vib_rate_hz)
             self._note2voice[ev.note] = v
         elif ev.kind == "retrig":
@@ -179,42 +179,42 @@ class Engine:
             if v is not None and v.active:
                 v.retrigger_attack()
         elif ev.kind == "ctl_legato":
-            # 连音换到新的控制流：沿用 note2 的声部（不重置相位/包络），低电平重触发颗粒
+            # legato switch to a new control stream: reuse note2's voice (phase/envelope not reset), retrigger the grain at low level
             v = self._note2voice.get(ev.note2)
             if v is None or not v.active:
                 self._apply_event(Event("ctl", ev.note, ev.vel, ev.value, -1))
                 return
             v.drive(*ev.value)
-            v.retrigger_attack(regrain_legato())  # 与规则路径的连音颗粒同一倍率
+            v.retrigger_attack(regrain_legato())  # same multiplier as the legato grain on the rule path
             v.note = int(ev.note)
             self._note2voice.pop(ev.note2, None)
             self._note2voice[ev.note] = v
         elif ev.kind == "off":
             v = self._note2voice.pop(ev.note, None)
             if v is not None and v.note == ev.note:
-                if self._pedal_down:  # 踏板按下：延音，推迟释放
+                if self._pedal_down:  # pedal down: sustain, defer release
                     self._pedal_sustained.add(v)
                 else:
                     v.note_off()
-        elif ev.kind == "pedal":  # CC64 延音踏板
+        elif ev.kind == "pedal":  # CC64 sustain pedal
             down = float(ev.value) >= 0.5
-            if self._pedal_down and not down:  # 抬起：释放所有被踏板延音的声部
+            if self._pedal_down and not down:  # pedal up: release all voices held by the pedal
                 for v in self._pedal_sustained:
                     if v.active:
                         v.note_off()
                 self._pedal_sustained.clear()
             self._pedal_down = down
         elif ev.kind == "bend":
-            self._bend_st = float(ev.value)  # 通道级状态，供新音继承
+            self._bend_st = float(ev.value)  # channel-level state, inherited by new notes
             tbd = getattr(self, "_trace_bend", None)
-            if tbd is not None:  # 诊断：记录弯音事件（采样时刻，半音）
+            if tbd is not None:  # diagnostics: record bend events (sample time, semitones)
                 tbd.append((self._stream_samples, float(ev.value)))
             for v in self.pool:
                 if v.active:
                     v.set_bend(ev.value)
         elif ev.kind in ("slide", "legato"):
             self._glide_event(ev)
-        elif ev.kind == "vibrato":  # CC1 → 颤音深度
+        elif ev.kind == "vibrato":  # CC1 -> vibrato depth
             self._vib_st = max(0.0, float(ev.value))
             depth = self._vib_st * self.vib_max_cents
             for v in self.pool:
@@ -222,10 +222,10 @@ class Engine:
                     v.set_vibrato(depth, self.vib_rate_hz)
 
     def _glide_event(self, ev):
-        """slide/legato：从 note2 的声部续奏滑到 note，不重起音。"""
+        """slide/legato: continue from note2's voice and slide to note, without a new attack."""
         v = self._note2voice.get(ev.note2)
         if v is None or not v.active:
-            # 无可续奏的起始音，退化为普通起音
+            # no start note to continue from, fall back to a normal attack
             self._apply_event(Event("on", ev.note, max(1, int(ev.vel or 90)), 0.0))
             return
         f0_tgt = 440.0 * 2.0 ** ((ev.note - 69) / 12.0)
@@ -248,16 +248,16 @@ class Engine:
                 v.render_into(seg, nlen)
 
     def _events_for_block(self, block_start, n):
-        """返回 [(offset_in_block, Event)]，按 offset 升序。"""
+        """Return [(offset_in_block, Event)], sorted by offset ascending."""
         out = []
-        if self._queue is not None:  # 实时：本块到达的事件即时触发
+        if self._queue is not None:  # real time: events arriving in this block fire immediately
             while True:
                 try:
                     ev = self._queue.get_nowait()
                 except Exception:
                     break
                 out.append((0, ev))
-        # 离线：从有序调度里取落在 [start, start+n) 的
+        # offline: take those falling in [start, start+n) from the ordered schedule
         while self._sched_i < len(self._sched):
             t, ev = self._sched[self._sched_i]
             if t < block_start:
@@ -271,7 +271,7 @@ class Engine:
         return out
 
     def process_block(self, out, n, block_start):
-        """核心：渲染 n 个采样到 out[:n]（float32）。实时与离线共用。"""
+        """Core: render n samples into out[:n] (float32). Shared by real time and offline."""
         buf = self._buf
         try:
             buf[:n] = 0.0
@@ -281,22 +281,22 @@ class Engine:
                 offset = 0 if offset < 0 else (n if offset > n else offset)
                 if offset > seg:
                     self._render_segment(buf, seg, offset)
-                self._apply_event(ev)  # 事件在块内偏移处生效，采样级精度
+                self._apply_event(ev)  # events take effect at their in-block offset, sample-accurate
                 seg = offset
             if seg < n:
                 self._render_segment(buf, seg, n)
             np.nan_to_num(buf[:n], copy=False)
-            buf[:n] *= getattr(self, "master_gain", 1.0)  # 总音量旋钮，默认 1.0
-            ck = getattr(self, "_click", None)  # 节拍器，与音符同一采样时钟
+            buf[:n] *= getattr(self, "master_gain", 1.0)  # master volume knob, default 1.0
+            ck = getattr(self, "_click", None)  # metronome, same sample clock as the notes
             if ck is not None:
                 self._render_click(buf, n, block_start, ck)
-            np.tanh(buf[:n], out=buf[:n])  # 母线软限幅
+            np.tanh(buf[:n], out=buf[:n])  # bus soft limiting
             out[:n] = buf[:n]
-        except Exception:  # 异常不杀流：静音并置错误标志
+        except Exception:  # exceptions do not kill the stream: mute and set the error flag
             out[:n] = 0.0
             self.error_flag = True
 
-    # ---- 实时（需要声卡与 sounddevice）----
+    # ---- Real time (needs a sound card and sounddevice) ----
     def _audio_callback(self, outdata, frames, time_info, status):
         if status:
             self.error_flag = True
@@ -304,22 +304,22 @@ class Engine:
         if outdata.shape[1] > 1:
             outdata[:, 1:] = outdata[:, :1]
         tb = getattr(self, "_trace_buf", None)
-        if tb is not None:  # 诊断：抓真实送声卡的音频，会破坏零分配，仅调试用
+        if tb is not None:  # diagnostics: capture the audio actually sent to the sound card; breaks zero allocation, debug only
             tb.append(outdata[:, 0].copy())
         self._stream_samples += frames
 
     def start(self, queue=None, device=None):
-        """打开输出流并进入演奏模式：gc.freeze() + gc.disable()，stop 时恢复。"""
+        """Open the output stream and enter performance mode: gc.freeze() + gc.disable(), restored on stop."""
         import sounddevice as sd
 
         self._queue = queue
         self._stream_samples = 0
         self.error_flag = False
-        if os.environ.get("QUILL_BEND_TRACE"):  # 诊断模式：抓实机音频与弯音事件
+        if os.environ.get("QUILL_BEND_TRACE"):  # diagnostic mode: capture device audio and bend events
             self._trace_buf = []
             self._trace_bend = []
-            print("[BEND TRACE] armed — 关窗(或 Ctrl+C)后写 assets/user_tones/_bend_trace.*")
-            if not getattr(self, "_trace_atexit", False):  # 非正常关闭也能存
+            print("[BEND TRACE] armed — writes assets/user_tones/_bend_trace.* on window close (or Ctrl+C)")
+            if not getattr(self, "_trace_atexit", False):  # also saves on abnormal shutdown
                 import atexit
 
                 atexit.register(self._dump_trace)
@@ -369,7 +369,7 @@ class Engine:
                 import soundfile as sf
 
                 sf.write(wav_path, y, self.sr)
-            except Exception:  # 无 soundfile 时退回标准库，16-bit PCM
+            except Exception:  # without soundfile fall back to the standard library, 16-bit PCM
                 import wave
 
                 pcm = (np.clip(y, -1.0, 1.0) * 32767.0).astype("<i2")
@@ -395,7 +395,7 @@ class Engine:
             return float(self._stream.latency) * 1000.0
         return float("nan")
 
-    # ---- 离线渲染（不开声卡，与实时共用 process_block）----
+    # ---- Offline rendering (no sound card, shares process_block with real time) ----
     def reset(self):
         for v in self.pool:
             v.active = False
@@ -413,18 +413,18 @@ class Engine:
         self._rng = np.random.default_rng(0)
 
     def set_gesture_templates(self, slide_curve=None, vib_rate_hz=None):
-        """从 .tplib 注入手势模板：slide 曲线与颤音速率。"""
+        """Inject gesture templates from .tplib: slide curve and vibrato rate."""
         if slide_curve is not None:
             self.slide_curve = np.asarray(slide_curve, dtype=np.float64)
         if vib_rate_hz:
             self.vib_rate_hz = float(vib_rate_hz)
 
-    # ---- 节拍器：采样级 click，与音符同一时钟 ----
+    # ---- Metronome: sample-accurate click on the same clock as the notes ----
     def set_click(self, bpm=None, accent=4, gain=0.45, start=None):
-        """开/关节拍器（bpm=None 关）。
+        """Turn the metronome on/off (bpm=None turns it off).
 
-        tick 是约 5 ms 的衰减正弦，波形在此预生成，回调内零分配；每 accent 拍的第 1 拍为
-        重音。start 为起始绝对采样，None 为当下。
+        The tick is a decaying sine of about 5 ms, pregenerated here so the callback allocates nothing; beat 1 of every accent
+        group is accented. start is the absolute start sample, None means now.
         """
         if not bpm:
             self._click = None
@@ -446,7 +446,7 @@ class Engine:
         }
 
     def _render_click(self, buf, n, block_start, ck):
-        """把落在本块的 tick 加进 buf。tick 只有 5 ms，跨块尾部截断可忽略。"""
+        """Add the ticks that fall in this block to buf. A tick is only 5 ms, so truncation at the block end is negligible."""
         end = block_start + n
         while ck["next"] < end:
             off = ck["next"] - block_start
@@ -459,10 +459,10 @@ class Engine:
             ck["beat"] += 1
 
     def render_offline(self, events_sec, dur_s: float) -> np.ndarray:
-        """喂 (t_sec, kind, note, vel, value[, note2]) 事件列表，离线渲染 -> float32。
+        """Feed a (t_sec, kind, note, vel, value[, note2]) event list, render offline -> float32.
 
-        与实时回调跑同一 process_block；eval_mode=True 时噪声指针复位，输出可复现。
-        slide/legato 事件第 6 项 note2 为起始音。
+        Runs the same process_block as the real-time callback; with eval_mode=True the noise pointer is reset and output is reproducible.
+        For slide/legato events the 6th item note2 is the start note.
         """
         self.reset()
         self._queue = None
@@ -500,13 +500,13 @@ class Engine:
         noise=None,
         motion: float = 1.0,
     ) -> np.ndarray:
-        """(f0, loudness) 控制流 → 音频，与 DDSP 解码器同一接口，行为库可以直接驱动取色音色。
+        """(f0, loudness) control stream -> audio; same interface as the DDSP decoder, so the behaviour library can drive the captured timbre directly.
 
-        loud 是演奏法层的 z-score log-RMS（见 neural/perform.py），按 amp = exp(loud_gain·loud)
-        还原成线性幅度并归一到峰值 1；loud_gain 决定动态范围（0.4 时 ±2σ ≈ ±7 dB）。
-        onsets_s 处重放起音颗粒。bright/noise 是行为库的第 3/4 维（log2 质心残差 oct、
-        log10 平坦度残差）：质心残差 × 6 dB/oct 进谱倾斜，平坦度残差进噪声层倍率；motion
-        整体缩放，0 为关，只用 f0/loudness。
+        loud is the articulation layer's z-score log-RMS (see neural/perform.py), restored to linear amplitude as amp = exp(loud_gain·loud)
+        and normalised to peak 1; loud_gain sets the dynamic range (±2σ ≈ ±7 dB at 0.4).
+        The attack grain is replayed at onsets_s. bright/noise are the behaviour library's 3rd/4th dimensions (log2 centroid residual in oct,
+        log10 flatness residual): centroid residual × 6 dB/oct goes into the spectral tilt, flatness residual into the noise-layer multiplier; motion
+        scales both overall, 0 turns them off and uses only f0/loudness.
         """
         f0_hz = np.asarray(f0_hz, np.float64)
         amp = loud_to_amp(loud, loud_gain)
@@ -515,13 +515,13 @@ class Engine:
         ctl = (f0_hz, amp, float(fps))
         if motion > 0 and bright is not None and noise is not None:
             tilt = np.asarray(bright, np.float64) * 6.0 * float(motion)  # oct → dB/oct
-            nz = 10.0 ** (np.asarray(noise, np.float64) * float(motion))  # log10 → 倍率
+            nz = 10.0 ** (np.asarray(noise, np.float64) * float(motion))  # log10 -> multiplier
             ctl = ctl + (tilt, nz)
         evs = [(0.0, "ctl", note, int(vel), ctl, -1)]
         evs += [(float(t), "retrig", note, 0, 0.0, -1) for t in onsets_s if float(t) > 1e-3]
         evs.append((T / float(fps), "off", note, 0, 0.0, -1))
         saved = self.adsr
-        # 包络交给控制流：起音即到位、不衰减；note_off 后 80 ms 收尾
+        # the envelope is left to the control stream: full level at attack, no decay; 80 ms tail after note_off
         self.adsr = {"attack_ms": 3.0, "decay_ms": 1.0, "sustain": 1.0, "release_ms": 80.0}
         try:
             return self.render_offline(evs, T / float(fps) + float(tail_s))
@@ -530,7 +530,7 @@ class Engine:
 
 
 def engine_from_snapshot_file(path, eval_mode=True, noise_level=None, cfg=CFG):
-    """便捷：快照文件 -> Instrument -> Engine。"""
+    """Convenience: snapshot file -> Instrument -> Engine."""
     from snapshot import load_snapshot
     from synth.instrument import build_instrument
 
