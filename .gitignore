@@ -51,6 +51,10 @@ assets/user_styles/
 assets/user_tones/
 
 
+# E2 FAD render outputs (large wav sets + run-time JSON)
+eval/fad_output/
+eval/guitar_test/
+
 # rebuildable evaluation caches
 results/atlas/snaps/
 

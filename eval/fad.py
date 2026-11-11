@@ -1,20 +1,25 @@
-"""FAD (Fréchet Audio Distance) evaluation: the standard distribution-level metric for timbre fidelity.
+"""Fréchet Audio Distance (FAD) evaluation: the standard distribution-level metric for timbre fidelity.
 
-FAD, proposed by Kilgour et al. 2019, is the standard comparable metric in audio generation work such as DDSP/RAVE/AFTER/TokenSynth.
-This script computes the FAD between Quill resynthesis and real recordings, and compares it with the sampler baseline.
+E2 v2 design (2026-11):
+  3 arms (reference / Quill / sampler) × 2 instruments (glass / guitar)
+  + split-half floor + bootstrap CI
+
+  reference  = segments cut from real recordings (≥1 s)
+  Quill      = style library → control_from_behavior → DDSP render
+  sampler    = single-source real note → per-note pitch-shift + gating
+
+  VGGish is the primary metric; MFCC uses frame-level statistics. Both instruments are in-sample.
 
 Usage:
-  python eval/fad.py                          # use the built-in ear_test data
-  python eval/fad.py --ref-dir path/to/ref --eval-dir path/to/eval
-  python eval/fad.py --generate               # generate evaluation pairs automatically from snapshots
-
-Dependency: frechet_audio_distance (pip install frechet_audio_distance)
+  conda run -n mt python eval/fad.py --e2
+  conda run -n mt python eval/fad.py --e2 --instrument glass
+  conda run -n mt python eval/fad.py --ref-dir X --eval-dir Y
 """
 
 from __future__ import annotations
 
 import argparse
-import shutil
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -24,8 +29,13 @@ import soundfile as sf
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+QUILL = Path(__file__).resolve().parents[1]
 SR = 16000
+FPS = 250
+MIN_DUR_S = 1.0
 
+
+# ─── Common utilities ─────────────────────────────────────────────────────────────── #
 
 def _ensure_16k_mono(src_dir: Path, dst_dir: Path, sr_out: int = SR):
     """Resample every .wav in src_dir to 16kHz mono and write it to dst_dir."""
@@ -34,167 +44,43 @@ def _ensure_16k_mono(src_dir: Path, dst_dir: Path, sr_out: int = SR):
     dst_dir.mkdir(parents=True, exist_ok=True)
     count = 0
     for f in sorted(src_dir.glob("*.wav")):
-        y, sr_in = librosa.load(f, sr=sr_out, mono=True)
-        out = dst_dir / f.name
-        sf.write(str(out), y, sr_out)
+        y, _ = librosa.load(f, sr=sr_out, mono=True)
+        sf.write(str(dst_dir / f.name), y, sr_out)
         count += 1
     return count
 
 
 def compute_fad(ref_dir: str | Path, eval_dir: str | Path,
                 model: str = "vggish") -> float:
-    """Compute the FAD between two directories. Returns a float (lower is better)."""
+    """VGGish FAD between two directories (lower is better). Returns -1.0 on failure."""
     from frechet_audio_distance import FrechetAudioDistance
 
     fad = FrechetAudioDistance(model_name=model, sample_rate=SR,
                               use_pca=False, use_activation=False,
                               verbose=False, audio_load_worker=1)
-    score = fad.score(str(ref_dir), str(eval_dir))
-    return float(score)
+    return float(fad.score(str(ref_dir), str(eval_dir)))
 
 
-def generate_pairs(out_base: Path, snap_paths: list[Path] | None = None,
-                   n_pitches: int = 8, dur_s: float = 2.0):
-    """Generate FAD evaluation pairs from snapshots: Quill resynthesis vs sampler transposition.
+# ─── Frame-level MFCC ────────────────────────────────────────────────────────────── #
 
-    Each snapshot is rendered at n_pitches different pitches (evenly spread within ±1 octave),
-    written to the out_base/{quill,sampler}/ directories.
-    """
+def _collect_mfcc_frames_per_file(wav_dir: Path) -> list[np.ndarray]:
+    """Each ≥1 s wav → MFCC frame matrix (T_i, 20); returns a list, one entry per file."""
     import librosa
 
-    from snapshot import load_snapshot
-    from synth.render import render
-
-    ref_dir = out_base / "reference"
-    quill_dir = out_base / "quill"
-    sampler_dir = out_base / "sampler"
-    for d in [ref_dir, quill_dir, sampler_dir]:
-        d.mkdir(parents=True, exist_ok=True)
-
-    if snap_paths is None:
-        snap_paths = list(Path("checkpoints").glob("*.npz"))
-        snap_paths += list(Path("assets").rglob("snapshot*.npz"))
-
-    for sp in snap_paths:
-        snap = load_snapshot(str(sp))
-        f0_ref = snap["f0_ref"]
-        name = sp.stem
-        n = int(dur_s * 44100)
-
-        semitones = np.linspace(-12, 12, n_pitches)
-        for i, st in enumerate(semitones):
-            f0_tgt = f0_ref * 2.0 ** (st / 12.0)
-            tag = f"{name}_p{i}"
-
-            quill_y = render(snap, f0_tgt, length=n, mode="formant", add_attack=True)
-            sf.write(str(quill_dir / f"{tag}.wav"), quill_y, 44100)
-
-            ref_y = render(snap, f0_ref, length=n, mode="formant", add_attack=True)
-            shifted = librosa.effects.pitch_shift(
-                ref_y.astype(np.float32), sr=44100, n_steps=float(st)
-            )
-            sf.write(str(sampler_dir / f"{tag}.wav"), shifted, 44100)
-            sf.write(str(ref_dir / f"{tag}.wav"), ref_y, 44100)
-
-    return ref_dir, quill_dir, sampler_dir
-
-
-def run_builtin():
-    """Compute E2 FAD with ear_test audio: Quill vs real recordings, sampler vs real recordings.
-
-    Corrected reference: each system vs real recordings; the distance between the two systems is no longer computed.
-    quill/sampler come from the ear_test audio; real recordings come from the originals in the resynth_check and ab directories.
-    """
-    base = Path(__file__).resolve().parents[1]
-    ear_ab = base / "assets/ear_tests/ab_vs_sampler"
-    ear_st = base / "assets/ear_tests/structural"
-    ear_resynth = base / "assets/ear_tests/resynth_check"
-    midi_ref = base / "checkpoints/midi_ddsp_ref"
-
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp = Path(tmp)
-        ref_dir = tmp / "reference"
-        q_dir = tmp / "quill"
-        s_dir = tmp / "sampler"
-        ref_dir.mkdir()
-        q_dir.mkdir()
-        s_dir.mkdir()
-
-        # Quill renders
-        if ear_ab.exists():
-            for src in ear_ab.glob("*quill*.wav"):
-                shutil.copy2(src, q_dir / src.name)
-        if ear_st.exists():
-            for src in ear_st.glob("*quill*.wav"):
-                shutil.copy2(src, q_dir / src.name)
-
-        # Sampler baseline renders
-        if ear_ab.exists():
-            for src in ear_ab.glob("*sampler*.wav"):
-                shutil.copy2(src, s_dir / src.name)
-        if ear_st.exists():
-            for src in ear_st.glob("*sampler*.wav"):
-                shutil.copy2(src, s_dir / src.name)
-
-        # Reference real recordings
-        if ear_resynth.exists():
-            for src in ear_resynth.glob("*SOURCE*original*.wav"):
-                shutil.copy2(src, ref_dir / src.name)
-        if midi_ref.exists():
-            gt = midi_ref / "ground-truth.wav"
-            if gt.exists():
-                shutil.copy2(gt, ref_dir / gt.name)
-            fs = midi_ref / "fluidsynth.wav"
-            if fs.exists():
-                shutil.copy2(fs, s_dir / f"mididdsp_ref_{fs.name}")
-
-        nref = len(list(ref_dir.glob("*.wav")))
-        nq = len(list(q_dir.glob("*.wav")))
-        ns = len(list(s_dir.glob("*.wav")))
-        print(f"files: {nref} reference, {nq} quill, {ns} sampler")
-
-        if nref < 2 or nq < 2 or ns < 2:
-            print("Not enough audio files for three-way FAD (need >=2 each)")
-            print("Falling back to MFCC-based Fréchet distance...")
-            _run_mfcc_fad(ref_dir, q_dir, s_dir)
-            return
-
-        r16 = tmp / "ref_16k"
-        q16 = tmp / "quill_16k"
-        s16 = tmp / "sampler_16k"
-        _ensure_16k_mono(ref_dir, r16)
-        _ensure_16k_mono(q_dir, q16)
-        _ensure_16k_mono(s_dir, s16)
-
-        fad_quill = compute_fad(r16, q16)
-        fad_sampler = compute_fad(r16, s16)
-        print(f"\nFAD (Quill resynth vs real):   {fad_quill:.2f}")
-        print(f"FAD (Sampler baseline vs real): {fad_sampler:.2f}")
-        if fad_quill < fad_sampler:
-            print(f"  Quill closer to real by {fad_sampler - fad_quill:.2f}")
-        else:
-            print(f"  Sampler closer to real by {fad_quill - fad_sampler:.2f}")
-
-
-def _mfcc_stats(wav_dir: Path):
-    """Compute mean and covariance of MFCC features across all WAVs in a dir."""
-    import librosa
-    all_feats = []
+    result = []
     for f in sorted(wav_dir.glob("*.wav")):
-        y, sr = librosa.load(f, sr=SR, mono=True)
-        if len(y) < 2048:
+        y, _ = librosa.load(f, sr=SR, mono=True)
+        if len(y) < int(MIN_DUR_S * SR):
             continue
         mfcc = librosa.feature.mfcc(y=y, sr=SR, n_mfcc=20)
-        all_feats.append(mfcc.mean(axis=1))
-    if len(all_feats) < 2:
-        return None, None
-    feats = np.stack(all_feats)
-    return feats.mean(axis=0), np.cov(feats, rowvar=False)
+        result.append(mfcc.T)
+    return result
 
 
-def _frechet_distance(mu1, sigma1, mu2, sigma2):
+def _frechet_distance(mu1, sigma1, mu2, sigma2) -> float:
     """Fréchet distance between two multivariate Gaussians."""
     from scipy.linalg import sqrtm
+
     diff = mu1 - mu2
     covmean = sqrtm(sigma1 @ sigma2)
     if np.iscomplexobj(covmean):
@@ -202,182 +88,548 @@ def _frechet_distance(mu1, sigma1, mu2, sigma2):
     return float(diff @ diff + np.trace(sigma1 + sigma2 - 2 * covmean))
 
 
-def _run_mfcc_fad(ref_dir, quill_dir, sampler_dir):
-    """MFCC-based Fréchet distance (fallback when frechet_audio_distance is not installed)."""
-    mu_r, cov_r = _mfcc_stats(ref_dir)
-    mu_q, cov_q = _mfcc_stats(quill_dir)
-    mu_s, cov_s = _mfcc_stats(sampler_dir)
-
-    if mu_r is None:
-        print("Not enough reference audio for MFCC FAD")
-        return
-    results = {}
-    if mu_q is not None:
-        fd_q = _frechet_distance(mu_r, cov_r, mu_q, cov_q)
-        results["mfcc_fad_quill_vs_real"] = round(fd_q, 2)
-        print(f"\nMFCC-FAD (Quill vs real):   {fd_q:.2f}")
-    if mu_s is not None:
-        fd_s = _frechet_distance(mu_r, cov_r, mu_s, cov_s)
-        results["mfcc_fad_sampler_vs_real"] = round(fd_s, 2)
-        print(f"MFCC-FAD (Sampler vs real): {fd_s:.2f}")
-    return results
+def _mfcc_fad(dir_a: Path, dir_b: Path) -> float | None:
+    """Frame-level MFCC Fréchet distance."""
+    fa = _collect_mfcc_frames_per_file(dir_a)
+    fb = _collect_mfcc_frames_per_file(dir_b)
+    if not fa or not fb:
+        return None
+    a = np.concatenate(fa)
+    b = np.concatenate(fb)
+    return _frechet_distance(a.mean(0), np.cov(a, rowvar=False),
+                             b.mean(0), np.cov(b, rowvar=False))
 
 
-def run_e2(out_dir: Path, model: str = "vggish"):
-    """E2: corrected FAD reference using DDSP resynthesis.
+# ─── E2: Glass ─────────────────────────────────────────────────────────────── #
 
-    Collect three groups from checkpoints/midi_ddsp_ref/ and the ear_test audio:
-    real recordings / Quill resynthesis / sampler baseline, and compute the FAD of each vs real recordings.
-    """
-    import json as json_mod
+def _cut_glass_reference(out_dir: Path) -> int:
+    """Cut glass_perf_studio.wav into segments by style library t_on/dur; keep only ≥1 s."""
+    import librosa
 
-    base = Path(__file__).resolve().parents[1]
+    wav_path = QUILL / "assets/glass/glass_perf_studio.wav"
+    npz_path = QUILL / "checkpoints/glass_style.npz"
+    if not wav_path.exists() or not npz_path.exists():
+        print("  SKIP glass reference: missing files")
+        return 0
+
+    y, _ = librosa.load(str(wav_path), sr=SR, mono=True)
+    d = np.load(str(npz_path), allow_pickle=True)
+    meta = json.loads(str(d["meta"]))
+
     out_dir.mkdir(parents=True, exist_ok=True)
+    count = 0
+    for i, m in enumerate(meta):
+        if m["dur"] < MIN_DUR_S:
+            continue
+        s0 = int(m["t_on"] * SR)
+        s1 = int((m["t_on"] + m["dur"]) * SR)
+        seg = y[s0:s1]
+        if len(seg) < int(MIN_DUR_S * SR):
+            continue
+        sf.write(str(out_dir / f"glass_ref_{i:02d}.wav"), seg, SR)
+        count += 1
+    return count
 
-    ref_dir = out_dir / "reference"
-    quill_dir = out_dir / "quill"
-    sampler_dir = out_dir / "sampler"
-    for d in [ref_dir, quill_dir, sampler_dir]:
-        d.mkdir(exist_ok=True)
 
-    # Collect reference, quill, and sampler audio
-    midi_ref = base / "checkpoints/midi_ddsp_ref"
-    ear_ab = base / "assets/ear_tests/ab_vs_sampler"
-    ear_st = base / "assets/ear_tests/structural"
-    ear_resynth = base / "assets/ear_tests/resynth_check"
+def _render_quill_glass(out_dir: Path) -> int:
+    """Render the glass style library with ddsp_glass.pt, sustain envelope, ≥1 s."""
+    import torch
 
-    collected = {"reference": 0, "quill": 0, "sampler": 0}
+    from neural.neural_take import ConditionedNN
+    from neural.perform import control_from_behavior, render
 
-    if midi_ref.exists():
-        gt = midi_ref / "ground-truth.wav"
-        if gt.exists():
-            shutil.copy2(gt, ref_dir / "mididdsp_ground_truth.wav")
-            collected["reference"] += 1
-        for name in ["midi-ddsp.wav", "ddsp_inference.wav", "midi2params.wav"]:
-            src = midi_ref / name
-            if src.exists():
-                shutil.copy2(src, quill_dir / f"mididdsp_ref_{name}")
-                collected["quill"] += 1
-        fs = midi_ref / "fluidsynth.wav"
-        if fs.exists():
-            shutil.copy2(fs, sampler_dir / "mididdsp_ref_fluidsynth.wav")
-            collected["sampler"] += 1
-        ab = midi_ref / "ableton.wav"
-        if ab.exists():
-            shutil.copy2(ab, sampler_dir / "mididdsp_ref_ableton.wav")
-            collected["sampler"] += 1
+    ckpt = QUILL / "checkpoints/ddsp_glass.pt"
+    lib_path = QUILL / "checkpoints/glass_style.npz"
+    if not ckpt.exists() or not lib_path.exists():
+        print("  SKIP Quill glass: missing checkpoint or library")
+        return 0
 
-    if ear_resynth.exists():
-        for src in ear_resynth.glob("*SOURCE*.wav"):
-            shutil.copy2(src, ref_dir / src.name)
-            collected["reference"] += 1
-        for src in ear_resynth.glob("*RESYNTH*.wav"):
-            shutil.copy2(src, quill_dir / src.name)
-            collected["quill"] += 1
+    d = np.load(str(lib_path), allow_pickle=True)
+    meta = json.loads(str(d["meta"]))
+    nn = ConditionedNN(d["features"], d["trajectories"])
 
-    if ear_ab.exists():
-        for src in ear_ab.glob("*quill*.wav"):
-            shutil.copy2(src, quill_dir / src.name)
-            collected["quill"] += 1
-        for src in ear_ab.glob("*sampler*.wav"):
-            shutil.copy2(src, sampler_dir / src.name)
-            collected["sampler"] += 1
+    out_dir.mkdir(parents=True, exist_ok=True)
+    np.random.seed(42)
+    torch.manual_seed(42)
 
-    if ear_st.exists():
-        for src in ear_st.glob("*quill*.wav"):
-            shutil.copy2(src, quill_dir / src.name)
-            collected["quill"] += 1
-        for src in ear_st.glob("*sampler*.wav"):
-            shutil.copy2(src, sampler_dir / src.name)
-            collected["sampler"] += 1
+    count = 0
+    for i, m in enumerate(meta):
+        if m["dur"] < MIN_DUR_S:
+            continue
+        notes = [{"midi": m["midi"], "dur": m["dur"], "art": m.get("art", 0)}]
+        with torch.no_grad():
+            f0, loud = control_from_behavior(
+                notes, nn, pitch_glide=False, envelope="sustain", traj_gain=1.0,
+            )
+            y = render(str(ckpt), f0, loud)
+        if len(y) < int(MIN_DUR_S * SR):
+            continue
+        sf.write(str(out_dir / f"glass_quill_{i:02d}.wav"), y, SR)
+        count += 1
+    return count
 
-    print(f"Collected: {collected}")
 
-    results = {}
+def _build_sampler_glass(meta: list[dict], out_dir: Path) -> int:
+    """Glass sampler: timbre_train single note → pitch-shift to each target pitch, ≥1 s."""
+    import librosa
 
-    # MFCC-based FAD (always available)
-    mfcc_results = _run_mfcc_fad(ref_dir, quill_dir, sampler_dir)
-    if mfcc_results:
-        results.update(mfcc_results)
+    tt_dir = QUILL / "assets/glass/timbre_train"
+    if not tt_dir.exists():
+        print(f"  SKIP sampler glass: no timbre_train at {tt_dir}")
+        return 0
+    src_files = sorted(tt_dir.glob("*.wav"))
+    if not src_files:
+        return 0
 
-    # VGGish FAD (if frechet_audio_distance installed)
-    try:
-        with tempfile.TemporaryDirectory() as tmp16:
-            tmp16 = Path(tmp16)
-            r16 = tmp16 / "ref_16k"
-            q16 = tmp16 / "quill_16k"
-            s16 = tmp16 / "sampler_16k"
-            nr = _ensure_16k_mono(ref_dir, r16)
-            nq = _ensure_16k_mono(quill_dir, q16)
-            ns = _ensure_16k_mono(sampler_dir, s16)
-            if min(nr, nq, ns) >= 2:
-                fad_q = compute_fad(r16, q16, model=model)
-                fad_s = compute_fad(r16, s16, model=model)
-                results[f"fad_{model}_quill_vs_real"] = round(fad_q, 2)
-                results[f"fad_{model}_sampler_vs_real"] = round(fad_s, 2)
-                print(f"\nFAD-{model} (Quill vs real):   {fad_q:.2f}")
-                print(f"FAD-{model} (Sampler vs real): {fad_s:.2f}")
-    except ImportError:
-        print("\nfrechet_audio_distance not installed, using MFCC-FAD only")
+    src_path = src_files[len(src_files) // 2]
+    y_src, _ = librosa.load(str(src_path), sr=SR, mono=True)
+    f0_raw = librosa.pyin(y_src, fmin=80, fmax=4000, sr=SR)[0]
+    valid_f0 = f0_raw[~np.isnan(f0_raw)]
+    if len(valid_f0) == 0:
+        return 0
+    src_midi = 12 * np.log2(np.median(valid_f0) / 440.0) + 69
+    print(f"  sampler source: {src_path.name}, midi≈{src_midi:.1f}")
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    count = 0
+    for i, m in enumerate(meta):
+        if m["dur"] < MIN_DUR_S:
+            continue
+        shift_st = m["midi"] - src_midi
+        dur_samp = int(m["dur"] * SR)
+        seg = y_src[:dur_samp]
+        if len(seg) < int(MIN_DUR_S * SR):
+            seg = y_src[: int(MIN_DUR_S * SR)]
+        shifted = librosa.effects.pitch_shift(
+            seg.astype(np.float32), sr=SR, n_steps=float(shift_st)
+        )
+        peak = np.abs(shifted).max()
+        if peak > 0:
+            shifted = shifted / peak * 0.9
+        sf.write(str(out_dir / f"glass_sampler_{i:02d}.wav"),
+                 shifted.astype(np.float32), SR)
+        count += 1
+    return count
+
+
+# ─── E2: Guitar helpers ───────────────────────────────────────────────────── #
+
+def _guitar_phrases(meta: list[dict], seg_dur: float = 3.0,
+                    max_phrases: int = 200):
+    """Take the first phrase of consecutive notes that reaches ≥seg_dur in each track (1 phrase/track).
+
+    Yields (track_id, 0, [{'midi', 'dur', 'art'}]).
+    Quill and sampler share this list so their note sequences are identical.
+    """
+    by_track: dict[str, list[dict]] = {}
+    for m in meta:
+        by_track.setdefault(m["track_id"], []).append(m)
+    for notes in by_track.values():
+        notes.sort(key=lambda x: x["note_idx"])
+
+    count = 0
+    for track_id in sorted(by_track):
+        phrase: list[dict] = []
+        phrase_dur = 0.0
+        for m in by_track[track_id]:
+            dur = min(m["dur"], 2.0)
+            phrase.append({"midi": m["midi"], "dur": dur,
+                           "art": m.get("art", 0)})
+            phrase_dur += dur
+            if phrase_dur >= seg_dur:
+                yield track_id, 0, phrase
+                count += 1
+                break
+        else:
+            if phrase and phrase_dur >= MIN_DUR_S:
+                yield track_id, 0, phrase
+                count += 1
+        if count >= max_phrases:
+            return
+
+
+def _extract_guitar_source_note(meta: list[dict],
+                                guitarset_dir: Path) -> tuple:
+    """Cut one isolated sustained note from GuitarSet as the sampler source.
+
+    Pick a note with dur ≥ 1.5 s and note_idx < 3 (near the start of the track),
+    and verify its actual pitch with pYIN. Returns (audio_array, midi_float).
+    """
+    import librosa
+
+    candidates = [m for m in meta if m["dur"] >= 1.5 and m["note_idx"] < 3]
+    if not candidates:
+        candidates = sorted(meta, key=lambda m: m["dur"], reverse=True)[:20]
+    candidates.sort(key=lambda m: m["dur"], reverse=True)
+    src = candidates[0]
+
+    wav_path = guitarset_dir / f"{src['track_id']}_mic.wav"
+    if not wav_path.exists():
+        return None, None
+    y, _ = librosa.load(str(wav_path), sr=SR, mono=True)
+
+    track_notes = sorted(
+        [m for m in meta if m["track_id"] == src["track_id"]],
+        key=lambda m: m["note_idx"],
+    )
+    t_approx = sum(n["dur"] for n in track_notes
+                   if n["note_idx"] < src["note_idx"])
+    s0 = int(t_approx * SR)
+    s1 = s0 + int(src["dur"] * SR)
+    seg = y[max(0, s0): min(s1, len(y))]
+    if len(seg) < SR:
+        seg = y[: int(1.5 * SR)]
+
+    f0_raw = librosa.pyin(seg, fmin=60, fmax=1000, sr=SR)[0]
+    valid = f0_raw[~np.isnan(f0_raw)]
+    src_midi = (12 * np.log2(np.median(valid) / 440.0) + 69
+                if len(valid) > 0 else src["midi"])
+    print(f"  sampler source: {src['track_id']} idx={src['note_idx']} "
+          f"dur={src['dur']:.2f}s midi≈{src_midi:.1f}")
+    return seg, src_midi
+
+
+# ─── E2: Guitar ───────────────────────────────────────────────────────────── #
+
+def _cut_guitar_reference(out_dir: Path, max_segs: int = 200,
+                          seg_dur: float = 3.0,
+                          guitarset_dir: Path | None = None) -> int:
+    """Cut 1 random segment of seg_dur seconds from each track, covering all tracks evenly."""
+    import librosa
+
+    gs_dir = guitarset_dir or Path.home() / "Desktop/MT/datasets/GuitarSet_mic"
+    npz_path = QUILL / "checkpoints/guitarset_trajectories.npz"
+    if not gs_dir.exists() or not npz_path.exists():
+        print("  SKIP guitar reference: missing GuitarSet_mic or npz")
+        return 0
+
+    d = np.load(str(npz_path), allow_pickle=True)
+    meta = json.loads(str(d["meta"]))
+    tracks = sorted(set(m["track_id"] for m in meta))
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(42)
+    count = 0
+    for track_id in tracks:
+        wav_path = gs_dir / f"{track_id}_mic.wav"
+        if not wav_path.exists():
+            continue
+        y, _ = librosa.load(str(wav_path), sr=SR, mono=True)
+        dur_samp = int(seg_dur * SR)
+        if len(y) < dur_samp:
+            continue
+        start = int(rng.integers(0, max(1, len(y) - dur_samp)))
+        seg = y[start: start + dur_samp]
+        sf.write(str(out_dir / f"guitar_ref_{track_id}.wav"), seg, SR)
+        count += 1
+        if count >= max_segs:
+            break
+    return count
+
+
+def _render_quill_guitar(out_dir: Path,
+                         phrases: list[tuple]) -> int:
+    """Render guitarset style library phrases from the phrases list."""
+    import torch
+
+    from neural.neural_take import ConditionedNN
+    from neural.perform import control_from_behavior, render
+
+    ckpt = QUILL / "checkpoints/ddsp_guitarset.pt"
+    lib_path = QUILL / "checkpoints/guitarset_trajectories.npz"
+    if not ckpt.exists() or not lib_path.exists():
+        print("  SKIP Quill guitar: missing checkpoint or library")
+        return 0
+
+    d = np.load(str(lib_path), allow_pickle=True)
+    nn = ConditionedNN(d["features"], d["trajectories"])
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    np.random.seed(42)
+    torch.manual_seed(42)
+
+    count = 0
+    for track_id, seg_idx, notes in phrases:
+        with torch.no_grad():
+            f0, loud = control_from_behavior(
+                notes, nn, pitch_glide=True,
+                envelope="pluck", traj_gain=1.0,
+            )
+            y = render(str(ckpt), f0, loud)
+        if len(y) < int(MIN_DUR_S * SR):
+            continue
+        sf.write(
+            str(out_dir / f"guitar_quill_{track_id}_{seg_idx:03d}.wav"),
+            y, SR,
+        )
+        count += 1
+    return count
+
+
+def _build_sampler_guitar(out_dir: Path,
+                          phrases: list[tuple],
+                          src_audio: np.ndarray,
+                          src_midi: float) -> int:
+    """Per-note pitch-shift of the single source + gating, joined into phrases with the same structure as Quill."""
+    import librosa
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fade = int(0.005 * SR)  # 5 ms fade
+    count = 0
+    for track_id, seg_idx, notes in phrases:
+        segments = []
+        for note in notes:
+            dur_samp = int(note["dur"] * SR)
+            if dur_samp <= len(src_audio):
+                seg = src_audio[:dur_samp].copy()
+            else:
+                seg = np.pad(src_audio, (0, dur_samp - len(src_audio)))
+            shifted = librosa.effects.pitch_shift(
+                seg.astype(np.float32), sr=SR,
+                n_steps=float(note["midi"] - src_midi),
+            )
+            if len(shifted) > 2 * fade:
+                shifted[:fade] *= np.linspace(0, 1, fade, dtype=np.float32)
+                shifted[-fade:] *= np.linspace(1, 0, fade, dtype=np.float32)
+            segments.append(shifted)
+        phrase = np.concatenate(segments)
+        peak = np.abs(phrase).max()
+        if peak > 0:
+            phrase = phrase / peak * 0.9
+        if len(phrase) < int(MIN_DUR_S * SR):
+            continue
+        sf.write(
+            str(out_dir / f"guitar_sampler_{track_id}_{seg_idx:03d}.wav"),
+            phrase.astype(np.float32), SR,
+        )
+        count += 1
+    return count
+
+
+# ─── Split-half floor ────────────────────────────────────────────────────── #
+
+def _split_half_fad(wav_dir: Path, metric: str = "mfcc") -> float | None:
+    """FAD between two halves of the reference set, used as the split-half floor."""
+    files = sorted(wav_dir.glob("*.wav"))
+    if len(files) < 4:
+        return None
+    rng = np.random.default_rng(0)
+    idx = rng.permutation(len(files))
+    mid = len(files) // 2
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        a_dir, b_dir = tmp / "a", tmp / "b"
+        a_dir.mkdir()
+        b_dir.mkdir()
+        for i in idx[:mid]:
+            f = files[i]
+            sf.write(str(a_dir / f.name), *sf.read(str(f)))
+        for i in idx[mid:]:
+            f = files[i]
+            sf.write(str(b_dir / f.name), *sf.read(str(f)))
+        if metric == "vggish":
+            return compute_fad(a_dir, b_dir)
+        return _mfcc_fad(a_dir, b_dir)
+
+
+# ─── Bootstrap ───────────────────────────────────────────────────────────── #
+
+def _bootstrap_comparison(ref_dir: Path, quill_dir: Path,
+                          sampler_dir: Path,
+                          n_boot: int = 1000,
+                          seed: int = 42) -> dict | None:
+    """File-level resampling + frame-level MFCC FAD bootstrap."""
+    ref = _collect_mfcc_frames_per_file(ref_dir)
+    quill = _collect_mfcc_frames_per_file(quill_dir)
+    sampler = _collect_mfcc_frames_per_file(sampler_dir)
+    if not ref or not quill or not sampler:
+        return None
+
+    rng = np.random.default_rng(seed)
+    q_wins = 0
+    q_fads: list[float] = []
+    s_fads: list[float] = []
+
+    for _ in range(n_boot):
+        ir = rng.choice(len(ref), len(ref), replace=True)
+        iq = rng.choice(len(quill), len(quill), replace=True)
+        is_ = rng.choice(len(sampler), len(sampler), replace=True)
+
+        rp = np.concatenate([ref[i] for i in ir])
+        qp = np.concatenate([quill[i] for i in iq])
+        sp = np.concatenate([sampler[i] for i in is_])
+
+        mu_r, cov_r = rp.mean(0), np.cov(rp, rowvar=False)
+        mu_q, cov_q = qp.mean(0), np.cov(qp, rowvar=False)
+        mu_s, cov_s = sp.mean(0), np.cov(sp, rowvar=False)
+
+        fq = _frechet_distance(mu_r, cov_r, mu_q, cov_q)
+        fs = _frechet_distance(mu_r, cov_r, mu_s, cov_s)
+        q_fads.append(fq)
+        s_fads.append(fs)
+        if fq < fs:
+            q_wins += 1
+
+    q_arr = np.array(q_fads)
+    s_arr = np.array(s_fads)
+    return {
+        "quill_win_rate": round(q_wins / n_boot, 3),
+        "quill_ci": [round(float(np.percentile(q_arr, 2.5)), 1),
+                     round(float(np.percentile(q_arr, 97.5)), 1)],
+        "sampler_ci": [round(float(np.percentile(s_arr, 2.5)), 1),
+                       round(float(np.percentile(s_arr, 97.5)), 1)],
+    }
+
+
+# ─── E2 main ───────────────────────────────────────────────────────────── #
+
+def run_e2(out_dir: Path, instrument: str = "all",
+           guitarset_dir: Path | None = None):
+    """E2 FAD: 3 arms × instruments. VGGish is the primary metric, frame-level MFCC is auxiliary."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    results: dict = {}
+    instruments = ["glass", "guitar"] if instrument == "all" else [instrument]
+
+    for inst in instruments:
+        print(f"\n{'='*60}")
+        print(f"  E2 FAD: {inst}")
+        print(f"{'='*60}")
+
+        ref_dir = out_dir / inst / "reference"
+        quill_dir = out_dir / inst / "quill"
+        sampler_dir = out_dir / inst / "sampler"
+
+        # ── 1 reference ──────────────────────────────────────────────
+        print("\n[1/5] Cutting reference segments...")
+        if inst == "glass":
+            n_ref = _cut_glass_reference(ref_dir)
+        else:
+            n_ref = _cut_guitar_reference(ref_dir,
+                                          guitarset_dir=guitarset_dir)
+        print(f"  reference: {n_ref} segments")
+
+        # ── 2 Quill renders ──────────────────────────────────────────
+        print(f"\n[2/5] Rendering Quill {inst}...")
+        if inst == "glass":
+            n_quill = _render_quill_glass(quill_dir)
+        else:
+            npz_path = QUILL / "checkpoints/guitarset_trajectories.npz"
+            d_lib = np.load(str(npz_path), allow_pickle=True)
+            meta_guitar = json.loads(str(d_lib["meta"]))
+            phrases = list(_guitar_phrases(meta_guitar,
+                                           max_phrases=n_ref))
+            n_quill = _render_quill_guitar(quill_dir, phrases)
+        print(f"  Quill: {n_quill} renders")
+
+        # ── 3 sampler baseline ───────────────────────────────────────
+        print("\n[3/5] Building sampler baseline...")
+        if inst == "glass":
+            npz_path = QUILL / "checkpoints/glass_style.npz"
+            if npz_path.exists():
+                d_lib = np.load(str(npz_path), allow_pickle=True)
+                meta_glass = json.loads(str(d_lib["meta"]))
+                n_sampler = _build_sampler_glass(meta_glass, sampler_dir)
+            else:
+                n_sampler = 0
+        else:
+            gs_dir = (guitarset_dir
+                      or Path.home() / "Desktop/MT/datasets/GuitarSet_mic")
+            src_audio, src_midi = _extract_guitar_source_note(
+                meta_guitar, gs_dir)
+            if src_audio is not None:
+                n_sampler = _build_sampler_guitar(
+                    sampler_dir, phrases, src_audio, src_midi)
+            else:
+                n_sampler = 0
+        print(f"  sampler: {n_sampler} segments")
+
+        if min(n_ref, n_quill) < 2:
+            print(f"\n  Not enough audio for {inst} "
+                  f"(ref={n_ref}, quill={n_quill})")
+            continue
+
+        # ── 4 FAD ────────────────────────────────────────────────────
+        print("\n[4/5] Computing FAD...")
+
+        # VGGish (primary metric)
+        try:
+            fad_vgg_q = compute_fad(ref_dir, quill_dir)
+            if fad_vgg_q >= 0:
+                results[f"{inst}_vggish_fad_quill"] = round(fad_vgg_q, 2)
+                print(f"  VGGish Quill:   {fad_vgg_q:.2f}")
+            if n_sampler >= 2:
+                fad_vgg_s = compute_fad(ref_dir, sampler_dir)
+                if fad_vgg_s >= 0:
+                    results[f"{inst}_vggish_fad_sampler"] = round(fad_vgg_s, 2)
+                    print(f"  VGGish Sampler: {fad_vgg_s:.2f}")
+            vgg_floor = _split_half_fad(ref_dir, metric="vggish")
+            if vgg_floor is not None and vgg_floor >= 0:
+                results[f"{inst}_vggish_fad_floor"] = round(vgg_floor, 2)
+                print(f"  VGGish floor:   {vgg_floor:.2f}")
+        except Exception as e:
+            print(f"  VGGish failed: {e}")
+
+        # MFCC (frame-level)
+        fad_mfcc_q = _mfcc_fad(ref_dir, quill_dir)
+        if fad_mfcc_q is not None:
+            results[f"{inst}_mfcc_fad_quill"] = round(fad_mfcc_q, 2)
+            print(f"  MFCC Quill:     {fad_mfcc_q:.2f}")
+        if n_sampler >= 2:
+            fad_mfcc_s = _mfcc_fad(ref_dir, sampler_dir)
+            if fad_mfcc_s is not None:
+                results[f"{inst}_mfcc_fad_sampler"] = round(fad_mfcc_s, 2)
+                print(f"  MFCC Sampler:   {fad_mfcc_s:.2f}")
+        mfcc_floor = _split_half_fad(ref_dir, metric="mfcc")
+        if mfcc_floor is not None:
+            results[f"{inst}_mfcc_fad_floor"] = round(mfcc_floor, 2)
+            print(f"  MFCC floor:     {mfcc_floor:.2f}")
+
+        # ── 5 bootstrap ──────────────────────────────────────────────
+        if n_sampler >= 2:
+            print("\n[5/5] Bootstrap (MFCC frame-level)...")
+            boot = _bootstrap_comparison(ref_dir, quill_dir, sampler_dir)
+            if boot:
+                results[f"{inst}_bootstrap_mfcc"] = boot
+                print(f"  Quill win rate: {boot['quill_win_rate']:.1%}")
+                print(f"  Quill CI: {boot['quill_ci']}")
+                print(f"  Sampler CI: {boot['sampler_ci']}")
 
     out_json = out_dir / "e2_fad_results.json"
-    out_json.write_text(json_mod.dumps(results, indent=2) + "\n")
+    out_json.write_text(json.dumps(results, indent=2) + "\n")
     print(f"\nResults -> {out_json}")
+    print(json.dumps(results, indent=2))
     return results
 
+
+# ─── CLI ──────────────────────────────────────────────────────────────────── #
 
 def main():
     parser = argparse.ArgumentParser(description="FAD evaluation for Quill")
-    parser.add_argument("--ref-dir", type=Path, help="reference audio directory")
-    parser.add_argument("--eval-dir", type=Path, help="evaluation audio directory")
-    parser.add_argument("--model", default="vggish", choices=["vggish", "pann", "clap", "encodec"])
-    parser.add_argument("--generate", action="store_true",
-                        help="generate eval pairs from checkpoints")
-    parser.add_argument("--e2", action="store_true",
-                        help="E2: corrected FAD (each system vs real recordings)")
+    parser.add_argument("--ref-dir", type=Path)
+    parser.add_argument("--eval-dir", type=Path)
+    parser.add_argument("--model", default="vggish",
+                        choices=["vggish", "pann", "clap", "encodec"])
+    parser.add_argument("--e2", action="store_true")
+    parser.add_argument("--instrument", default="all",
+                        choices=["all", "glass", "guitar"])
     parser.add_argument("--out-dir", type=Path, default=Path("eval/fad_output"))
-    parser.add_argument("--builtin", action="store_true",
-                        help="use built-in ear_test audio (default if no args)")
+    parser.add_argument("--guitarset-dir", type=Path, default=None)
     args = parser.parse_args()
 
     if args.e2:
-        run_e2(args.out_dir, model=args.model)
-    elif args.generate:
-        print("Generating evaluation pairs from checkpoints...")
-        ref_dir, quill_dir, sampler_dir = generate_pairs(args.out_dir)
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp = Path(tmp)
-            r16 = tmp / "ref_16k"
-            q16 = tmp / "quill_16k"
-            s16 = tmp / "sampler_16k"
-            nr = _ensure_16k_mono(ref_dir, r16)
-            nq = _ensure_16k_mono(quill_dir, q16)
-            ns = _ensure_16k_mono(sampler_dir, s16)
-            print(f"Generated {nr} ref, {nq} quill, {ns} sampler files")
-
-            fad_quill = compute_fad(r16, q16, model=args.model)
-            fad_sampler = compute_fad(r16, s16, model=args.model)
-            print(f"\n{'Model':>10}: {args.model}")
-            print(f"{'FAD Quill':>10}: {fad_quill:.2f}")
-            print(f"{'FAD Sampler':>10}: {fad_sampler:.2f}")
-            if fad_quill < fad_sampler:
-                print(f"  Quill wins by {fad_sampler - fad_quill:.2f}")
-            else:
-                print(f"  Sampler wins by {fad_quill - fad_sampler:.2f}")
-
+        run_e2(args.out_dir, instrument=args.instrument,
+               guitarset_dir=args.guitarset_dir)
     elif args.ref_dir and args.eval_dir:
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
-            r16 = tmp / "ref_16k"
-            e16 = tmp / "eval_16k"
+            r16, e16 = tmp / "ref_16k", tmp / "eval_16k"
             nr = _ensure_16k_mono(args.ref_dir, r16)
             ne = _ensure_16k_mono(args.eval_dir, e16)
             print(f"Loaded {nr} reference, {ne} eval files")
             score = compute_fad(r16, e16, model=args.model)
             print(f"\nFAD ({args.model}): {score:.2f}")
-
     else:
-        run_builtin()
+        parser.print_help()
 
 
 if __name__ == "__main__":
