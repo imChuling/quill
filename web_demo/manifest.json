@@ -1,0 +1,328 @@
+{
+ "melodies": {
+  "lyrical": {
+   "notes": [
+    {
+     "midi": 62,
+     "start": 0.0,
+     "len": 0.8,
+     "vel": 100,
+     "art": "vibrato"
+    },
+    {
+     "midi": 65,
+     "start": 0.8,
+     "len": 0.4,
+     "vel": 100,
+     "art": "pluck"
+    },
+    {
+     "midi": 67,
+     "start": 1.2,
+     "len": 1.2,
+     "vel": 100,
+     "art": "vibrato"
+    },
+    {
+     "midi": 65,
+     "start": 2.4,
+     "len": 0.4,
+     "vel": 100,
+     "art": "pluck"
+    },
+    {
+     "midi": 69,
+     "start": 2.8,
+     "len": 0.4,
+     "vel": 100,
+     "art": "slide"
+    },
+    {
+     "midi": 72,
+     "start": 3.2,
+     "len": 1.6,
+     "vel": 100,
+     "art": "vibrato"
+    },
+    {
+     "midi": 67,
+     "start": 4.8,
+     "len": 0.8,
+     "vel": 100,
+     "art": "pluck"
+    },
+    {
+     "midi": 62,
+     "start": 5.6,
+     "len": 1.6,
+     "vel": 100,
+     "art": "vibrato"
+    }
+   ],
+   "dur_s": 7.2
+  },
+  "folk": {
+   "notes": [
+    {
+     "midi": 69,
+     "start": 0.0,
+     "len": 0.4,
+     "vel": 100,
+     "art": "pluck"
+    },
+    {
+     "midi": 71,
+     "start": 0.4,
+     "len": 0.2,
+     "vel": 100,
+     "art": "pluck"
+    },
+    {
+     "midi": 72,
+     "start": 0.6,
+     "len": 0.4,
+     "vel": 100,
+     "art": "pluck"
+    },
+    {
+     "midi": 69,
+     "start": 1.0,
+     "len": 0.4,
+     "vel": 100,
+     "art": "pluck"
+    },
+    {
+     "midi": 67,
+     "start": 1.4,
+     "len": 0.8,
+     "vel": 100,
+     "art": "vibrato"
+    },
+    {
+     "midi": 64,
+     "start": 2.2,
+     "len": 0.4,
+     "vel": 100,
+     "art": "pluck"
+    },
+    {
+     "midi": 67,
+     "start": 2.6,
+     "len": 0.4,
+     "vel": 100,
+     "art": "slide"
+    },
+    {
+     "midi": 69,
+     "start": 3.0,
+     "len": 1.2,
+     "vel": 100,
+     "art": "vibrato"
+    },
+    {
+     "midi": 67,
+     "start": 4.2,
+     "len": 0.4,
+     "vel": 100,
+     "art": "pluck"
+    },
+    {
+     "midi": 64,
+     "start": 4.6,
+     "len": 0.4,
+     "vel": 100,
+     "art": "pluck"
+    },
+    {
+     "midi": 62,
+     "start": 5.0,
+     "len": 1.6,
+     "vel": 100,
+     "art": "vibrato"
+    }
+   ],
+   "dur_s": 6.6
+  }
+ },
+ "timbres": [
+  "violin",
+  "trumpet",
+  "glass"
+ ],
+ "behaviors": [
+  "violin",
+  "trumpet",
+  "guitar",
+  "glass"
+ ],
+ "clips": [
+  {
+   "melody": "lyrical",
+   "timbre": "violin",
+   "behavior": "violin",
+   "file": "audio/lyrical_violinT_violinB.wav",
+   "dur_s": 7.44
+  },
+  {
+   "melody": "lyrical",
+   "timbre": "violin",
+   "behavior": "trumpet",
+   "file": "audio/lyrical_violinT_trumpetB.wav",
+   "dur_s": 7.44
+  },
+  {
+   "melody": "lyrical",
+   "timbre": "violin",
+   "behavior": "guitar",
+   "file": "audio/lyrical_violinT_guitarB.wav",
+   "dur_s": 7.44
+  },
+  {
+   "melody": "lyrical",
+   "timbre": "violin",
+   "behavior": "glass",
+   "file": "audio/lyrical_violinT_glassB.wav",
+   "dur_s": 7.44
+  },
+  {
+   "melody": "lyrical",
+   "timbre": "trumpet",
+   "behavior": "violin",
+   "file": "audio/lyrical_trumpetT_violinB.wav",
+   "dur_s": 7.44
+  },
+  {
+   "melody": "lyrical",
+   "timbre": "trumpet",
+   "behavior": "trumpet",
+   "file": "audio/lyrical_trumpetT_trumpetB.wav",
+   "dur_s": 7.44
+  },
+  {
+   "melody": "lyrical",
+   "timbre": "trumpet",
+   "behavior": "guitar",
+   "file": "audio/lyrical_trumpetT_guitarB.wav",
+   "dur_s": 7.44
+  },
+  {
+   "melody": "lyrical",
+   "timbre": "trumpet",
+   "behavior": "glass",
+   "file": "audio/lyrical_trumpetT_glassB.wav",
+   "dur_s": 7.44
+  },
+  {
+   "melody": "lyrical",
+   "timbre": "glass",
+   "behavior": "violin",
+   "file": "audio/lyrical_glassT_violinB.wav",
+   "dur_s": 7.44
+  },
+  {
+   "melody": "lyrical",
+   "timbre": "glass",
+   "behavior": "trumpet",
+   "file": "audio/lyrical_glassT_trumpetB.wav",
+   "dur_s": 7.44
+  },
+  {
+   "melody": "lyrical",
+   "timbre": "glass",
+   "behavior": "guitar",
+   "file": "audio/lyrical_glassT_guitarB.wav",
+   "dur_s": 7.44
+  },
+  {
+   "melody": "lyrical",
+   "timbre": "glass",
+   "behavior": "glass",
+   "file": "audio/lyrical_glassT_glassB.wav",
+   "dur_s": 7.44
+  },
+  {
+   "melody": "folk",
+   "timbre": "violin",
+   "behavior": "violin",
+   "file": "audio/folk_violinT_violinB.wav",
+   "dur_s": 6.78
+  },
+  {
+   "melody": "folk",
+   "timbre": "violin",
+   "behavior": "trumpet",
+   "file": "audio/folk_violinT_trumpetB.wav",
+   "dur_s": 6.78
+  },
+  {
+   "melody": "folk",
+   "timbre": "violin",
+   "behavior": "guitar",
+   "file": "audio/folk_violinT_guitarB.wav",
+   "dur_s": 6.78
+  },
+  {
+   "melody": "folk",
+   "timbre": "violin",
+   "behavior": "glass",
+   "file": "audio/folk_violinT_glassB.wav",
+   "dur_s": 6.78
+  },
+  {
+   "melody": "folk",
+   "timbre": "trumpet",
+   "behavior": "violin",
+   "file": "audio/folk_trumpetT_violinB.wav",
+   "dur_s": 6.78
+  },
+  {
+   "melody": "folk",
+   "timbre": "trumpet",
+   "behavior": "trumpet",
+   "file": "audio/folk_trumpetT_trumpetB.wav",
+   "dur_s": 6.78
+  },
+  {
+   "melody": "folk",
+   "timbre": "trumpet",
+   "behavior": "guitar",
+   "file": "audio/folk_trumpetT_guitarB.wav",
+   "dur_s": 6.78
+  },
+  {
+   "melody": "folk",
+   "timbre": "trumpet",
+   "behavior": "glass",
+   "file": "audio/folk_trumpetT_glassB.wav",
+   "dur_s": 6.78
+  },
+  {
+   "melody": "folk",
+   "timbre": "glass",
+   "behavior": "violin",
+   "file": "audio/folk_glassT_violinB.wav",
+   "dur_s": 6.78
+  },
+  {
+   "melody": "folk",
+   "timbre": "glass",
+   "behavior": "trumpet",
+   "file": "audio/folk_glassT_trumpetB.wav",
+   "dur_s": 6.78
+  },
+  {
+   "melody": "folk",
+   "timbre": "glass",
+   "behavior": "guitar",
+   "file": "audio/folk_glassT_guitarB.wav",
+   "dur_s": 6.78
+  },
+  {
+   "melody": "folk",
+   "timbre": "glass",
+   "behavior": "glass",
+   "file": "audio/folk_glassT_glassB.wav",
+   "dur_s": 6.78
+  }
+ ]
+}

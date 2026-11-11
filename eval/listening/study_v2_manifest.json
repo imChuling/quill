@@ -1,0 +1,118 @@
+{
+  "stimuli": {
+    "0": "checkpoints/eval/lyrical_v0.wav",
+    "1": "checkpoints/eval/lyrical_flat.wav",
+    "2": "checkpoints/eval/folk_v0.wav",
+    "3": "checkpoints/eval/folk_allplain.wav",
+    "4": "checkpoints/eval/lyrical_v2.wav",
+    "5": "checkpoints/eval/x_folk_viB_viT.wav",
+    "6": "checkpoints/eval/x_folk_guB_viT.wav",
+    "7": "checkpoints/midi_ddsp_ref/ddsp_inference.wav",
+    "8": "checkpoints/eval/g22_lyrical_viB_glT.wav",
+    "9": "checkpoints/eval/g22_lyrical_glB_glT.wav",
+    "10": "checkpoints/eval/x_lyrical_viB_viT.wav",
+    "11": "checkpoints/eval/x_lyrical_viB_trT.wav",
+    "12": "checkpoints/eval/x_lyrical_trB_trT.wav",
+    "13": "checkpoints/eval/x_folk_viB_viT.wav",
+    "14": "checkpoints/eval/x_folk_viB_trT.wav",
+    "15": "checkpoints/eval/x_folk_trB_trT.wav",
+    "16": "checkpoints/eval/x_lyrical_trB_viT.wav",
+    "17": "checkpoints/eval/x_folk_trB_viT.wav",
+    "18": "checkpoints/eval/x_lyrical_guB_guT.wav",
+    "19": "checkpoints/eval/x_lyrical_guB_viT.wav",
+    "20": "checkpoints/eval/x_folk_guB_guT.wav",
+    "21": "checkpoints/eval/x_folk_guB_viT.wav",
+    "22": "checkpoints/eval/g22_lyrical_viB_viT.wav",
+    "23": "checkpoints/eval/g22_folk_glB_glT.wav",
+    "24": "checkpoints/eval/g22_folk_glB_viT.wav",
+    "25": "checkpoints/eval/g22_folk_viB_viT.wav"
+  },
+  "main": [
+    {
+      "qid": "M1",
+      "idxA": 0,
+      "idxB": 1,
+      "type": "ab"
+    },
+    {
+      "qid": "M2",
+      "idxA": 2,
+      "idxB": 3,
+      "type": "ab"
+    },
+    {
+      "qid": "M3",
+      "idxA": 4,
+      "idxB": 0,
+      "type": "ab"
+    },
+    {
+      "qid": "M4",
+      "idxA": 5,
+      "idxB": 6,
+      "type": "same"
+    },
+    {
+      "qid": "M5",
+      "idxA": 0,
+      "idxB": 7,
+      "type": "rate"
+    },
+    {
+      "qid": "M6",
+      "idxA": 8,
+      "idxB": 9,
+      "type": "same"
+    }
+  ],
+  "abx": [
+    {
+      "qid": "X1",
+      "ref": 10,
+      "match": 11,
+      "foil": 12
+    },
+    {
+      "qid": "X2",
+      "ref": 13,
+      "match": 14,
+      "foil": 15
+    },
+    {
+      "qid": "X3",
+      "ref": 12,
+      "match": 16,
+      "foil": 10
+    },
+    {
+      "qid": "X4",
+      "ref": 15,
+      "match": 17,
+      "foil": 13
+    },
+    {
+      "qid": "X5",
+      "ref": 18,
+      "match": 19,
+      "foil": 10
+    },
+    {
+      "qid": "X6",
+      "ref": 20,
+      "match": 21,
+      "foil": 13
+    },
+    {
+      "qid": "X7",
+      "ref": 22,
+      "match": 8,
+      "foil": 9
+    },
+    {
+      "qid": "X8",
+      "ref": 23,
+      "match": 24,
+      "foil": 25
+    }
+  ]
+}

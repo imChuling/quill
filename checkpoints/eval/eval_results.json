@@ -1,0 +1,232 @@
+{
+  "controllability": {
+    "v0": {
+      "vib_median": 4.0087698834535574,
+      "plain_median": 0.6437561411701523,
+      "contrast": 6.227155947851365,
+      "slide_ok": 4,
+      "slide_n": 4,
+      "n_vib": 10,
+      "n_plain": 15
+    },
+    "nn_nolabel": {
+      "vib_median": 4.008768818714505,
+      "plain_median": 0.6437561411701523,
+      "contrast": 6.227154293903567,
+      "slide_ok": 4,
+      "slide_n": 4,
+      "n_vib": 10,
+      "n_plain": 15
+    },
+    "rand_label_multiseed": {
+      "n_seeds": 100,
+      "median": 0.61,
+      "p2.5": 0.05,
+      "p97.5": 1.45,
+      "frac_gt1": 0.17
+    }
+  },
+  "decoupling": {
+    "viB_trT": {
+      "b_beh": 8.526483320584385,
+      "b_tim": 58.83399044420699,
+      "t_beh": 103.47853088378906,
+      "t_tim": 4.8779988288879395,
+      "behavior_follows": true,
+      "timbre_follows": true
+    },
+    "viB_guT": {
+      "b_beh": 12.140058830882076,
+      "b_tim": 65.86671884973717,
+      "t_beh": 46.93526840209961,
+      "t_tim": 15.019624710083008,
+      "behavior_follows": true,
+      "timbre_follows": true
+    },
+    "trB_viT": {
+      "b_beh": 1.421309601155623,
+      "b_tim": 59.56002050939013,
+      "t_beh": 100.882080078125,
+      "t_tim": 3.467674493789673,
+      "behavior_follows": true,
+      "timbre_follows": true
+    },
+    "trB_guT": {
+      "b_beh": 7.1632756149902335,
+      "b_tim": 113.2084742019644,
+      "t_beh": 90.99012756347656,
+      "t_tim": 15.267053604125977,
+      "behavior_follows": true,
+      "timbre_follows": true
+    },
+    "guB_viT": {
+      "b_beh": 21.54575014129369,
+      "b_tim": 51.508195260106035,
+      "t_beh": 27.66234588623047,
+      "t_tim": 12.95018196105957,
+      "behavior_follows": true,
+      "timbre_follows": true
+    },
+    "guB_trT": {
+      "b_beh": 29.493154070702438,
+      "b_tim": 98.85735498089531,
+      "t_beh": 65.67842864990234,
+      "t_tim": 31.192752838134766,
+      "behavior_follows": true,
+      "timbre_follows": true
+    },
+    "passed": "12/12"
+  },
+  "data_curve": [
+    {
+      "n": 50,
+      "vib_median": 2.731829641972911,
+      "plain_median": 0.341005949537572,
+      "contrast": 10.331932278758462,
+      "contrast_std": 2.422033215851989,
+      "slide_hit": 1.0
+    },
+    {
+      "n": 150,
+      "vib_median": 3.1466077317236607,
+      "plain_median": 0.3890318094893005,
+      "contrast": 10.261936772259318,
+      "contrast_std": 2.098860905150364,
+      "slide_hit": 1.0
+    },
+    {
+      "n": 500,
+      "vib_median": 3.2121146736684976,
+      "plain_median": 0.3874004434913758,
+      "contrast": 8.369582939816521,
+      "contrast_std": 0.5603218643120027,
+      "slide_hit": 1.0
+    },
+    {
+      "n": 1500,
+      "vib_median": 3.1179866285600006,
+      "plain_median": 0.4732872999936245,
+      "contrast": 7.366996925465347,
+      "contrast_std": 1.5006785992293987,
+      "slide_hit": 1.0
+    },
+    {
+      "n": 7582,
+      "vib_median": 4.0087698834535574,
+      "plain_median": 0.6437561411701523,
+      "contrast": 6.227155947851365,
+      "contrast_std": 0.0,
+      "slide_hit": 1.0
+    }
+  ],
+  "audio_controllability": {
+    "v0": {
+      "vib_median": 3.2,
+      "plain_median": 0.8,
+      "contrast": 4.0,
+      "n_vib": 10,
+      "n_plain": 15
+    },
+    "flat": {
+      "vib_median": 0.0,
+      "plain_median": 0.0,
+      "contrast": 0.0,
+      "n_vib": 10,
+      "n_plain": 15
+    }
+  },
+  "paired_counterfactual": {
+    "control_median_ratio": 7.01,
+    "control_bootstrap_ci95": [
+      4.79,
+      18.65
+    ],
+    "control_n": 29,
+    "control_gt1": 27,
+    "audio_median_ratio": 4.73,
+    "audio_bootstrap_ci95": [
+      3.22,
+      37.5
+    ],
+    "audio_n": 29,
+    "audio_gt1": 25,
+    "control_per_melody": {
+      "lyrical": 7.04,
+      "scale_run": 18.65,
+      "leaps": 5.64,
+      "folk": 6.59
+    },
+    "audio_per_melody": {
+      "lyrical": 3.75,
+      "scale_run": 4.15,
+      "leaps": 21.24,
+      "folk": 22.85
+    }
+  },
+  "processing_ablation": {
+    "none": {
+      "paired_median_ratio": 1.55,
+      "item_ci95": [
+        1.36,
+        2.64
+      ],
+      "n": 29,
+      "gt1": 21,
+      "per_melody_median": {
+        "lyrical": 1.45,
+        "scale_run": 2.02,
+        "leaps": 1.67,
+        "folk": 1.5
+      }
+    },
+    "uniform": {
+      "paired_median_ratio": 1.61,
+      "item_ci95": [
+        1.36,
+        3.0
+      ],
+      "n": 29,
+      "gt1": 21,
+      "per_melody_median": {
+        "lyrical": 1.48,
+        "scale_run": 3.0,
+        "leaps": 1.62,
+        "folk": 1.58
+      }
+    },
+    "full": {
+      "paired_median_ratio": 7.01,
+      "item_ci95": [
+        4.79,
+        18.65
+      ],
+      "n": 29,
+      "gt1": 27,
+      "per_melody_median": {
+        "lyrical": 7.04,
+        "scale_run": 18.65,
+        "leaps": 5.64,
+        "folk": 6.59
+      }
+    }
+  },
+  "glass_2x2": {
+    "glB_viT": {
+      "b_beh": 5.862289134392697,
+      "b_tim": 12.572206216794475,
+      "t_beh": 57.13037872314453,
+      "t_tim": 2.961139678955078,
+      "behavior_follows": true,
+      "timbre_follows": true
+    },
+    "viB_glT": {
+      "b_beh": 2.3315523055063854,
+      "b_tim": 12.095704033403718,
+      "t_beh": 58.00324249267578,
+      "t_tim": 2.915050983428955,
+      "behavior_follows": true,
+      "timbre_follows": true
+    },
+    "passed": "4/4"
+  }
+}

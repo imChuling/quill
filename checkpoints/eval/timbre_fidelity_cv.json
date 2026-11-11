@@ -1,0 +1,280 @@
+{
+  "loto": {
+    "rows": [
+      {
+        "fold": "loto0",
+        "file": "Amaltheus Cellars Glass Note 1.wav",
+        "msl_own": 6.31,
+        "mfcc_own": 33.1,
+        "msl_violin": 11.2,
+        "mfcc_violin": 37.8,
+        "msl_trumpet": 11.65,
+        "mfcc_trumpet": 81.6
+      },
+      {
+        "fold": "loto0",
+        "file": "Auburn Road Wine Glass Note 1.wav",
+        "msl_own": 7.19,
+        "mfcc_own": 27.8,
+        "msl_violin": 13.08,
+        "mfcc_violin": 33.4,
+        "msl_trumpet": 13.04,
+        "mfcc_trumpet": 92.3
+      },
+      {
+        "fold": "loto0",
+        "file": "C#6-073-01.wav",
+        "msl_own": 6.51,
+        "mfcc_own": 16.5,
+        "msl_violin": 13.71,
+        "mfcc_violin": 51.1,
+        "msl_trumpet": 16.28,
+        "mfcc_trumpet": 88.4
+      },
+      {
+        "fold": "loto1",
+        "file": "Amaltheus Cellars Glass Note 2.wav",
+        "msl_own": 7.01,
+        "mfcc_own": 49.1,
+        "msl_violin": 12.18,
+        "mfcc_violin": 36.2,
+        "msl_trumpet": 12.26,
+        "mfcc_trumpet": 81.3
+      },
+      {
+        "fold": "loto1",
+        "file": "Auburn Road Wine Glass Note 2.wav",
+        "msl_own": 7.96,
+        "mfcc_own": 28.4,
+        "msl_violin": 13.24,
+        "mfcc_violin": 36.5,
+        "msl_trumpet": 13.3,
+        "mfcc_trumpet": 88.3
+      },
+      {
+        "fold": "loto1",
+        "file": "C#6-073-02.wav",
+        "msl_own": 6.68,
+        "mfcc_own": 18.5,
+        "msl_violin": 11.98,
+        "mfcc_violin": 52.1,
+        "msl_trumpet": 13.93,
+        "mfcc_trumpet": 84.2
+      },
+      {
+        "fold": "loto2",
+        "file": "Amaltheus Cellars Glass Note 3.wav",
+        "msl_own": 6.07,
+        "mfcc_own": 32.8,
+        "msl_violin": 11.33,
+        "mfcc_violin": 32.9,
+        "msl_trumpet": 11.44,
+        "mfcc_trumpet": 84.5
+      },
+      {
+        "fold": "loto2",
+        "file": "Auburn Road Wine Glass Note 3.wav",
+        "msl_own": 7.19,
+        "mfcc_own": 18.8,
+        "msl_violin": 13.24,
+        "mfcc_violin": 37.8,
+        "msl_trumpet": 13.32,
+        "mfcc_trumpet": 88.2
+      },
+      {
+        "fold": "loto2",
+        "file": "C#6-073-03.wav",
+        "msl_own": 6.94,
+        "mfcc_own": 14.1,
+        "msl_violin": 12.11,
+        "mfcc_violin": 55.6,
+        "msl_trumpet": 15.0,
+        "mfcc_trumpet": 98.1
+      },
+      {
+        "fold": "loto3",
+        "file": "Amaltheus Cellars Glass Note 4.wav",
+        "msl_own": 7.28,
+        "mfcc_own": 25.6,
+        "msl_violin": 12.53,
+        "mfcc_violin": 45.5,
+        "msl_trumpet": 12.89,
+        "mfcc_trumpet": 81.4
+      },
+      {
+        "fold": "loto3",
+        "file": "Auburn Road Wine Glass Note 4.wav",
+        "msl_own": 7.19,
+        "mfcc_own": 25.1,
+        "msl_violin": 11.76,
+        "mfcc_violin": 37.1,
+        "msl_trumpet": 12.34,
+        "mfcc_trumpet": 83.7
+      },
+      {
+        "fold": "loto3",
+        "file": "C#6-073-04.wav",
+        "msl_own": 7.23,
+        "mfcc_own": 15.9,
+        "msl_violin": 11.73,
+        "mfcc_violin": 54.8,
+        "msl_trumpet": 13.76,
+        "mfcc_trumpet": 90.3
+      }
+    ],
+    "median": {
+      "own": {
+        "msl": 7.1,
+        "mfcc": 25.35
+      },
+      "violin": {
+        "msl": 12.145,
+        "mfcc": 37.8
+      },
+      "trumpet": {
+        "msl": 13.17,
+        "mfcc": 86.35
+      }
+    },
+    "own_wins_msl": "12/12"
+  },
+  "logo": {
+    "rows": [
+      {
+        "fold": "logo_amaltheus",
+        "file": "Amaltheus Cellars Glass Note 1.wav",
+        "msl_own": 8.13,
+        "mfcc_own": 51.3,
+        "msl_violin": 11.22,
+        "mfcc_violin": 37.0,
+        "msl_trumpet": 11.65,
+        "mfcc_trumpet": 81.8
+      },
+      {
+        "fold": "logo_amaltheus",
+        "file": "Amaltheus Cellars Glass Note 2.wav",
+        "msl_own": 8.92,
+        "mfcc_own": 62.7,
+        "msl_violin": 12.17,
+        "mfcc_violin": 36.1,
+        "msl_trumpet": 12.26,
+        "mfcc_trumpet": 82.1
+      },
+      {
+        "fold": "logo_amaltheus",
+        "file": "Amaltheus Cellars Glass Note 3.wav",
+        "msl_own": 7.74,
+        "mfcc_own": 47.2,
+        "msl_violin": 11.35,
+        "mfcc_violin": 32.3,
+        "msl_trumpet": 11.45,
+        "mfcc_trumpet": 84.3
+      },
+      {
+        "fold": "logo_amaltheus",
+        "file": "Amaltheus Cellars Glass Note 4.wav",
+        "msl_own": 8.99,
+        "mfcc_own": 42.0,
+        "msl_violin": 12.54,
+        "mfcc_violin": 45.0,
+        "msl_trumpet": 12.9,
+        "mfcc_trumpet": 81.2
+      },
+      {
+        "fold": "logo_auburn",
+        "file": "Auburn Road Wine Glass Note 1.wav",
+        "msl_own": 8.54,
+        "mfcc_own": 27.4,
+        "msl_violin": 13.08,
+        "mfcc_violin": 33.2,
+        "msl_trumpet": 13.05,
+        "mfcc_trumpet": 92.8
+      },
+      {
+        "fold": "logo_auburn",
+        "file": "Auburn Road Wine Glass Note 2.wav",
+        "msl_own": 8.97,
+        "mfcc_own": 30.9,
+        "msl_violin": 13.24,
+        "mfcc_violin": 36.7,
+        "msl_trumpet": 13.3,
+        "mfcc_trumpet": 88.3
+      },
+      {
+        "fold": "logo_auburn",
+        "file": "Auburn Road Wine Glass Note 3.wav",
+        "msl_own": 8.54,
+        "mfcc_own": 21.9,
+        "msl_violin": 13.26,
+        "mfcc_violin": 37.0,
+        "msl_trumpet": 13.3,
+        "mfcc_trumpet": 87.2
+      },
+      {
+        "fold": "logo_auburn",
+        "file": "Auburn Road Wine Glass Note 4.wav",
+        "msl_own": 7.67,
+        "mfcc_own": 29.6,
+        "msl_violin": 11.76,
+        "mfcc_violin": 37.6,
+        "msl_trumpet": 12.34,
+        "mfcc_trumpet": 84.0
+      },
+      {
+        "fold": "logo_c5",
+        "file": "C#6-073-01.wav",
+        "msl_own": 9.1,
+        "mfcc_own": 48.1,
+        "msl_violin": 13.71,
+        "mfcc_violin": 51.2,
+        "msl_trumpet": 16.28,
+        "mfcc_trumpet": 88.8
+      },
+      {
+        "fold": "logo_c5",
+        "file": "C#6-073-02.wav",
+        "msl_own": 8.93,
+        "mfcc_own": 46.3,
+        "msl_violin": 12.0,
+        "mfcc_violin": 51.5,
+        "msl_trumpet": 13.92,
+        "mfcc_trumpet": 84.0
+      },
+      {
+        "fold": "logo_c5",
+        "file": "C#6-073-03.wav",
+        "msl_own": 9.62,
+        "mfcc_own": 50.2,
+        "msl_violin": 12.1,
+        "mfcc_violin": 56.1,
+        "msl_trumpet": 15.02,
+        "mfcc_trumpet": 97.9
+      },
+      {
+        "fold": "logo_c5",
+        "file": "C#6-073-04.wav",
+        "msl_own": 10.19,
+        "mfcc_own": 51.8,
+        "msl_violin": 11.76,
+        "mfcc_violin": 55.0,
+        "msl_trumpet": 13.76,
+        "mfcc_trumpet": 90.7
+      }
+    ],
+    "median": {
+      "own": {
+        "msl": 8.925,
+        "mfcc": 46.75
+      },
+      "violin": {
+        "msl": 12.135,
+        "mfcc": 37.3
+      },
+      "trumpet": {
+        "msl": 13.175,
+        "mfcc": 85.75
+      }
+    },
+    "own_wins_msl": "12/12"
+  }
+}

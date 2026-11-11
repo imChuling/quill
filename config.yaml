@@ -1,0 +1,79 @@
+# Quill 配置：所有参数的单一事实来源（quill_config.CFG）。
+
+audio:
+  sr: 44100          # 44.1 kHz / mono 处理
+  mono: true
+  norm_peak: 0.97    # 自动增益归一化目标峰值
+
+f0:
+  step_size_ms: 10.0       # PESTO CQT 帧步长，100 Hz 帧率
+  pesto_model: mir-1k_g7   # PESTO 默认权重
+  conf_threshold: 0.6      # 低置信度帧过滤；f0 倍频常伴随 conf 跌落
+  octave_tol_cents: 50.0   # 主/兜底 f0 中位数偏差超过此值即判倍频错误
+  pyin_fmin: 55.0          # A1
+  pyin_fmax: 2000.0
+
+harmonic:
+  n_harmonics: 60          # H_env[60, T]
+  n_fft: 4096              # STFT 窗长
+  hop: 512                 # STFT 帧移，约 86.13 Hz 帧率
+  search_cents: 30.0       # 每谐波峰值搜索半窗（McAulay-Quatieri 1986）
+  quasi_search_cents: 80.0 # 准谐波声源（酒杯/碗）放宽窗
+  low_f0_nfft_threshold: 100.0  # f0 低于此值时 n_fft 升到 low_f0_nfft
+  low_f0_nfft: 8192
+  nyquist_margin_hz: 50.0  # 距 Nyquist 此余量内的谐波截断
+
+synth:
+  # 合成端与 harmonic 共用 sr/hop/n_harmonics；此处仅放合成特有项
+  fade_above_nyquist: true # 引擎未读取此项;越 Nyquist 谐波的软淡出宽度见 runtime.nyquist_ramp_hz
+  humanize_cents: 6.0      # 微音高抖动，去静态机械感
+  humanize_amp: 0.05       # 微幅度颤动（shimmer）
+
+# ---- 实时引擎 ----
+runtime:
+  blocksize: 256           # sd.OutputStream 块大小（延迟预算 = 256/44100 ≈ 5.8 ms）
+  max_voices: 16
+  channels: 1
+  noise_level: 0.5         # 每声部噪声端混入比例
+  attack_fade_ms: 20.0     # 谐波淡入交叠（与 attack 颗粒回放交叠）
+  steal_fade_ms: 4.0       # 偷音快速淡出（3–5 ms）
+  nyquist_ramp_hz: 600.0   # 谐波越 Nyquist 的增益软淡出宽度
+  attack_grain_table_s: 2.0  # 预算噪声表长度（秒）
+
+adsr:                      # 线性段 ADSR，段时长误差 ±10% 以内
+  attack_ms: 8.0
+  decay_ms: 120.0
+  sustain: 0.7
+  release_ms: 180.0
+
+velocity:                  # 力度映射
+  loud_exp: 1.5            # loud = (vel/127)^1.5
+  tilt_db_oct: 6.0         # tilt = -(1 - vel/127) * tilt_db_oct  (dB/oct 亮度倾斜)
+
+# ---- 演奏法分类：阈值全部可调 ----
+articulation:
+  strum_window_ms: 80      # 同窗 onset 间隔阈
+  strum_min_onsets: 3      # 同窗 ≥3 onset -> strum
+  slide_slope_cents_s: 500 # |f0 净斜率| > 此值 -> slide（1 半音/100 ms ≈ 1000，留裕度取 500）
+  slide_min_dur_ms: 60     # slide 持续下限
+  slide_monotonic_frac: 0.70  # 真滑音 f0 轨迹单调，要求同向步占比 > 此值
+                              # （滤掉大斜率但不单调的 PESTO 八度跳变/音间噪声假滑音）
+  min_event_ms: 30         # 短于此的孤立事件视为碎片丢弃（strum 簇内不丢）
+  legato_max_gap_ms: 60    # 与前音间隔 < 此值才可能 legato
+  legato_pitch_jump_max_st: 7   # legato 音程上限（超出更像独立起音/slide）
+  pluck_attack_ms: 25      # log_attack < log10(0.025) -> 快起音（pluck 主判据）
+  pluck_centroid_hz: 1200  # 且质心 > 此值 -> pluck（低音区拨弦质心偏低，阈值不能再高）
+  vibrato_rate_lo: 4.0     # 颤音速率窗（Hz）；命中 -> sustain+vibrato（先抽再判 slide）
+  vibrato_rate_hi: 8.0
+  pluck_rms_buckets: 3     # pluck 颗粒 RMS 分桶数（Roads 2001 granular）
+
+# ---- 手势解释器：MIDI 手势 -> 演奏法 ----
+gesture:
+  legato_max_st: 2         # 重叠键音程≤此→legato；>此→slide
+  slide_dur_ms: 130        # slide 基准时长（力度越大越快）
+  slide_dur_min_ms: 50
+  legato_dur_ms: 40        # legato 快滑时长
+  strum_spread_ms: 14      # strum 每弦基准时差（力度越大越紧）
+  vibrato_max_cents: 50    # CC1=127 时的颤音深度
+  vibrato_onset_ms: 110    # 揉弦起振延迟，先清音再揉
+  vibrato_ramp_ms: 220     # 揉弦深度 smoothstep 渐入时长

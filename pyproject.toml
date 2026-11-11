@@ -1,0 +1,90 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quill"
+version = "0.1.0"
+description = "Tone capture and articulation transfer for playable sound design"
+readme = "README.md"
+license = {text = "CC-BY-NC-4.0"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Chuling Li"},
+]
+dependencies = [
+    "numpy>=2.0",
+    "scipy>=1.12",
+    "librosa>=0.10",
+    "numba>=0.60",
+    "soundfile>=0.12",
+    "pyyaml>=6.0",
+    "pesto-pitch>=2.0",
+    "torch>=2.0",
+]
+
+[project.optional-dependencies]
+realtime = [
+    "sounddevice>=0.5",
+    "mido>=1.3",
+    "python-rtmidi>=1.5",
+]
+eval = [
+    "matplotlib>=3.8",
+    "scikit-learn",
+    "mir-eval>=0.7",
+    "frechet_audio_distance>=0.3",
+]
+ml = [
+    "transformers",
+    "nnAudio",
+    "basic-pitch>=0.4",
+]
+serve = [
+    "fastapi[standard]",
+    "pretty_midi",
+]
+desktop = [
+    "pywebview>=6.0",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+]
+
+[tool.setuptools]
+py-modules = ["snapshot", "quill_config", "library"]
+
+[tool.setuptools.packages.find]
+include = ["analysis*", "synth*", "runtime*", "neural*", "eval*", "ui*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+    "slow: 慢测（加载 Basic Pitch 模型等），默认仍运行",
+]
+filterwarnings = [
+    "ignore::RuntimeWarning",
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "E701",   # multiple statements on one line (colon) — compact state enums
+    "E702",   # multiple statements on one line (semicolon) — DSP parameter blocks
+    "E731",   # lambda assignment — common in DSP callbacks
+    "E741",   # ambiguous variable name (l/I/O) — standard in DSP/math code
+    "B905",
+    "SIM105", # suppressible-exception — try/except pass is clear enough
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["analysis", "synth", "runtime", "neural", "eval"]

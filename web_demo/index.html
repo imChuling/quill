@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quill</title>
+<meta name="description" content="Quill: timbre and performance behavior learned as separate, swappable assets. ISMIR 2026 Late-Breaking Demo.">
+<link rel="stylesheet" href="vendor/fonts.css">
+<link rel="icon" type="image/svg+xml" href="assets/quill-emblem.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="topbar">
+  <a class="brand" href="#" aria-label="Quill">
+    <img class="mark" src="assets/quill-emblem.svg" alt="" width="400" height="470">
+    <img class="word" src="assets/quill-wordmark.svg" alt="Quill" width="645" height="127">
+  </a>
+  <span class="grow"></span>
+  <span class="badge" id="svc-badge">connecting…</span>
+</div>
+<header class="hero">
+  <div class="hero-text">
+    <div class="script tagline">Capture · Preserve · Transform</div>
+    <h1>An expressive renderer must learn two things: how an instrument <em>sounds</em> and how it is <em>played</em>.</h1>
+    <p class="lede">Quill keeps them as two separately learned, reusable assets: a lightweight DDSP <b>timbre</b> model and a note-level <b>style library</b> of pitch and energy trajectories. Either asset can be swapped across instruments without retraining.</p>
+    <div class="cta">
+      <button class="primary big" id="cta-listen">▶ Listen</button>
+      <button class="ghost big" id="cta-play">Open the piano roll</button>
+    </div>
+    <p class="scope-line">This page is a listening demo of that claim: three timbres, four style libraries, and your melody rendered on a server. Capturing instruments, training timbres and playing Quill in real time are desktop-only. <a href="#scope-card">What differs ↓</a></p>
+    <p class="meta">ISMIR 2026 Late-Breaking Demo · Audiotool Let's Build 2026, Sound Design track, 3rd place</p>
+  </div>
+  <div class="seal" aria-hidden="true">
+    <div class="seal-ring"><img src="assets/quill-logo-gold.svg" alt="" width="700" height="500"></div>
+  </div>
+</header>
+<nav class="steps" aria-label="Steps">
+  <a href="#matrix-card" class="step" data-step="1"><span class="num">01</span> Listen</a>
+  <a href="#matrix-card" class="step" data-step="2"><span class="num">02</span> Swap the player</a>
+  <a href="#render-card" class="step" data-step="3"><span class="num">03</span> Your melody</a>
+</nav>
+
+<main>
+  <section class="card" id="matrix-card">
+    <div class="card-head">
+      <h2 class="panel-title"><span class="sc">Cross-rendering</span><span class="sub">the swap</span></h2>
+      <div class="seg" role="radiogroup" aria-label="Melody">
+        <button class="seg-btn is-on" data-melody="lyrical" role="radio" aria-checked="true">lyrical</button>
+        <button class="seg-btn" data-melody="folk" role="radio" aria-checked="false">folk</button>
+      </div>
+    </div>
+    <p class="hint">"As recorded" is each timbre with its own style library. Along a row the timbre stays and the library changes. A violinist's within-note behavior, once extracted, drives a trumpet or a wine glass without re-performance.</p>
+    <div class="matrix-wrap">
+      <table class="matrix" id="matrix" aria-label="Timbre by behavior matrix">
+        <thead><tr><th class="corner"><span class="axis">timbre ↓ · style library →</span></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="matrix-list" id="matrix-list" aria-hidden="true"></div>
+    <div class="nowbar">
+      <div class="nowplaying" id="nowplaying" aria-live="polite">Pick a cell.</div>
+    </div>
+    <div class="script closer">To transform is to compose.</div>
+  </section>
+
+  <section class="card" id="render-card">
+    <div class="card-head">
+      <h2 class="panel-title"><span class="sc">Your melody</span><span class="sub">the hand</span></h2>
+    </div>
+    <p class="hint">Record from the keys, from <kbd>a w s e d f t g y h u j k</kbd>, or from a MIDI controller. Draw and drag notes; long-press on a phone. Right-click one to set its articulation label: plain, vibrato or slide. Play retrieves a trajectory for every note and renders. <kbd>space</kbd> play / stop · <kbd>r</kbd> record · <kbd>esc</kbd> stop.</p>
+
+    <div class="transport">
+      <span class="tgroup">
+        <span id="prRec" class="tbtn round rec" title="Record (r)">●</span>
+        <span id="prPlay" class="tbtn round play" title="Render and play (space)">▶</span>
+        <span id="prStop" class="tbtn round" title="Stop (esc)">■</span>
+        <span class="roll-info" id="roll-info"></span>
+      </span>
+      <span class="tgroup mid">
+        <label class="tcheck"><input type="checkbox" id="metro"> click</label>
+        <label class="tcheck"><input type="checkbox" id="countin"> count-in</label>
+        <label class="tcheck"><input type="checkbox" id="loop"> loop</label>
+        <label class="tnum">tempo <input type="number" id="bpm" min="40" max="200" value="100" step="1"></label>
+        <span class="tbtn" id="tsig" title="Time signature">4/4</span>
+      </span>
+      <span class="tgroup right">
+        <button class="ghost" id="roll-example">Example</button>
+        <label class="file-btn"><input type="file" id="midi-file" accept=".mid,.midi,audio/midi"><span>Load .mid</span></label>
+        <button class="ghost" id="dl-mid" title="Download the roll as a standard MIDI file">Save .mid</button>
+        <span id="prClear" class="tbtn" title="Clear all notes">Clear</span>
+      </span>
+    </div>
+    <div class="roll-host"><canvas id="prCanvas"></canvas></div>
+    <div class="keys-wrap">
+      <div class="keys" id="keys" aria-label="On-screen keyboard"></div>
+      <div class="keys-side">
+        <select id="midi-in" aria-label="MIDI input"></select>
+        <span class="keys-note" id="midi-note"></span>
+        <div class="artchips" id="art-chips" aria-label="Articulation of the last note">
+          <span data-a="pluck">pluck</span><span data-a="legato">legato</span><span data-a="slide">slide</span><span data-a="vibrato">vibrato</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="perf">
+      <div class="perf-head"><button class="perf-toggle" id="perf-toggle" aria-expanded="false"><span class="sc">Performance</span><span class="perf-sub">the desktop knobs that reach the renderer</span><span class="chev">▸</span></button><button class="textlink" id="perf-reset">reset</button></div>
+      <div class="perf-body" id="perf-body" hidden>
+      <div class="perf-grid">
+        <label><span>Intensity</span><input type="range" id="p-artint" min="0" max="1" step="0.01" value="0.41"><b id="v-artint">1.0×</b><small>how strongly the retrieved trajectory shapes each note</small></label>
+        <label><span>Timing</span><input type="range" id="p-timing" min="0" max="1" step="0.01" value="0.5"><b id="v-timing">0.50</b><small>expressive onset timing, 0 = on the grid</small></label>
+        <label><span>Continuity</span><input type="range" id="p-continuity" min="0" max="1" step="0.01" value="1"><b id="v-continuity">1.00</b><small>prefer trajectories that join smoothly across notes</small></label>
+        <label><span>Brightness</span><input type="range" id="p-brightness" min="0" max="1" step="0.01" value="0.5"><b id="v-brightness">0.0 dB</b><small>spectral tilt, ±6 dB/oct</small></label>
+        <label><span>Air / Noise</span><input type="range" id="p-noise" min="0" max="1" step="0.01" value="0.6"><b id="v-noise">60%</b><small>noise layer of the timbre model</small></label>
+        <label><span>Reverb</span><input type="range" id="p-reverb" min="0" max="1" step="0.01" value="0"><b id="v-reverb">dry</b><small>room, applied after rendering</small></label>
+      </div>
+      <div class="perf-row">
+        <span class="seg" role="radiogroup" aria-label="Vibrato source"><button class="seg-btn is-on" data-vib="retrieval" role="radio" aria-checked="true">vibrato: retrieved</button><button class="seg-btn" data-vib="model" role="radio" aria-checked="false">vibrato: model</button></span>
+        <label class="inline-range" id="rand-wrap" style="display:none"><span>randomness</span><input type="range" id="p-randomness" min="0" max="1" step="0.05" value="0.3"><b id="v-randomness">0.30</b></label>
+      </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <label>Timbre <select id="sel-timbre"></select></label>
+      <label>Style library <select id="sel-behavior"></select></label>
+      <label class="check"><input type="checkbox" id="auto-art" checked> <span>auto articulation<br><small>long notes get vibrato, tied leaps get slide</small></span></label>
+    </div>
+    <div class="result" id="result">
+      <audio id="result-audio" controls preload="none"></audio>
+      <a id="dl-wav" class="ghost" style="display:none" href="#">Download WAV</a>
+      <span class="status" id="render-status"></span>
+    </div>
+    <div class="chips" id="alt-chips" aria-label="Try another player"></div>
+    <div class="script closer">To preserve is to honor.</div>
+  </section>
+
+  <section class="card" id="scope-card">
+    <h2 class="panel-title"><span class="sc">Web and desktop</span><span class="sub">what this page can and cannot do</span></h2>
+    <p class="hint">Everything you hear here comes from the same renderer as the desktop app, run on a server. What the page leaves out is everything that needs a microphone, a GPU or a real-time audio engine.</p>
+    <div class="scope-wrap">
+      <table class="scope" aria-label="Web page versus desktop app">
+        <thead><tr><th></th><th>This page</th><th>Desktop app</th></tr></thead>
+        <tbody>
+          <tr><th>Timbres</th><td>Three DDSP models: violin, trumpet, wine glass. Guitar is left out for sound quality.</td><td>Those, plus any tone you capture in seconds with the instant spectral engine, and any DDSP timbre you train from a take.</td></tr>
+          <tr><th>Style libraries</th><td>Violin, trumpet, guitar, wine glass, and the MIDI-DDSP distilled student. Fixed.</td><td>The same, plus a library extracted from every recording you save.</td></tr>
+          <tr><th>Capture from a recording</th><td>No. Nothing is uploaded except the notes you write.</td><td>Yes. Record or drop a file; tone in seconds, behavior library in about real time.</td></tr>
+          <tr><th>Training</th><td>No.</td><td>Bake a DDSP timbre from an 8 s+ take, minutes on an Apple GPU.</td></tr>
+          <tr><th>Playing</th><td>You hear a plain preview tone while recording. Quill's sound arrives after Play, rendered offline.</td><td>Quill's own engine answers every key in real time, with a behavior library driving each note.</td></tr>
+          <tr><th>Controls</th><td>The six renderer knobs: intensity, timing, continuity, brightness, air, reverb, plus vibrato source.</td><td>Those and the live-engine panel: ADSR, pick, strum, glide, LFO, polyphony, master.</td></tr>
+          <tr><th>Length</th><td>Phrases up to 30 s.</td><td>No limit.</td></tr>
+          <tr><th>Export</th><td>WAV of the render, .mid of the roll.</td><td>WAV and .mid.</td></tr>
+          <tr><th>Your data</th><td>Notes go to the render server; the rendered WAV is kept there briefly. Settings stay in this browser.</td><td>Everything stays on your machine.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="fine">Why the split: the two assets the paper describes are learned on the desktop; this page only recombines assets that already exist. That is the part that is cheap to serve and honest to demonstrate.</p>
+  </section>
+
+  <section class="card about">
+    <h2 class="panel-title"><span class="sc">From the paper</span><span class="sub">the claim</span></h2>
+    <div class="cols">
+      <div>
+        <h3>Timbre model</h3>
+        <p>DDSP, harmonic plus noise, about 500K parameters, 16 kHz audio at 250 fps. It takes explicit f0 and loudness, the same quantities the style library stores, so the two interface without a learned adapter.</p>
+      </div>
+      <div>
+        <h3>Style library</h3>
+        <p>Note-level control trajectories extracted from real performances: 48 frames of pitch deviation and energy per note, an articulation label from the pYIN contour (plain, vibrato, slide) and a 6-D context vector. Rendering retrieves the nearest entry, filtered by label, and time-stretches it to the note.</p>
+      </div>
+      <div>
+        <h3>Evaluation</h3>
+        <p>Cross-rendering across violin, trumpet and guitar passes all 12 source-attribution checks. In a pre-specified listening study (N=19), renders carrying retrieved behavior were rated more human-like by 19/19 and more expressive by 18/19; cross-instrument ABX median accuracy 100%. Both assets also learn from 82 s of rubbed-glass recordings.</p>
+      </div>
+    </div>
+    <p class="fine">Sample-based instruments bake performance micro-dynamics into fixed recordings. Here the performance is an asset of its own. Capturing new instruments, training timbres and playing Quill live are in the desktop app; this page has three timbres, four style libraries and your melody.</p>
+  </section>
+</main>
+
+<div class="guide" id="guide" role="status">
+  <span class="g-step" id="g-step">01</span>
+  <span class="g-msg" id="g-msg">Start by listening to one instrument as it was recorded.</span>
+  <button class="primary g-act" id="g-act">▶ Listen</button>
+</div>
+
+<footer>
+  <span><img class="foot-mark" src="assets/quill-emblem.svg" alt="" width="14" height="16"> Quill · Chuling Li · University of Nottingham</span>
+  <span id="version"></span>
+</footer>
+
+<script src="webapi.js"></script>
+<script src="pianoroll.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "seed": 42,
+  "conditions": {
+    "c1": "retrieval vs distilled, same violin decoder",
+    "c2": "distilled on violin vs glass decoder"
+  },
+  "files": [
+    "c1_lyrical_retrieval_violin.wav",
+    "c1_lyrical_distilled_violin.wav",
+    "c2_lyrical_retrieval_glass.wav",
+    "c2_lyrical_distilled_glass.wav",
+    "c1_folk_retrieval_violin.wav",
+    "c1_folk_distilled_violin.wav",
+    "c2_folk_retrieval_glass.wav",
+    "c2_folk_distilled_glass.wav"
+  ]
+}

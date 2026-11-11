@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use Quill, please cite the following paper."
+title: "Quill: Learning Timbre and Performance Behavior as Separate, Swappable Assets"
+type: software
+authors:
+  - family-names: Li
+    given-names: Chuling
+    email: scycl14@nottingham.ac.uk
+    affiliation: University of Nottingham
+preferred-citation:
+  type: conference-paper
+  title: "Quill: Learning Timbre and Performance Behavior as Separate, Swappable Assets"
+  authors:
+    - family-names: Li
+      given-names: Chuling
+  collection-title: "Extended Abstracts for the Late-Breaking Demo Session of the 27th International Society for Music Information Retrieval Conference"
+  year: 2026
+  conference:
+    name: "ISMIR 2026"
+license: CC-BY-NC-4.0
+repository-code: "https://github.com/imChuling/quill-dev"
