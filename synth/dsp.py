@@ -1,6 +1,6 @@
-"""共享 DSP 原语：numpy STFT/ISTFT 与 mel 滤波器组。
+"""Shared DSP primitives: numpy STFT/ISTFT and mel filter bank.
 
-analysis/ 和 synth/ 共用同一份实现，保证频带定义一致，并避免跨层导入。只依赖 numpy。
+analysis/ and synth/ share one implementation so band definitions stay identical and cross-layer imports are avoided. Depends only on numpy.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ def _hann(n: int) -> np.ndarray:
 
 
 def stft_np(x: np.ndarray, n_fft: int = NOISE_NFFT, hop: int = NOISE_HOP) -> np.ndarray:
-    """实数信号 -> 复数 STFT [n_bins, T]（Hann 窗，无 center padding）。"""
+    """Real signal -> complex STFT [n_bins, T] (Hann window, no center padding)."""
     x = np.asarray(x, dtype=np.float64)
     w = _hann(n_fft)
     if len(x) < n_fft:
@@ -33,7 +33,7 @@ def stft_np(x: np.ndarray, n_fft: int = NOISE_NFFT, hop: int = NOISE_HOP) -> np.
 def istft_np(
     spec: np.ndarray, n_fft: int = NOISE_NFFT, hop: int = NOISE_HOP, length: int | None = None
 ) -> np.ndarray:
-    """复数 STFT -> 实数信号（WOLA，归一化保证 istft(stft(x))==x）。"""
+    """Complex STFT -> real signal (WOLA, normalised so that istft(stft(x))==x)."""
     w = _hann(n_fft)
     n_frames = spec.shape[1]
     total = (n_frames - 1) * hop + n_fft
@@ -63,7 +63,7 @@ def mel_to_hz(m):
 def mel_filterbank(
     sr: int, n_fft: int, n_mels: int = 40, fmin: float = MEL_FMIN, fmax: float | None = None
 ):
-    """返回 (fb[n_mels, n_bins], centers_hz[n_mels])，三角滤波器。"""
+    """Return (fb[n_mels, n_bins], centers_hz[n_mels]), triangular filters."""
     fmax = float(fmax if fmax is not None else sr / 2.0)
     n_bins = n_fft // 2 + 1
     bin_hz = np.arange(n_bins) * (sr / n_fft)

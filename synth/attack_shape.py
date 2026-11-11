@@ -1,10 +1,10 @@
-"""拨片厚度：起音软硬的可演奏参数。
+"""Pick thickness: a playable parameter for attack hardness.
 
-`pick`∈[0,1] 把起音差异压成一个可解释的旋钮：0 为指弹/薄拨片（起音颗粒轻、暗、圆，
-起音 fade 更长），1 为厚拨片（颗粒重、亮、尖，无 fade）。映射三处：起音残差颗粒增益 ∝ pick；
-颗粒亮度，低通截止随 pick 上升；起音 fade 长度 ∝ (1-pick)。
+`pick`∈[0,1] compresses attack differences into one interpretable knob: 0 is fingerstyle / thin pick (light, dark,
+round attack grain, longer attack fade), 1 is a thick pick (heavy, bright, sharp grain, no fade). Three mappings:
+attack-residual grain gain ∝ pick; grain brightness, lowpass cutoff rises with pick; attack fade length ∝ (1-pick).
 
-只依赖 numpy。低通用 rfft 砖墙，颗粒短，振铃可忽略。
+Depends only on numpy. The lowpass is an rfft brick wall; grains are short, so ringing is negligible.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import numpy as np
 
 
 def _lowpass_fft(x, cutoff_hz, sr):
-    """砖墙低通；颗粒级输入（< 3k 采样），振铃无碍。"""
+    """Brick-wall lowpass; grain-sized input (< 3k samples), ringing is harmless."""
     x = np.asarray(x, dtype=np.float64)
     if x.size == 0:
         return x
@@ -24,9 +24,9 @@ def _lowpass_fft(x, cutoff_hz, sr):
 
 
 def shape_attack(grain, pick: float, sr: int = 44100):
-    """按拨片厚度整形起音残差颗粒。pick∈[0,1] -> 整形后颗粒（float32）。
+    """Shape the attack-residual grain by pick thickness. pick∈[0,1] -> shaped grain (float32).
 
-    pick=0 返回零（纯指弹无瞬态）；pick=1 原样（最尖最亮）；中间=低通+衰减。
+    pick=0 returns zeros (pure fingerstyle, no transient); pick=1 unchanged (sharpest, brightest); in between = lowpass + attenuation.
     """
     grain = np.asarray(grain, dtype=np.float64)
     pick = float(np.clip(pick, 0.0, 1.0))
@@ -34,13 +34,13 @@ def shape_attack(grain, pick: float, sr: int = 44100):
         return np.zeros_like(grain, dtype=np.float32)
     if pick >= 1.0:
         return grain.astype(np.float32)
-    cutoff = min(600.0 * 2.0 ** (pick * 4.0), sr * 0.49)  # 软 600 Hz → 硬约 9.6 kHz
+    cutoff = min(600.0 * 2.0 ** (pick * 4.0), sr * 0.49)  # soft 600 Hz -> hard about 9.6 kHz
     g = _lowpass_fft(grain, cutoff, sr)
     return (pick * g).astype(np.float32)
 
 
 def onset_fade(n_samples_hint, pick: float, sr: int = 44100, max_ms: float = 40.0):
-    """返回起音 fade-in 包络（升余弦平方根，长度随 (1-pick)）；pick=1 时长度 0。"""
+    """Return the attack fade-in envelope (square root of raised cosine, length scales with (1-pick)); length 0 when pick=1."""
     pick = float(np.clip(pick, 0.0, 1.0))
     fade = int(sr * (max_ms / 1000.0) * (1.0 - pick))
     if fade <= 1:
@@ -49,10 +49,10 @@ def onset_fade(n_samples_hint, pick: float, sr: int = 44100, max_ms: float = 40.
 
 
 def apply_pick(body, attack_res, pick: float, sr: int = 44100):
-    """把整形后的起音叠加到无硬起音的琴体上，并按 pick 施加起音 fade。
+    """Add the shaped attack onto a body rendered without a hard attack, and apply the attack fade by pick.
 
-    body: 不含 attack 的渲染（render(..., add_attack=False)）；attack_res: 快照起音残差。
-    返回带"拨片厚度"起音的音频（float32）。
+    body: render without attack (render(..., add_attack=False)); attack_res: snapshot attack residual.
+    Returns audio with a "pick thickness" attack (float32).
     """
     y = np.asarray(body, dtype=np.float64).copy()
     g = shape_attack(attack_res, pick, sr)

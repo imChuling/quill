@@ -1,5 +1,5 @@
-"""Quill 合成端。
+"""Quill synthesis side.
 
-本包只依赖 numpy 和 numba，不 import librosa、torch 或 UI：离线渲染、单测与插件移植
-都建立在这个前提上。
+This package depends only on numpy and numba. It does not import librosa, torch or the UI:
+offline rendering, unit tests and plugin porting all rely on this.
 """

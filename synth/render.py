@@ -1,7 +1,7 @@
-"""离线渲染：音色快照 -> 波形。
+"""Offline rendering: timbre snapshot -> waveform.
 
-把快照在任意目标基频上重合成（共振峰保持），叠加噪声端与起音残差。经 synth.additive 与
-synth.noise 只依赖 numpy，与实时回调共用同一套加法与噪声数学。
+Resynthesises the snapshot at any target f0 (formant-preserving) and adds the noise side and attack residual. Through synth.additive and
+synth.noise it depends only on numpy, sharing the same additive and noise math as the real-time callback.
 """
 
 from __future__ import annotations
@@ -24,11 +24,11 @@ def render(
     seed: int = 0,
     env_correction=None,
 ) -> np.ndarray:
-    """渲染快照到 `f0_tgt`（默认 = f0_ref）。
+    """Render the snapshot at `f0_tgt` (default = f0_ref).
 
-    mode="formant"：共振峰保持；mode="index"：按谐波序号搬运的对照版。
-    env_correction=(grid_hz, res_log)：目标侧包络校正，重定向后在各分量的目标绝对频率处
-        乘 exp(interp(f, grid, res))。None 不校正，输出与无校正路径逐位一致。
+    mode="formant": formant-preserving; mode="index": control variant carried over by harmonic index.
+    env_correction=(grid_hz, res_log): target-side envelope correction; after redirection, multiply each component at its target absolute
+        frequency by exp(interp(f, grid, res)). None means no correction, bit-identical to the uncorrected path.
     """
     meta = snap.get("meta", {})
     sr = int(meta.get("sr", 44100))
@@ -43,7 +43,7 @@ def render(
     if length is None:
         length = int(dur_s * sr) if dur_s else T * harm_hop
 
-    # 谐波端重定向
+    # redirect the harmonic side
     H_tgt, pf_tgt = redirect_harmonics(H, f0_ref, f0_tgt, partial_freqs=pf, mode=mode)
     if env_correction is not None:
         grid_hz, res_log = env_correction
@@ -60,7 +60,7 @@ def render(
         H_tgt, f0_tgt, sr=sr, hop=harm_hop, partial_freqs=pf_tgt, f0_ref=f0_ref, length=length
     )
 
-    # 噪声端（不随音高搬移，宽带纹理）
+    # noise side (not pitch-shifted, broadband texture)
     y = y_harm.astype(np.float64)
     N_env = snap.get("N_env")
     if N_env is not None and np.asarray(N_env).size and noise_gain > 0:
@@ -72,14 +72,14 @@ def render(
         )
         y[: len(y_noise)] += noise_gain * y_noise[:length]
 
-    # 起音残差：离线叠加在起点
+    # attack residual: added at the start offline
     if add_attack:
         atk = np.asarray(snap.get("attack_res", []), dtype=np.float64)
         if atk.size:
             m = min(len(atk), length)
             y[:m] += atk[:m]
 
-    # 输出首尾 5 ms 等功率淡变，避免起止咔哒
+    # 5 ms equal-power fades at output start and end to avoid start/stop clicks
     fade = max(1, min(int(0.005 * sr), length // 2))
     ramp = np.sin(np.linspace(0, np.pi / 2, fade)) ** 2
     y[:fade] *= ramp
