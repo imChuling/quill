@@ -1,16 +1,16 @@
-"""FR-9 交叉重组 —— 杀手锏：任意音色 × 任意演奏法库。
+"""FR-9 cross recombination, the signature feature: any timbre × any articulation library.
 
-`音色快照(B) × 演奏法库(A)` 自由组合 —— "会吉他滑音的人声"。
-这是采样器/Synplant 结构上做不出的东西（解耦架构白送的能力）：引擎放 B 的音色，
-手势解释器套 A 的演奏法（slide 曲线/strum 时差），同一手势谱出"用 A 弹法弹的 B"。
+Free combination of `timbre snapshot (B) × articulation library (A)`: "a voice that can do guitar slides".
+This is something samplers/Synplant structurally cannot do (a capability the decoupled architecture gives for free): the engine plays B's timbre,
+the gesture interpreter applies A's articulations (slide curve/strum offsets), and the same gesture score produces "B played with A's technique".
 
-产物：
-  <name>.wav                重组结果（音色B + 演奏法A）
-  <name>_ref.wav            对照（音色A + 演奏法A，同谱）—— A/B 听音色差、弹法同
-  <name>_compare.png        两者频谱图（弹法/f0 相同，音色不同）
+Outputs:
+  <name>.wav                recombination result (timbre B + articulation A)
+  <name>_ref.wav            reference (timbre A + articulation A, same score): A/B to hear the timbre difference with the same technique
+  <name>_compare.png        spectrograms of both (same technique/f0, different timbre)
 
-用法：
-  # 会吉他滑音的人声：人声音色 × 吉他演奏法
+Usage:
+  # a voice that can do guitar slides: voice timbre × guitar articulation
   python -m eval.fr9_recombine --timbre assets/snapshots/voice_tone_mid.npz \
          --articulation assets/libraries/guitar.tplib --name voice_x_guitar
 """
@@ -41,7 +41,7 @@ from synth.instrument import build_instrument  # noqa: E402
 SR = 44100
 DEMO_DIR = Path(__file__).resolve().parents[1] / "assets" / "demos"
 
-# 一段突出滑音/连音的旋律（人声滑音 = 招牌）
+# a melody that features slides/legato (voice slides = the showcase)
 _PHRASE = [
     (0.20, "on", 60, 100),
     (0.55, "on", 64, 95),  # +4 -> slide
@@ -50,18 +50,18 @@ _PHRASE = [
     (1.45, "off", 64, 0),
     (1.45, "off", 60, 0),
     (1.65, "on", 55, 100),
-    (2.0, "on", 62, 110),  # +7 -> slide(快)
+    (2.0, "on", 62, 110),  # +7 -> slide (fast)
     (2.6, "off", 62, 0),
     (2.6, "off", 55, 0),
     (2.85, "on", 48, 100),
     (2.87, "on", 52, 100),
     (2.89, "on", 55, 100),  # strum
-    (3.1, "cc", -1, 100),  # 颤音
+    (3.1, "cc", -1, 100),  # vibrato
     (3.9, "off", 48, 0),
     (3.9, "off", 52, 0),
     (3.9, "off", 55, 0),
     (4.1, "on", 67, 100),
-    (4.45, "on", 60, 95),  # -7 下滑
+    (4.45, "on", 60, 95),  # -7 slide down
     (5.0, "off", 60, 0),
     (5.0, "off", 67, 0),
 ]
@@ -72,7 +72,7 @@ def _timbre_snapshot(path, name):
     p = Path(path)
     if p.suffix == ".npz":
         return load_snapshot(p), p.stem
-    y, _ = load(str(p), sr=SR)  # 直接给单音 wav 也行
+    y, _ = load(str(p), sr=SR)  # a single-note wav works directly too
     return analyze_timbre(y, sr=SR, name=name), p.stem
 
 
@@ -105,15 +105,15 @@ def _spec(ax, y, sr, title):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="FR-9 交叉重组")
-    ap.add_argument("--timbre", required=True, help="音色快照 .npz 或 单音 wav")
-    ap.add_argument("--articulation", required=True, help="演奏法库 .tplib")
+    ap = argparse.ArgumentParser(description="FR-9 cross recombination")
+    ap.add_argument("--timbre", required=True, help="timbre snapshot .npz or single-note wav")
+    ap.add_argument("--articulation", required=True, help="articulation library .tplib")
     ap.add_argument("--name", default="recombine")
     ap.add_argument(
-        "--noise", type=float, default=0.2, help="噪声端比例（人声宜低~0.2 防气声过响；吉他可高些）"
+        "--noise", type=float, default=0.2, help="noise-side ratio (keep low ~0.2 for voice to avoid excessive breathiness; guitar can be higher)"
     )
     ap.add_argument(
-        "--ref-timbre", default=None, help="对照音色（默认用库 sustain 快照=演奏法源乐器本身）"
+        "--ref-timbre", default=None, help="reference timbre (defaults to the library's sustain snapshot = the articulation source instrument itself)"
     )
     args = ap.parse_args(argv)
 
@@ -121,16 +121,16 @@ def main(argv=None):
     snap, tname = _timbre_snapshot(args.timbre, args.name)
     lib = load_tplib(args.articulation)
     aname = Path(args.articulation).stem
-    print(f"重组: 音色[{tname}] × 演奏法[{aname}]  (f0_ref={snap['f0_ref']:.1f}Hz)")
+    print(f"Recombine: timbre[{tname}] × articulation[{aname}]  (f0_ref={snap['f0_ref']:.1f}Hz)")
 
-    # 主体：音色B × 演奏法A
+    # main: timbre B × articulation A
     y, cooked, gi = _render(snap, lib, noise=args.noise)
     from collections import Counter
 
     print(
-        "演奏法分布:",
+        "articulation distribution:",
         dict(Counter(c[1] for c in cooked)),
-        f"| slide 曲线={'库实测' if gi.slide_curve is not None else '线性'}",
+        f"| slide curve={'library measurement' if gi.slide_curve is not None else 'linear'}",
     )
     sf.write(
         DEMO_DIR / f"{args.name}.wav",
@@ -138,7 +138,7 @@ def main(argv=None):
         SR,
     )
 
-    # 对照：音色A（演奏法源乐器本身的音色）× 同演奏法、同谱
+    # reference: timbre A (the timbre of the articulation source instrument itself) × same articulation, same score
     ref_snap = None
     if args.ref_timbre:
         ref_snap, _ = _timbre_snapshot(args.ref_timbre, "ref")
@@ -151,7 +151,7 @@ def main(argv=None):
             (y_ref / (np.max(np.abs(y_ref)) + 1e-9) * 0.97).astype(np.float32),
             SR,
         )
-        # 频谱对比图
+        # spectrogram comparison plot
         fig, axes = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
         _spec(
             axes[0],
@@ -176,12 +176,12 @@ def main(argv=None):
     clean = bool(np.all(np.isfinite(y)) and np.max(np.abs(y)) <= 1.0)
     print(
         f"\n  -> {args.name}.wav  ({len(y) / SR:.1f}s, clean={clean})"
-        + (f" | 对照 {args.name}_ref.wav + {args.name}_compare.png" if ref_snap is not None else "")
+        + (f" | reference {args.name}_ref.wav + {args.name}_compare.png" if ref_snap is not None else "")
     )
-    print("\n---------------- FR-9 验收 ----------------")
-    print(f"  [{'OK ' if clean else 'FAIL'}] 交叉重组成立：{tname} 的音色 × {aname} 的演奏法")
-    print(f"  盲听：{args.name}.wav 与 {args.name}_ref.wav 弹法完全相同（滑/连/扫一致），")
-    print(f"        音色一个是 {tname}、一个是 {aname} —— 采样器结构上做不出这件事")
+    print("\n---------------- FR-9 acceptance ----------------")
+    print(f"  [{'OK ' if clean else 'FAIL'}] cross recombination holds: {tname} timbre × {aname} articulation")
+    print(f"  Blind listening: {args.name}.wav and {args.name}_ref.wav use exactly the same technique (slides/legato/strums identical),")
+    print(f"        one timbre is {tname}, the other {aname}: samplers structurally cannot do this")
     return 0 if clean else 1
 
 

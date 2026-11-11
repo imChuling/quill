@@ -1,19 +1,19 @@
-"""Atlas 数据管道 —— Sprint 2 第一块(episodic support/query 数据集)。
+"""Atlas data pipeline: Sprint 2 first piece (episodic support/query dataset).
 
-表示(v0,与 L0 精确兼容):
-  每个音 → TimbreSnapshot → 谱包络采到**固定 log 频率格点**(80Hz–12kHz, 64 点, log 幅度)。
-  共振峰保持渲染(mode="formant")在包络空间的静态预测 = support 的包络本身,
-  因此 **residual = env(target) − env(support)**(log 域)。
-  回渲染:H_steady'_k = H_steady_k · exp(residual(freq_k))(freq_k=support 各分量绝对频率),
-  residual≡0 ⇒ 快照逐位不变 ⇒ α=0 精确回退 L0(引擎零改动)。
+Representation (v0, exactly compatible with L0):
+  each note -> TimbreSnapshot -> spectral envelope sampled on a **fixed log-frequency grid** (80Hz–12kHz, 64 points, log amplitude).
+  The static prediction of formant-preserving rendering (mode="formant") in envelope space = the support's own envelope,
+  so **residual = env(target) − env(support)** (log domain).
+  Render back: H_steady'_k = H_steady_k · exp(residual(freq_k)) (freq_k = absolute frequency of each support component),
+  residual≡0 => snapshot bit-identical => α=0 falls back to L0 exactly (zero engine changes).
 
-episode(v0 = 单 support;1-vs-3 消融属后续):
+episode (v0 = single support; the 1-vs-3 ablation comes later):
   (instrument, support_note, target_note),|Δsemitone| ≤ 18
   x = [Δst, support_f0(log2), env_support(64)]
   y = env_target − env_support(64)
 
-split 铁律:按 **instrument instance** 切,测试乐器全程不见(冲刺本子 §5.6)。
-缓存:results/atlas/snapshots.npz(逐音包络+元数据;analyze_timbre 每音 ~0.7s,只算一次)。
+split rule: split by **instrument instance**, test instruments are never seen (sprint notebook §5.6).
+cache: results/atlas/snapshots.npz (per-note envelopes + metadata; analyze_timbre ~0.7s per note, computed once).
 """
 
 from __future__ import annotations
@@ -31,12 +31,12 @@ sys.path.insert(0, str(ROOT))
 from analysis.harmonic import f0_scalar, track_f0  # noqa: E402
 from analysis.timbre import analyze_timbre  # noqa: E402
 
-GRID = np.geomspace(80.0, 12000.0, 64)  # 固定包络格点(Hz)
+GRID = np.geomspace(80.0, 12000.0, 64)  # fixed envelope grid (Hz)
 MAX_SEMIS = 18.0
 CACHE = ROOT / "results" / "atlas" / "notes_v2.npz"
-SNAP_DIR = ROOT / "results" / "atlas" / "snaps"  # 全快照缓存(换表示免重分析)
+SNAP_DIR = ROOT / "results" / "atlas" / "snaps"  # full snapshot cache (changing the representation needs no reanalysis)
 
-# 预注册 held-out(按族覆盖:弦/木管/铜管各留 1-2 件;Gate 2 要求改善不只在训练乐器)
+# preregistered held-out (covering families: 1-2 each of strings/woodwinds/brass; Gate 2 requires improvement beyond training instruments)
 HELD_OUT = [
     "TinySOL/Strings/Violoncello",
     "TinySOL/Winds/Oboe",
@@ -46,8 +46,8 @@ HELD_OUT = [
 
 
 def env_on_grid(snap) -> np.ndarray:
-    """快照 → 固定格点 log 谐波包络。派生语义与 build_instrument 逐行一致:
-    H_steady=H_env 中段 50% 帧中位数;分量绝对频率=partial_freqs(准谐波)或 k·f0_ref。"""
+    """Snapshot -> log harmonic envelope on the fixed grid. Derivation semantics match build_instrument line by line:
+    H_steady = median of the middle 50% of H_env frames; component absolute frequencies = partial_freqs (quasi-harmonic) or k·f0_ref."""
     H = np.asarray(snap["H_env"], np.float64)  # [K, T]
     K, T = H.shape
     lo_t, hi_t = int(T * 0.25), max(int(T * 0.75), int(T * 0.25) + 1)
@@ -65,9 +65,9 @@ def env_on_grid(snap) -> np.ndarray:
 
 
 def noise_on_grid(snap) -> np.ndarray:
-    """快照 → 固定格点 log 噪声包络(N_env 各带中段中位数,锚在带中心绝对频率)。
-    分解实验(7.31)证明:谐波与噪声必须**联合**修正才能兑现 headroom(单侧 recovery≈0,
-    双侧 0.82)——归一化谱距把两层的相对电平耦合在一起。"""
+    """Snapshot -> log noise envelope on the fixed grid (median of the middle section of each N_env band, anchored at the band-centre absolute frequency).
+    The decomposition experiment (7.31) showed that harmonics and noise must be corrected **jointly** to realise the headroom (one side alone recovery≈0,
+    both sides 0.82): the normalised spectral distance couples the relative levels of the two layers."""
     N = np.asarray(snap.get("N_env"), np.float64)
     if N is None or N.size == 0:
         return np.full(len(GRID), np.log(1e-7), np.float32)
@@ -91,7 +91,7 @@ def load_snap(i: int) -> dict:
 
 
 def build_note_table(force=False):
-    """TinySOL 全部音 → meta + envs[N,128](64 谐波 + 64 噪声);全快照落盘 SNAP_DIR。"""
+    """All TinySOL notes -> meta + envs[N,128] (64 harmonic + 64 noise); full snapshots written to SNAP_DIR."""
     if CACHE.exists() and not force:
         z = np.load(CACHE, allow_pickle=True)
         return json.loads(str(z["meta"])), z["envs"]
@@ -117,7 +117,7 @@ def build_note_table(force=False):
             )
             meta.append({"instrument": name, "midi": int(midi), "f0": float(f0v), "i": i})
             envs.append(np.concatenate([env_on_grid(snap), noise_on_grid(snap)]))
-        print(f"  {name}: 累计 {len(envs)} 音 ({time.time() - t0:.0f}s)", flush=True)
+        print(f"  {name}: {len(envs)} notes so far ({time.time() - t0:.0f}s)", flush=True)
     envs = np.stack(envs).astype(np.float32)
     CACHE.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(CACHE, envs=envs, meta=json.dumps(meta))
@@ -125,7 +125,7 @@ def build_note_table(force=False):
 
 
 def episodes(meta, envs, instruments=None):
-    """全对 episode:x=[Δst, log2 f0_sup, env_sup(64)] → y=env_tgt−env_sup(64)。"""
+    """All-pairs episodes: x=[Δst, log2 f0_sup, env_sup(64)] -> y=env_tgt−env_sup(64)."""
     by_inst = {}
     for m in meta:
         by_inst.setdefault(m["instrument"], []).append(m)
@@ -140,7 +140,7 @@ def episodes(meta, envs, instruments=None):
                 dst = 12.0 * np.log2(t["f0"] / s["f0"])
                 if abs(dst) > MAX_SEMIS:
                     continue
-                es, et = envs[s["i"]], envs[t["i"]]  # 128 维(谐波64+噪声64)
+                es, et = envs[s["i"]], envs[t["i"]]  # 128 dims (harmonic 64 + noise 64)
                 X.append(np.concatenate([[dst, np.log2(s["f0"])], es]))
                 Y.append(et - es)
                 tags.append(

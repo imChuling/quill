@@ -1,1 +1,1 @@
-"""Quill 评估与验收脚本。"""
+"""Quill evaluation and acceptance scripts."""

@@ -1,17 +1,17 @@
-"""阶段3 验收 —— FR-4 ｜ 出口：实测延迟数字 + 满复音无 xrun。
+"""Stage 3 acceptance: FR-4 | exit: measured latency numbers + no xrun at full polyphony.
 
-本机离线可验证（不需声卡）：
-  ① 压力验收：16 复音满载 process_block 回调耗时 < 块预算 50%（NFR-2 最坏情况口径）
-  ② 黄金文件回归：固定事件序列离线渲染 -> 与基线逐样本比对（eval_mode 可复现）
-  ③ 渲染一段试听短曲（和弦+旋律）-> assets/demos/stage3_phrase.wav
+Verifiable offline on this machine (no sound card needed):
+  (1) stress acceptance: 16-voice full-load process_block callback time < 50% of the block budget (NFR-2 worst-case criterion)
+  (2) golden-file regression: fixed event sequence rendered offline -> compared sample by sample with the baseline (eval_mode is reproducible)
+  (3) render a short preview piece (chords + melody) -> assets/demos/stage3_phrase.wav
 
-需声卡才能跑（本脚本会尝试并容错）：
-  ④ 延迟报告：sd.OutputStream 实测 latency；环回法测端到端延迟的操作步骤见下方打印
+Needs a sound card (this script tries and tolerates failure):
+  (4) latency report: measured sd.OutputStream latency; steps for measuring end-to-end latency with the loopback method are printed below
 
-用法：
-  python -m eval.stage3_accept                  # 用 assets/snapshots/guitar.npz（或合成兜底）
-  python -m eval.stage3_accept voice            # 指定快照名
-  python -m eval.stage3_accept --update-golden  # 重置黄金基线
+Usage:
+  python -m eval.stage3_accept                  # use assets/snapshots/guitar.npz (or a synthetic fallback)
+  python -m eval.stage3_accept voice            # specify the snapshot name
+  python -m eval.stage3_accept --update-golden  # reset the golden baseline
 """
 
 from __future__ import annotations
@@ -47,8 +47,8 @@ def _load_instrument(name):
     if p.exists():
         snap = load_snapshot(p)
         nl = (CFG or {}).get("runtime", {}).get("noise_level", 0.5)
-        return build_instrument(snap, noise_level=nl), f"快照 {p.name}"
-    # 合成兜底：60 谐波 1/k 滚降
+        return build_instrument(snap, noise_level=nl), f"snapshot {p.name}"
+    # synthetic fallback: 60 harmonics with 1/k rolloff
     K = 60
     H = 1.0 / np.arange(1, K + 1)
     inst = Instrument(
@@ -61,28 +61,28 @@ def _load_instrument(name):
         name="synthetic",
         noise_level=0.3,
     )
-    return inst, "合成兜底乐器(60谐波)"
+    return inst, "synthetic fallback instrument (60 harmonics)"
 
 
 # --------------------------------------------------------------------------- #
-# ① 压力验收：16 复音满载回调耗时
+# (1) Stress acceptance: 16-voice full-load callback time
 # --------------------------------------------------------------------------- #
 def stress_test(inst, n_blocks=600):
     eng = Engine(inst, cfg=CFG, eval_mode=True)
     bs = eng.blocksize
     budget_ms = bs / eng.sr * 1000.0
 
-    # 起 16 个不同音 + bend，进入满载稳态
+    # start 16 different notes + bend, reaching the full-load steady state
     eng.reset()
     for i in range(eng.max_voices):
         eng._apply_event(Event("on", 45 + i, 110, 0.0))
     out = np.zeros(bs, dtype=np.float32)
 
-    # 预热若干块（JIT/缓存就绪）
+    # warm up a few blocks (JIT/caches ready)
     for _ in range(20):
         eng.process_block(out, bs, 0)
 
-    # 演奏模式：测量时禁 GC（铁律 #1，复现实时回调条件——GC 是最大隐藏 xrun 源）
+    # performance mode: disable GC during measurement (rule #1, reproduces real-time callback conditions; GC is the biggest hidden xrun source)
     import gc
 
     gc.collect()
@@ -114,10 +114,10 @@ def stress_test(inst, n_blocks=600):
 
 
 # --------------------------------------------------------------------------- #
-# ② 黄金文件回归 + ③ 试听短曲
+# (2) Golden-file regression + (3) short preview piece
 # --------------------------------------------------------------------------- #
 _PHRASE = [
-    # 和弦（C major）三音齐发，再叠两段旋律
+    # chord (C major) three notes together, then two melody lines on top
     (0.00, "on", 60, 100, 0.0),
     (0.00, "on", 64, 95, 0.0),
     (0.00, "on", 67, 95, 0.0),
@@ -131,7 +131,7 @@ _PHRASE = [
     (1.25, "on", 69, 90, 0.0),
     (1.55, "off", 69, 0, 0.0),
     (1.55, "on", 67, 105, 0.0),
-    (1.7, "bend", -1, 0, 2.0),  # pitch bend +2 半音
+    (1.7, "bend", -1, 0, 2.0),  # pitch bend +2 semitones
     (2.2, "off", 67, 0, 0.0),
 ]
 _PHRASE_DUR = 2.6
@@ -151,87 +151,87 @@ def golden_regression(inst, update=False):
     status = "n/a"
     if update or not GOLDEN.exists():
         np.save(GOLDEN, y)
-        status = "基线已写入" if update else "首次创建基线"
+        status = "baseline written" if update else "baseline created (first run)"
     else:
         ref = np.load(GOLDEN)
         if ref.shape == y.shape and np.allclose(ref, y, atol=1e-6):
-            status = "PASS（与基线一致）"
+            status = "PASS (matches baseline)"
         else:
             md = (
                 float(np.max(np.abs(ref[: len(y)] - y[: len(ref)])))
                 if ref.shape == y.shape
                 else float("nan")
             )
-            status = f"DIFF（最大样本差 {md:.2e}）"
+            status = f"DIFF (max sample difference {md:.2e})"
     return y, status, bool(eng.error_flag)
 
 
 # --------------------------------------------------------------------------- #
-# ④ 延迟报告（需声卡；容错）
+# (4) Latency report (needs a sound card; tolerant of failure)
 # --------------------------------------------------------------------------- #
 def latency_report(inst):
     budget_ms = inst and (Engine(inst, cfg=CFG).blocksize / SR * 1000.0)
-    lines = [f"块预算延迟（buffer）: {budget_ms:.2f} ms（blocksize/sr）"]
+    lines = [f"block budget latency (buffer): {budget_ms:.2f} ms (blocksize/sr)"]
     try:
         import sounddevice as sd
 
         dev = sd.query_devices(kind="output")
-        lines.append(f"默认输出设备: {dev['name']}")
+        lines.append(f"default output device: {dev['name']}")
         with sd.OutputStream(
             samplerate=SR, blocksize=int(budget_ms * SR / 1000), channels=1, dtype="float32"
         ) as s:
-            lines.append(f"sd 报告 stream.latency: {s.latency * 1000:.2f} ms")
+            lines.append(f"sd reported stream.latency: {s.latency * 1000:.2f} ms")
     except Exception as exc:
-        lines.append(f"（无声卡/不可用，跳过实测 stream 延迟：{type(exc).__name__}）")
-    lines.append("环回法端到端延迟（在有声卡的机器上手动跑）：")
-    lines.append("  把输出接回输入(或同房放录)，引擎发一个脉冲音，同步录输出，")
-    lines.append("  量 MIDI/触发到录得 onset 的采样差 -> 端到端延迟（进延迟分解表）。")
+        lines.append(f"(no sound card/unavailable, skipping measured stream latency: {type(exc).__name__})")
+    lines.append("End-to-end latency by loopback (run manually on a machine with a sound card):")
+    lines.append("  connect the output back to the input (or play and record in the same room), have the engine emit a pulse, record the output at the same time,")
+    lines.append("  measure the sample difference from MIDI/trigger to the recorded onset -> end-to-end latency (goes into the latency decomposition table).")
     return lines
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Quill 阶段3 验收（FR-4）")
+    ap = argparse.ArgumentParser(description="Quill stage 3 acceptance (FR-4)")
     ap.add_argument(
-        "snapshot", nargs="?", default="guitar", help="assets/snapshots/<name>.npz（默认 guitar）"
+        "snapshot", nargs="?", default="guitar", help="assets/snapshots/<name>.npz (default guitar)"
     )
     ap.add_argument("--update-golden", action="store_true")
     args = ap.parse_args(argv)
 
     inst, src = _load_instrument(args.snapshot)
-    print(f"乐器来源: {src}  (K={inst.K} 谐波, sr={inst.sr})")
+    print(f"Instrument source: {src}  (K={inst.K} harmonics, sr={inst.sr})")
 
-    print("\n[①] 16 复音满载压力测试 …")
+    print("\n[1] 16-voice full-load stress test ...")
     s = stress_test(inst)
     pct = s["p95"] / s["budget_ms"] * 100
     pass1 = s["p95"] < 0.5 * s["budget_ms"] and not s["err"]
-    print(f"  活跃声部     : {s['active_voices']}/{16}")
-    print(f"  块预算       : {s['budget_ms']:.2f} ms (blocksize={s['blocksize']})")
+    print(f"  active voices     : {s['active_voices']}/{16}")
+    print(f"  block budget       : {s['budget_ms']:.2f} ms (blocksize={s['blocksize']})")
     print(
-        f"  回调耗时     : mean {s['mean']:.3f} / median {s['median']:.3f} / "
+        f"  callback time     : mean {s['mean']:.3f} / median {s['median']:.3f} / "
         f"p95 {s['p95']:.3f} / max {s['max']:.3f} ms"
     )
-    print(f"  p95 占预算   : {pct:.1f}%   判据<50%  -> {'PASS' if pass1 else 'FAIL'}")
+    print(f"  p95 of budget   : {pct:.1f}%   criterion<50%  -> {'PASS' if pass1 else 'FAIL'}")
 
-    print("\n[②] 黄金文件回归 + [③] 试听短曲 …")
+    print("\n[2] golden-file regression + [3] short preview piece ...")
     y, gstatus, gerr = golden_regression(inst, update=args.update_golden)
-    pass2 = ("PASS" in gstatus) or ("基线" in gstatus) or ("创建" in gstatus)
+    pass2 = ("PASS" in gstatus) or ("baseline" in gstatus) or ("created" in gstatus)
     print(
-        f"  短曲 -> assets/demos/stage3_phrase.wav  ({len(y) / SR:.2f}s, "
+        f"  short piece -> assets/demos/stage3_phrase.wav  ({len(y) / SR:.2f}s, "
         f"peak {np.max(np.abs(y)):.3f}, finite {bool(np.all(np.isfinite(y)))})"
     )
-    print(f"  黄金回归     : {gstatus}")
+    print(f"  golden regression     : {gstatus}")
 
-    print("\n[④] 延迟报告 …")
+    print("\n[4] latency report ...")
     for ln in latency_report(inst):
         print("  " + ln)
 
     ok = pass1 and pass2 and not gerr
-    print("\n---------------- 阶段3 验收汇总 ----------------")
+    print("\n---------------- Stage 3 acceptance summary ----------------")
     print(
-        f"  [{'OK ' if pass1 else 'FAIL'}] 满复音无 xrun：16 声部 p95 回调 {pct:.1f}% 预算 (<50%)"
+        f"  [{'OK ' if pass1 else 'FAIL'}] no xrun at full polyphony: 16-voice p95 callback {pct:.1f}% of budget (<50%)"
     )
-    print(f"  [{'OK ' if pass2 else 'FAIL'}] 离线渲染确定性/黄金回归：{gstatus}")
-    print("  延迟：缓冲预算 5.8ms；端到端 <30ms 需在有声卡机器用环回法实测填表")
+    print(f"  [{'OK ' if pass2 else 'FAIL'}] offline render determinism/golden regression: {gstatus}")
+    print("  latency: buffer budget 5.8ms; end-to-end <30ms must be measured with the loopback method on a machine with a sound card")
     return 0 if ok else 1
 
 

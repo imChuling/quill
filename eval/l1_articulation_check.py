@@ -1,13 +1,13 @@
-"""L1 演奏半的地基验证(sprint_7.8 第一优先级,补做)。
+"""Foundation check for the L1 performance half (sprint_7.8 top priority, done retroactively).
 
-问题:演奏法引擎的"演奏半"从未走真实链路系统验证过——hero_unified 用显式 cooked
-绕过了手势检测;app 里也各管各。本脚本走**完整真实链路**:
-    raw MIDI(含重叠键/和弦簇) → GestureInterpreter.process(FR-8 检测+模板)
+Problem: the "performance half" of the articulation engine was never systematically verified through the real chain: hero_unified uses explicit cooked
+events and bypasses gesture detection; the app handles things separately. This script goes through the **complete real chain**:
+    raw MIDI (with overlapping keys/chord clusters) -> GestureInterpreter.process (FR-8 detection + templates)
     → cooked → Engine.render_offline → wav
-在人声/pad/酒杯/吉他 4 个 L0 取色上渲同一段全词汇乐句(拨/连/滑/揉/扫),
-输出到 assets/demos/l1_check_*.wav 供人耳判断"演奏法 × 任意音色"是否成立。
+Renders the same full-vocabulary phrase (pluck/legato/slide/vibrato/strum) on 4 L0 captures (voice/pad/wine glass/guitar),
+output to assets/demos/l1_check_*.wav so a human ear can judge whether "articulation × any timbre" holds.
 
-用法:python -m eval.l1_articulation_check
+Usage: python -m eval.l1_articulation_check
 """
 
 from __future__ import annotations
@@ -30,25 +30,25 @@ ROOT = Path(__file__).resolve().parents[1]
 DEMO = ROOT / "assets" / "demos"
 SR = 44100
 
-# 全词汇乐句(raw MIDI,重叠键触发连/滑,80ms 簇触发扫)。中心 ≈ MIDI 62。
+# full-vocabulary phrase (raw MIDI, overlapping keys trigger legato/slide, an 80ms cluster triggers strum). Centre ≈ MIDI 62.
 RAW = [
     (0.00, "on", 60, 95),
-    (0.75, "off", 60, 0),  # ① 拨(pluck)
+    (0.75, "off", 60, 0),  # (1) pluck
     (0.85, "on", 60, 92),
     (1.60, "on", 62, 90),
-    (1.64, "off", 60, 0),  # ② 连(legato, 重叠+2)
+    (1.64, "off", 60, 0),  # (2) legato (overlap +2)
     (2.35, "off", 62, 0),
     (2.45, "on", 62, 90),
     (3.20, "on", 69, 105),
-    (3.24, "off", 62, 0),  # ③ 滑(slide, 重叠+7)
+    (3.24, "off", 62, 0),  # (3) slide (overlap +7)
     (4.10, "off", 69, 0),
     (4.30, "on", 67, 88),
     (4.55, "cc", -1, 0, 90),
-    (5.90, "cc", -1, 0, 0),  # ④ 揉(vibrato, CC1)
+    (5.90, "cc", -1, 0, 0),  # (4) vibrato (CC1)
     (6.00, "off", 67, 0),
     (6.20, "on", 55, 100),
     (6.222, "on", 59, 96),
-    (6.246, "on", 62, 92),  # ⑤ 扫(strum, 80ms 内 3 音)
+    (6.246, "on", 62, 92),  # (5) strum (3 notes within 80ms)
     (7.60, "off", 55, 0),
     (7.60, "off", 59, 0),
     (7.60, "off", 62, 0),
@@ -56,11 +56,11 @@ RAW = [
 DUR = 8.4
 CENTER = 62.0
 
-TONES = {  # 名字 -> snapshot
+TONES = {  # name -> snapshot
     "voice": "voice.npz",
     "pad": "synth_pad.npz",
     "wineglass": "wineglass.npz",
-    "guitar": "guitar_rich.npz",  # L0 的已知弱区,如实入列
+    "guitar": "guitar_rich.npz",  # a known weak area of L0, listed honestly
 }
 
 
@@ -80,7 +80,7 @@ def shifted_raw(shift: int):
 
 
 def f0_med(y, a, b):
-    """段内 f0 中位数(librosa yin;粗验音高/滑音落点)。"""
+    """Median f0 within the segment (librosa yin; rough check of pitch/slide landing)."""
     import librosa
 
     seg = y[int(a * SR) : int(b * SR)]
@@ -95,7 +95,7 @@ def main():
     lib = load_tplib(str(ROOT / "assets" / "libraries" / "guitar.tplib"))
     gi = GestureInterpreter(library=lib)
     print(
-        f"模板:guitar.tplib | legato≤{gi.legato_max_st}st | strum {gi.strum_min}音/{gi.strum_window * 1000:.0f}ms"
+        f"template: guitar.tplib | legato≤{gi.legato_max_st}st | strum {gi.strum_min} notes/{gi.strum_window * 1000:.0f}ms"
     )
     for name, snap_file in TONES.items():
         snap = load_snapshot(str(ROOT / "assets" / "snapshots" / snap_file))
@@ -108,15 +108,15 @@ def main():
         y = eng.render_offline(cooked, DUR)
         path = DEMO / f"l1_check_{name}.wav"
         sf.write(str(path), y, SR)
-        # 客观 sanity:检测出的词汇 + 滑音落点 + 揉弦调制
-        tgt = 440.0 * 2 ** ((69 + shift - 69) / 12)  # slide 目标音
+        # objective sanity: detected vocabulary + slide landing + vibrato modulation
+        tgt = 440.0 * 2 ** ((69 + shift - 69) / 12)  # slide target note
         f_slide_end = f0_med(y, 3.85, 4.08)
         det = {k: kinds.count(k) for k in ("on", "legato", "slide", "vibrato")}
         print(
-            f"[{name:10s}] shift={shift:+d}  检出={det}  "
-            f"滑音落点 {f_slide_end:.0f}Hz(目标 {tgt:.0f})  峰值 {np.abs(y).max():.2f}  → {path.name}"
+            f"[{name:10s}] shift={shift:+d}  detected={det}  "
+            f"slide landing {f_slide_end:.0f}Hz (target {tgt:.0f})  peak {np.abs(y).max():.2f}  -> {path.name}"
         )
-    print("\n听感判断交给人耳:assets/demos/l1_check_*.wav")
+    print("\nListening judgement is left to the human ear: assets/demos/l1_check_*.wav")
 
 
 if __name__ == "__main__":

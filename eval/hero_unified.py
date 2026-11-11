@@ -1,14 +1,14 @@
-"""7.8 英雄 demo（统一乐句版 v2）—— 四条音色弹**同一段单音 score**(逐音同谱)。
+"""7.8 hero demo (unified phrase version v2): four timbres play **the same monophonic score** (note-for-note identical).
 
-矛盾:L0 是 16 复音(能扫弦),DDSP 吉他单音(扛不了和弦)→ 上一版经手势引擎统一时
-吉他音全错。解法:**单音乐句 + 同一 score 两条独立确定性路径**(都从 score 直接生 f0,
-不走易错的手势检测):
-  - 吉他:control_from_score(score, 真实音模板) → DDSP Fender(赢家配方,音对)。
-  - 人声/pad/酒杯:score → 显式 cooked(slide/vibrato 直接写, 不检测) → L0 引擎,
-                  并按八度对齐到各音色音区。
-四条 = 同一场演奏 × 不同取色。
+Conflict: L0 is 16-voice polyphonic (can strum), the DDSP guitar is monophonic (cannot handle chords) -> when the previous version unified everything through the
+gesture engine, the guitar notes were all wrong. Solution: **a monophonic phrase + two independent deterministic paths from the same score** (both build f0 directly from the score,
+without the error-prone gesture detection):
+  - guitar: control_from_score(score, real note template) -> DDSP Fender (winning recipe, correct notes).
+  - voice/pad/wine glass: score -> explicit cooked events (slide/vibrato written directly, not detected) -> L0 engine,
+                  octave-aligned to each timbre's register.
+Four clips = the same performance × different captures.
 
-用法:python -m eval.hero_unified
+Usage: python -m eval.hero_unified
 """
 
 from __future__ import annotations
@@ -41,16 +41,16 @@ NOTE_GLOB = (
     "dataset1/Fender Strat Clean Neck SC/audio/*.wav"
 )
 
-# 单音招牌乐句(无和弦):拨 + 滑 + 揉。吉他原生音区 MIDI53–62。
+# monophonic signature phrase (no chords): pluck + slide + vibrato. Native guitar register MIDI 53–62.
 SCORE = [
     {"midi": 55, "dur": 0.5},
-    {"midi": 60, "dur": 0.5, "slide": True},  # 滑 +5
+    {"midi": 60, "dur": 0.5, "slide": True},  # slide +5
     {"midi": 58, "dur": 0.5},
     {"midi": 53, "dur": 0.5},
-    {"midi": 60, "dur": 0.6, "slide": True},  # 滑 +7
+    {"midi": 60, "dur": 0.6, "slide": True},  # slide +7
     {"midi": 57, "dur": 0.5},
-    {"midi": 62, "dur": 0.9, "vibrato": 30},  # 持音 + 揉弦
-    {"midi": 57, "dur": 0.8, "slide": True},  # 下滑
+    {"midi": 62, "dur": 0.9, "vibrato": 30},  # held note + vibrato
+    {"midi": 57, "dur": 0.8, "slide": True},  # slide down
 ]
 DUR = sum(s["dur"] for s in SCORE) + 1.0
 CENTER = float(np.mean([s["midi"] for s in SCORE]))
@@ -62,12 +62,12 @@ def _octave_shift(f0_ref):
 
 
 def score_to_cooked(score, shift, vib_max_cents, vel=100, t0=0.1):
-    """单音 score → 显式 cooked 事件(slide/vibrato 直接写,不走手势检测)。"""
+    """Monophonic score -> explicit cooked events (slide/vibrato written directly, no gesture detection)."""
     cooked, cum, cur = [], t0, None
     for seg in score:
         midi = seg["midi"] + shift
         if seg.get("slide") and cur is not None:
-            cooked.append((cum, "slide", midi, vel, 0.12, cur))  # 续奏滑到 midi
+            cooked.append((cum, "slide", midi, vel, 0.12, cur))  # continue and slide to midi
         else:
             if cur is not None:
                 cooked.append((cum - 0.006, "off", cur, 0, 0.0, -1))
@@ -82,11 +82,11 @@ def score_to_cooked(score, shift, vib_max_cents, vel=100, t0=0.1):
     return cooked
 
 
-def render_L0(snap, lib, noise=0.02):  # 噪声层 2%(7.3 用户耳测拍板,与 app 默认一致)
+def render_L0(snap, lib, noise=0.02):  # noise layer 2% (decided by the user's ear test on 7.3, same as the app default)
     gi = GestureInterpreter(library=lib)
     inst = build_instrument(snap, noise_level=noise)
     eng = Engine(inst, eval_mode=True)
-    gi.apply_to_engine(eng)  # 注入 slide 曲线 + 颤速
+    gi.apply_to_engine(eng)  # inject slide curve + vibrato rate
     shift = _octave_shift(snap["f0_ref"])
     cooked = score_to_cooked(SCORE, shift, gi.vib_max_cents)
     return eng.render_offline(cooked, DUR), shift
@@ -95,7 +95,7 @@ def render_L0(snap, lib, noise=0.02):  # 噪声层 2%(7.3 用户耳测拍板,与
 def render_guitar(lib, device=None):
     note_src = sorted(glob.glob(NOTE_GLOB))[0]
     tmpl = note_template(note_src)
-    f0, lo, _ = control_from_score(SCORE, template=tmpl)  # 同一 score
+    f0, lo, _ = control_from_score(SCORE, template=tmpl)  # same score
     y = render(FENDER, f0, lo, device)  # 16k DDSP
     return AF.resample(torch.tensor(np.asarray(y, np.float32))[None], 16000, 44100).numpy()[0]
 
@@ -110,13 +110,13 @@ def main(argv=None):
     sf.write(
         DEMO / "hero3_guitar.wav", (gy / (np.max(np.abs(gy)) + 1e-9) * 0.95).astype(np.float32), SR
     )
-    print(f"  吉他(DDSP control_from_score, 同 score)  {len(gy) / SR:.1f}s")
-    clips.append(("吉他(DDSP)", gy))
+    print(f"  guitar (DDSP control_from_score, same score)  {len(gy) / SR:.1f}s")
+    clips.append(("guitar (DDSP)", gy))
 
     for path, noise, fid, label in [
-        ("assets/snapshots/voice_tone_mid.npz", 0.20, "voice", "人声"),
-        ("assets/snapshots/synth_pad.npz", 0.15, "pad", "合成pad"),
-        ("assets/snapshots/wineglass.npz", 0.25, "wineglass", "酒杯"),
+        ("assets/snapshots/voice_tone_mid.npz", 0.20, "voice", "voice"),
+        ("assets/snapshots/synth_pad.npz", 0.15, "pad", "synth pad"),
+        ("assets/snapshots/wineglass.npz", 0.25, "wineglass", "wine glass"),
     ]:
         snap = load_snapshot(path)
         y, shift = render_L0(snap, lib, noise=noise)
@@ -125,7 +125,7 @@ def main(argv=None):
             (y / (np.max(np.abs(y)) + 1e-9) * 0.95).astype(np.float32),
             SR,
         )
-        print(f"  {label:8s}(L0, 同 score, 八度{shift:+d})  {len(y) / SR:.1f}s")
+        print(f"  {label:8s}(L0, same score, octave {shift:+d})  {len(y) / SR:.1f}s")
         clips.append((label, y))
 
     gap = np.zeros(int(0.6 * SR), np.float32)
@@ -136,7 +136,7 @@ def main(argv=None):
         seq.append(gap)
     sf.write(DEMO / "hero_unified_montage.wav", np.concatenate(seq).astype(np.float32), SR)
     print("\n  -> hero_unified_montage.wav  " + " → ".join(c[0] for c in clips))
-    print("  四条 = 同一单音 score(逐音同谱) × 不同取色")
+    print("  four clips = the same monophonic score (note-for-note identical) × different captures")
     return 0
 
 

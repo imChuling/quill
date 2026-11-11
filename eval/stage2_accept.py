@@ -1,22 +1,22 @@
-"""阶段2 验收脚本 —— FR-2 完成 + FR-3。
+"""Stage 2 acceptance script: FR-2 complete + FR-3.
 
-出口：三例素材（人声 / 吉他单音 / 酒杯）±12 半音可听，共振峰保持。
+Exit criterion: three examples (voice / guitar single note / wine glass) audible at ±12 semitones, with formants preserved.
 
-对每例：
+For each example:
   audio -> analyze_timbre -> TimbreSnapshot(.npz) -> render(-12 / 0 / +12)
-  并渲染 +12 的"按序号搬运"错误版（花栗鼠）作对照存档（报告素材）。
+  and also render the +12 "carried over by index" wrong version (chipmunk) as an archived reference (report material).
 
-产物：
-  assets/snapshots/<name>.npz                     音色快照
-  assets/demos/<name>_orig.wav                    原音
-  assets/demos/<name>_re{0,up12,down12}.wav       共振峰保持重合成（±12）
-  assets/demos/<name>_up12_index.wav              按序号搬运错误版（对照）
-  assets/demos/<name>_fr3.png                     共振峰保持 vs 搬运 频谱对比
+Outputs:
+  assets/snapshots/<name>.npz                     timbre snapshot
+  assets/demos/<name>_orig.wav                    original
+  assets/demos/<name>_re{0,up12,down12}.wav       formant-preserving resynthesis (±12)
+  assets/demos/<name>_up12_index.wav              carried-over-by-index wrong version (reference)
+  assets/demos/<name>_fr3.png                     formant preservation vs carry-over spectrum comparison
 
-用法：
-  python -m eval.stage2_accept                 # 内置合成素材
-  python -m eval.stage2_accept guitar.wav      # 真实单音（默认按谐波声源）
-  python -m eval.stage2_accept --quasi bowl.wav  # 准谐波声源（酒杯/碗）
+Usage:
+  python -m eval.stage2_accept                 # built-in synthetic material
+  python -m eval.stage2_accept guitar.wav      # real single note (harmonic source by default)
+  python -m eval.stage2_accept --quasi bowl.wav  # quasi-harmonic source (wine glass/bowl)
 """
 
 from __future__ import annotations
@@ -47,10 +47,10 @@ SNAP_DIR = ROOT / "assets" / "snapshots"
 
 
 def synth_voice_steady(dur=2.0, sr=SR):
-    """类人声**稳态**长音（双共振峰，无颤音）。
+    """Voice-like **steady** long note (two formants, no vibrato).
 
-    按素材采集协议（A5.5）音色快照只从孤立持续音提取——稳态 f0 是干净残差/
-    噪声分解的前提（颤音会在分析窗内令谐波频率漂移、污染残差，属已知限制）。
+    Per the material capture protocol (A5.5) timbre snapshots are only taken from isolated sustained notes: a steady f0 is a prerequisite for a clean residual/
+    noise decomposition (vibrato drifts harmonic frequencies within the analysis window and pollutes the residual, a known limitation).
     """
     t = np.arange(int(sr * dur)) / sr
     f0 = 174.6  # F3
@@ -66,7 +66,7 @@ def synth_voice_steady(dur=2.0, sr=SR):
 
 
 def synth_guitar(dur=2.0, sr=SR):
-    """类吉他单音：谐波指数衰减（高次更快）+ 起音拨弦噪声。"""
+    """Guitar-like single note: exponential harmonic decay (faster for higher harmonics) + pluck noise at the attack."""
     t = np.arange(int(sr * dur)) / sr
     f0 = 146.83  # D3
     y = np.zeros_like(t)
@@ -76,7 +76,7 @@ def synth_guitar(dur=2.0, sr=SR):
             break
         tau = 1.2 / (1.0 + 0.5 * k)
         y += (1.0 / k) * np.exp(-t / tau) * np.sin(2 * np.pi * fk * t + 0.2 * k)
-    # 拨弦瞬态：~6ms 宽带噪声爆发
+    # pluck transient: ~6ms broadband noise burst
     rng = np.random.default_rng(0)
     pluck = rng.standard_normal(len(t)) * np.exp(-t / 0.006)
     y = y + 0.3 * pluck
@@ -84,13 +84,13 @@ def synth_guitar(dur=2.0, sr=SR):
 
 
 def _spectral_envelope_peak(y, sr, lo=200.0, hi=3000.0, smooth_hz=300.0):
-    """粗略谱包络峰频率（Hz）：**线性功率**谱平滑后在 [lo,hi] 取峰。
+    """Rough spectral-envelope peak frequency (Hz): smooth the **linear power** spectrum and take the peak in [lo,hi].
 
-    对线性功率（而非 log 幅度）平滑——log 域会被谐波间的深谷与密度主导，
-    给出错误的"包络峰"；线性功率平滑直接跟随谐波能量分布，定位共振峰可靠。
+    Smoothing linear power (not log magnitude): the log domain is dominated by the deep valleys and density between harmonics,
+    giving a wrong "envelope peak"; smoothing linear power follows the harmonic energy distribution directly and locates formants reliably.
     """
     seg = y[len(y) // 8 : -len(y) // 8] if len(y) > 16 else y
-    S = np.abs(np.fft.rfft(seg * np.hanning(len(seg)))) ** 2  # 功率谱
+    S = np.abs(np.fft.rfft(seg * np.hanning(len(seg)))) ** 2  # power spectrum
     f = np.fft.rfftfreq(len(seg), 1 / sr)
     df = f[1] - f[0]
     win = max(1, int(smooth_hz / df))
@@ -111,7 +111,7 @@ def _mag_db(y, sr):
 
 
 def _smoothed_env_db(y, sr, sigma_hz=250.0):
-    """线性功率谱 Gaussian 平滑 -> dB 谱包络曲线（直观展示共振峰位置）。"""
+    """Gaussian smoothing of the linear power spectrum -> dB spectral-envelope curve (shows formant positions clearly)."""
     seg = y[len(y) // 8 : -len(y) // 8] if len(y) > 16 else y
     S = np.abs(np.fft.rfft(seg * np.hanning(len(seg)))) ** 2
     f = np.fft.rfftfreq(len(seg), 1 / sr)
@@ -127,7 +127,7 @@ def _smoothed_env_db(y, sr, sigma_hz=250.0):
 
 def _save_fr3_plot(name, orig, re0, up_form, up_idx, sr, formant_hz):
     fig, ax = plt.subplots(figsize=(9, 4.5))
-    # 细线：原始线谱（淡）；粗线：平滑谱包络（讲故事）
+    # thin line: raw line spectrum (faint); thick line: smoothed spectral envelope (tells the story)
     f, s = _mag_db(up_form, sr)
     ax.plot(f, s, lw=0.5, alpha=0.25, color="C1")
     f, s = _mag_db(up_idx, sr)
@@ -162,11 +162,11 @@ def process(y, sr, name, quasi=False):
 
     f0r = snap["f0_ref"]
     length = len(y)
-    # 共振峰保持渲染：-12 / 0 / +12 半音
+    # formant-preserving rendering: -12 / 0 / +12 semitones
     re0 = render(snap, f0r, length=length, mode="formant")
     up = render(snap, f0r * 2.0, length=length, mode="formant")  # +12
     down = render(snap, f0r / 2.0, length=length, mode="formant")  # -12
-    up_idx = render(snap, f0r * 2.0, length=length, mode="index")  # 错误对照
+    up_idx = render(snap, f0r * 2.0, length=length, mode="index")  # wrong reference version
 
     outs = {
         "orig": y,
@@ -178,13 +178,13 @@ def process(y, sr, name, quasi=False):
     for tag, sig in outs.items():
         sf.write(DEMO_DIR / f"{name}_{tag}.wav", normalize(sig), sr)
 
-    # 共振峰保持度量：谱包络峰（应在 ±12 下基本不动）
+    # formant preservation measure: spectral-envelope peak (should barely move at ±12)
     formant_orig = _spectral_envelope_peak(y, sr)
     formant_up_form = _spectral_envelope_peak(up, sr)
     formant_up_idx = _spectral_envelope_peak(up_idx, sr)
     _save_fr3_plot(name, y, re0, up, up_idx, sr, formant_orig)
 
-    # 重合成保真（同基频）：谱包络峰漂移
+    # resynthesis fidelity (same f0): spectral-envelope peak drift
     drift_re0 = abs(_spectral_envelope_peak(re0, sr) - formant_orig)
 
     print(f"\n=== {name} ===")
@@ -192,21 +192,21 @@ def process(y, sr, name, quasi=False):
     print(f"  vibrato              : {snap['vibrato']}")
     print(
         f"  partial_freqs        : "
-        f"{'实测前4=' + str(np.round(snap['partial_freqs'][:4], 1).tolist()) if snap['partial_freqs'] is not None else 'None (严格谐波)'}"
+        f"{'measured first 4=' + str(np.round(snap['partial_freqs'][:4], 1).tolist()) if snap['partial_freqs'] is not None else 'None (strictly harmonic)'}"
     )
-    print(f"  谱包络峰 原音         : {formant_orig:8.1f} Hz")
+    print(f"  envelope peak, original         : {formant_orig:8.1f} Hz")
     print(
-        f"  谱包络峰 +12 共振峰保持: {formant_up_form:8.1f} Hz  "
-        f"(漂移 {abs(formant_up_form - formant_orig):.0f}Hz，应小)"
+        f"  envelope peak, +12 formant-preserving: {formant_up_form:8.1f} Hz  "
+        f"(drift {abs(formant_up_form - formant_orig):.0f}Hz, should be small)"
     )
     print(
-        f"  谱包络峰 +12 按序号   : {formant_up_idx:8.1f} Hz  "
-        f"(漂移 {abs(formant_up_idx - formant_orig):.0f}Hz，应≈翻倍)"
+        f"  envelope peak, +12 by index   : {formant_up_idx:8.1f} Hz  "
+        f"(drift {abs(formant_up_idx - formant_orig):.0f}Hz, should ≈ double)"
     )
-    print(f"  同基频重合成峰漂移     : {drift_re0:8.1f} Hz")
+    print(f"  same-f0 resynthesis peak drift     : {drift_re0:8.1f} Hz")
     print(
-        f"  快照 -> {snap_path.name}  ({snap['H_env'].shape[1]} 帧 H, "
-        f"{snap['N_env'].shape[1]} 帧 N)"
+        f"  snapshot -> {snap_path.name}  ({snap['H_env'].shape[1]} H frames, "
+        f"{snap['N_env'].shape[1]} N frames)"
     )
     return {
         "name": name,
@@ -220,10 +220,10 @@ def process(y, sr, name, quasi=False):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Quill 阶段2 验收（FR-2 完成 + FR-3）")
-    ap.add_argument("wavs", nargs="*", help="真实单音 wav")
+    ap = argparse.ArgumentParser(description="Quill stage 2 acceptance (FR-2 complete + FR-3)")
+    ap.add_argument("wavs", nargs="*", help="real single-note wav")
     ap.add_argument(
-        "--quasi", action="store_true", help="准谐波声源（酒杯/碗），放宽峰搜索窗并测 partial_freqs"
+        "--quasi", action="store_true", help="quasi-harmonic source (wine glass/bowl): widen the peak search window and measure partial_freqs"
     )
     args = ap.parse_args(argv)
 
@@ -235,20 +235,20 @@ def main(argv=None):
             y, _ = load(w, sr=SR)
             jobs.append((y, Path(w).stem, args.quasi))
     else:
-        print("未提供录音，使用内置合成单音（人声/吉他/酒杯）。")
+        print("No recordings given, using built-in synthetic single notes (voice/guitar/wine glass).")
         jobs.append((synth_voice_steady()[0], "voice", False))
         jobs.append((synth_guitar()[0], "guitar", False))
         jobs.append((synth_wineglass()[0], "wineglass", True))
 
     results = [process(y, SR, nm, q) for (y, nm, q) in jobs]
 
-    print("\n---------------- 阶段2 验收汇总 ----------------")
+    print("\n---------------- Stage 2 acceptance summary ----------------")
     print(
-        "判据：① 同基频重合成保真(峰漂移<150Hz) ② 渲染干净(有限有界) ③ 共振峰保持不劣于按序号搬运"
+        "Criteria: (1) same-f0 resynthesis fidelity (peak drift<150Hz) (2) clean render (finite, bounded) (3) formant preservation no worse than carry-over by index"
     )
     print(
-        "（注：吉他/酒杯为单调滚降谱、无显式共振峰，两模式自然接近；"
-        "人声有 ~700Hz 共振峰，FR-3 优势显著）"
+        "(note: guitar/wine glass have monotonically rolling-off spectra with no explicit formants, so the two modes are naturally close; "
+        "the voice has a ~700Hz formant, where the FR-3 advantage is clear)"
     )
     ok = True
     for r in results:
@@ -257,16 +257,16 @@ def main(argv=None):
         ok_row = faithful and not_worse and r["clean"]
         ok = ok and ok_row
         flag = "OK " if ok_row else "WARN"
-        note = "  <- 共振峰保持显著" if r["drift_form"] < 0.7 * r["drift_idx"] else ""
+        note = "  <- formant preservation clearly better" if r["drift_form"] < 0.7 * r["drift_idx"] else ""
         print(
             f"  [{flag}] {r['name']:10s} f0={r['f0']:7.1f}Hz  "
-            f"同基频漂移={r['drift_re0']:4.0f}Hz  "
+            f"same-f0 drift={r['drift_re0']:4.0f}Hz  "
             f"+12: formant={r['drift_form']:4.0f}Hz / index={r['drift_idx']:4.0f}Hz{note}"
         )
-    print(f"产物: {DEMO_DIR}  |  快照: {SNAP_DIR}")
+    print(f"Outputs: {DEMO_DIR}  |  snapshots: {SNAP_DIR}")
     print(
-        "盲听 ±12 半音：*_down12 / *_re0 / *_up12 三档音色一致（无花栗鼠）；"
-        "对照 *_up12_index 听花栗鼠效应。"
+        "Blind listening at ±12 semitones: *_down12 / *_re0 / *_up12 should have a consistent timbre (no chipmunk); "
+        "compare *_up12_index to hear the chipmunk effect."
     )
     return 0 if ok else 1
 

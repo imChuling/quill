@@ -1,9 +1,9 @@
-"""P1 A/B:表现层(谱形轨迹+亮度随电平)开 vs 关,同乐句渲染 —— 耳测用。
+"""P1 A/B: expression layer (spectral trajectory + brightness following level) on vs off, same phrase rendered, for ear testing.
 
-乐句设计给"风琴效应"最难的场景:长持续单音(6s) + 按住的三和弦(4s)。
-输出 assets/demos/p1_{tone}_{off,on}.wav + 客观指标(持续段谱通量,on 应显著更高)。
+The phrase targets the hardest case for the "organ effect": a long sustained single note (6s) + a held triad (4s).
+Outputs assets/demos/p1_{tone}_{off,on}.wav + objective metrics (spectral flux of the sustain, on should be clearly higher).
 
-用法:python -m eval.p1_ab
+Usage: python -m eval.p1_ab
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ DUR = 11.5
 
 TONES = {"voice": "voice.npz", "pad": "synth_pad.npz", "wineglass": "wineglass.npz"}
 
-# 长单音(6s) + 三和弦按住(4s)——静态频谱最藏不住的乐句
+# long single note (6s) + held triad (4s): the phrase where a static spectrum has nowhere to hide
 EVENTS = [
     (0.2, "on", 57, 96, 0.0, -1),
     (6.2, "off", 57, 0, 0.0, -1),
@@ -47,7 +47,7 @@ def octave_shift(f0_ref):
 
 
 def sustain_motion(y, a, b):
-    """持续段的谱运动:(谱通量, 谱质心std Hz)。风琴=双低;活=至少一项明显。"""
+    """Spectral motion of the sustain: (spectral flux, spectral centroid std Hz). Organ = both low; alive = at least one clearly present."""
     seg = y[int(a * SR) : int(b * SR)]
     n_fft, hop = 2048, 512
     frames = [
@@ -71,16 +71,16 @@ def main():
             "off": (0.0, 0.0, 0.0),
             "on": (0.85, 0.0, 0.8),
             "max": (1.8, 0.0, 1.6),
-        }.items():  # max=夸张教学档:听懂"呼吸"用
+        }.items():  # max = exaggerated teaching level: for learning to hear the "breathing"
             inst = build_instrument(snap, noise_level=0.2)
             eng = Engine(inst, eval_mode=True)
-            set_liveness(spec, dark, br)  # 必须在 Engine 之后(引擎 init 会按 config 重设)
+            set_liveness(spec, dark, br)  # must come after Engine (engine init resets it from config)
             y = eng.render_offline(evs, DUR)
             sf.write(str(DEMO / f"p1_{name}_{mode}.wav"), y, SR)
             ys[mode] = y
             row[mode] = sustain_motion(y, 2.0, 5.8)
-        # 真咔哒判据 = 残差导数**峰度**(正常音频~3-10;孤立咔哒会 >30)。
-        # 注:脉冲计数在调制深度大时失效(残差本身成音频级信号),7.2 调查证实误报。
+        # true click criterion = **kurtosis** of the residual derivative (normal audio ~3-10; isolated clicks >30).
+        # Note: pulse counting fails at large modulation depth (the residual itself becomes an audio-rate signal); the 7.2 investigation confirmed false positives.
         kur = {}
         for m in ("on", "max"):
             dr = np.diff(ys[m] - ys["off"])
@@ -90,11 +90,11 @@ def main():
         (_, c0), (_, c1), (_, c2) = row["off"], row["on"], row["max"]
         amp_dev = float(np.abs(inst.amp_traj - 1).mean()) if inst.amp_traj is not None else 0.0
         print(
-            f"[{name:10s}] F={F:3d} 响度呼吸幅={amp_dev:.3f}  质心std {c0:5.1f}→{c1:5.1f}→{c2:5.1f} Hz  "
-            f"残差峰度 on={kur['on']:.1f} max={kur['max']:.1f} → {'干净' if kur['on'] < 30 else '有咔哒!'}"
+            f"[{name:10s}] F={F:3d} loudness breathing depth={amp_dev:.3f}  centroid std {c0:5.1f}->{c1:5.1f}->{c2:5.1f} Hz  "
+            f"residual kurtosis on={kur['on']:.1f} max={kur['max']:.1f} -> {'clean' if kur['on'] < 30 else 'clicks!'}"
         )
-    set_liveness(0.85, 0.0, 0.8)  # 还原默认
-    print("\n耳测:assets/demos/p1_{voice,pad,wineglass}_{off,on}.wav(先 off 后 on)")
+    set_liveness(0.85, 0.0, 0.8)  # restore defaults
+    print("\nEar test: assets/demos/p1_{voice,pad,wineglass}_{off,on}.wav (off first, then on)")
 
 
 if __name__ == "__main__":

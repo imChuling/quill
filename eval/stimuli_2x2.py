@@ -1,16 +1,16 @@
-"""2×2 stimuli 生成器 —— .tplib v2 的第一个消费者(冲刺本子 §7.1;技术母本 §4.2)。
+"""2×2 stimuli generator: the first consumer of .tplib v2 (sprint notebook §7.1; technical master document §4.2).
 
-行为转移规则(§4.2,全部作用于**残差**轨迹,不携带源的绝对量):
-  pitch(cents Δ)      → 逐帧 f0:f0_note · 2^(Δp(τ)/1200)      (揉弦/滑/勾全保留)
-  energy(ln-RMS Δ)    → 逐帧幅度:exp(Δe(τ))                    (呼吸/起伏)
-  brightness(oct Δ)   → 逐帧倾斜:gain_k ×(f_k/1kHz)^Δb(τ)      (亮度运动)
-  noise(v1 暂不用)    → 记 manifest,消费端后续接
+Behaviour transfer rules (§4.2, all applied to **residual** trajectories, the source's absolute values are not carried over):
+  pitch (cents Δ)      -> per-frame f0: f0_note · 2^(Δp(τ)/1200)      (vibrato/slides/hammer-ons all kept)
+  energy (ln-RMS Δ)    -> per-frame amplitude: exp(Δe(τ))                    (breathing/fluctuation)
+  brightness (oct Δ)   -> per-frame tilt: gain_k ×(f_k/1kHz)^Δb(τ)      (brightness motion)
+  noise (not used in v1)    -> recorded in the manifest, to be wired up on the consumer side later
 
-合成路径 = 快照稳态包络(共振峰保持取 g_k)+ resynth 逐帧 f0/H —— 与 L0 同一数学,
-无行为轨迹时(全零)退化为静态渲染 = 对照组,天然 α=0。
+Synthesis path = snapshot steady envelope (formant-preserving g_k) + resynth per-frame f0/H: the same math as L0;
+with no behaviour trajectories (all zeros) it degrades to a static render = the control group, naturally α=0.
 
-产出:同一乐句 × {Voice, Glass 音色} × {Vocal, Guitar 行为} 4 格 + 2 个静态对照,
-RMS 对齐,落 assets/ear_tests/stimuli_2x2_v1/。
+Output: the same phrase × {Voice, Glass timbre} × {Vocal, Guitar behaviour} 4 cells + 2 static controls,
+RMS-matched, written to assets/ear_tests/stimuli_2x2_v1/.
 """
 
 from __future__ import annotations
@@ -32,13 +32,13 @@ from synth.additive import resynth  # noqa: E402
 
 SR = 44100
 HOP = 512
-# 共享乐句(midi, t_on, dur_s):五音,含长短对比与大跳
+# shared phrase (midi, t_on, dur_s): five notes, with long/short contrast and a large leap
 PHRASE = [(60, 0.00, 0.55), (62, 0.60, 0.55), (64, 1.20, 0.90), (67, 2.20, 0.55), (72, 2.80, 1.40)]
 TAIL = 0.6
 
 
 def _steady_gains(snap: dict, f0_note: float, K: int) -> np.ndarray:
-    """共振峰保持:稳态包络在 k·f0_note 绝对频率处采样(同 voice._compute_gain_k 语义)。"""
+    """Formant preservation: sample the steady envelope at the absolute frequencies k·f0_note (same semantics as voice._compute_gain_k)."""
     H = np.asarray(snap["H_env"], np.float64)
     T = H.shape[1]
     lo, hi = int(T * 0.25), max(int(T * 0.75), int(T * 0.25) + 1)
@@ -60,7 +60,7 @@ def _steady_gains(snap: dict, f0_note: float, K: int) -> np.ndarray:
 
 
 def synth_note(snap: dict, midi: int, dur_s: float, traj: dict | None) -> np.ndarray:
-    """一个音:行为轨迹驱动的加法重合成。traj=None → 静态对照(仅 8ms 边缘淡变)。"""
+    """One note: additive resynthesis driven by behaviour trajectories. traj=None -> static control (only 8ms edge fades)."""
     f0 = 440.0 * 2 ** ((midi - 69) / 12)
     n = int(dur_s * SR)
     T = max(3, n // HOP)
@@ -81,10 +81,10 @@ def synth_note(snap: dict, midi: int, dur_s: float, traj: dict | None) -> np.nda
 
     f0_t = f0 * 2 ** (dp / 1200.0)
     amp_t = np.exp(de)
-    fk = np.arange(1, K + 1)[:, None] * f0  # [K,1] 名义频率
-    tilt = (fk / 1000.0) ** db[None, :]  # [K,T] 亮度倾斜
+    fk = np.arange(1, K + 1)[:, None] * f0  # [K,1] nominal frequencies
+    tilt = (fk / 1000.0) ** db[None, :]  # [K,T] brightness tilt
     H = g[:, None] * amp_t[None, :] * tilt
-    # 全局起收保护(静态对照也有):8ms 起 + 60ms 收
+    # global start/end protection (static control too): 8ms in + 60ms out
     env = np.ones(T)
     a = max(1, int(0.008 * SR / HOP))
     r = max(2, int(0.06 * SR / HOP))
@@ -95,7 +95,7 @@ def synth_note(snap: dict, midi: int, dur_s: float, traj: dict | None) -> np.nda
 
 
 def behavior_events(wav_path: Path, max_events=8) -> list:
-    """行为源 → 每事件四轨迹。先试 onset 分割,失败退回整段单事件。"""
+    """Behaviour source -> four trajectories per event. Try onset segmentation first, fall back to the whole segment as one event on failure."""
     try:
         import soundfile as sf
 
@@ -107,7 +107,7 @@ def behavior_events(wav_path: Path, max_events=8) -> list:
             import librosa
 
             y = librosa.resample(y, orig_sr=sr, target_sr=SR)
-    except Exception:  # m4a 等压缩格式走 librosa/audioread
+    except Exception:  # compressed formats such as m4a go through librosa/audioread
         import librosa
 
         y, _ = librosa.load(str(wav_path), sr=SR, mono=True)
@@ -133,15 +133,15 @@ def behavior_events(wav_path: Path, max_events=8) -> list:
 
 
 def render_cell(snap: dict, events: list | None) -> np.ndarray:
-    """乐句**连续线**合成(A1,2026-08-01):逐音独立合成再相加=采样器的失败模式
-    (音间幅度归零、每音重新起振)。这里把整条乐句建成一条连续的 f0/H 时间线,
-    相邻音之间 f0 在 60ms 内滑行、能量不归零——与引擎 legato 同语义。"""
+    """**Continuous-line** phrase synthesis (A1, 2026-08-01): synthesising each note separately and summing = the sampler's failure mode
+    (amplitude returns to zero between notes, each note restarts). Here the whole phrase is built as one continuous f0/H timeline,
+    f0 glides within 60ms between adjacent notes and energy does not return to zero: the same semantics as the engine's legato."""
     total = int((PHRASE[-1][1] + PHRASE[-1][2] + TAIL) * SR)
     T = max(8, total // HOP)
     t_fr = np.arange(T) * HOP / SR
     K_max = 60
 
-    # 1) 名义 f0 时间线:音内保持,音间 60ms log 域滑行(=legato 连接)
+    # 1) nominal f0 timeline: held within a note, 60ms log-domain glide between notes (= legato connection)
     f0_nom = np.zeros(T)
     glide = 0.06
     for i, (midi, t_on, dur) in enumerate(PHRASE):
@@ -152,11 +152,11 @@ def render_cell(snap: dict, events: list | None) -> np.ndarray:
         prev_f = 440.0 * 2 ** ((PHRASE[i - 1][0] - 69) / 12)
         m_gl = (t_fr >= t_on) & (t_fr < t_on + glide)
         u = np.clip((t_fr[m_gl] - t_on) / glide, 0, 1)
-        f0_nom[m_gl] = prev_f * (f_here / prev_f) ** u  # log 域线性=听感线性
+        f0_nom[m_gl] = prev_f * (f_here / prev_f) ** u  # linear in log domain = perceptually linear
         f0_nom[(t_fr >= t_on + glide) & (t_fr < t_on + dur)] = f_here
     f0_nom[f0_nom <= 0] = f0_nom[f0_nom > 0][-1] if np.any(f0_nom > 0) else 440.0
 
-    # 2) 行为轨迹铺到时间线(每音一条,取该音所属事件)
+    # 2) lay behaviour trajectories onto the timeline (one per note, taken from the event the note belongs to)
     dp = np.zeros(T)
     de = np.zeros(T)
     db = np.zeros(T)
@@ -171,13 +171,13 @@ def render_cell(snap: dict, events: list | None) -> np.ndarray:
             dst[m] = np.interp(tau, np.linspace(0, 1, len(pts)), pts)
     db = np.clip(db, -1.0, 1.0)
 
-    # 3) 一次性合成整条线(共振峰保持:每帧按当前名义音高取稳态增益)
+    # 3) synthesise the whole line at once (formant preservation: steady gains taken per frame at the current nominal pitch)
     f0_t = f0_nom * 2 ** (dp / 1200.0)
     amp_t = np.exp(de)
     H = np.zeros((K_max, T))
-    for i, (_midi, t_on, _dur) in enumerate(PHRASE):  # 分段取 g(音内音高恒定)
-        # 覆盖延到**下一音起点**(乐句谱面上音间有空隙,但 legato 演奏是连着的:
-        # 空隙留零=逐音重触发=采样器行为。这里让声音连续跨过空隙)
+    for i, (_midi, t_on, _dur) in enumerate(PHRASE):  # take g per segment (pitch is constant within a note)
+        # coverage extends to the **start of the next note** (the score has gaps between notes, but legato playing is connected:
+        # leaving the gap at zero = per-note retrigger = sampler behaviour. Here the sound continues across the gap)
         t_next = PHRASE[i + 1][1] if i + 1 < len(PHRASE) else 1e9
         m = (t_fr >= t_on) & (t_fr < t_next)
         if not m.any():
@@ -188,7 +188,7 @@ def render_cell(snap: dict, events: list | None) -> np.ndarray:
         fk = np.arange(1, K + 1)[:, None] * f_here
         H[:K, m] = g[:, None] * (fk / 1000.0) ** db[None, m]
     H *= amp_t[None, :]
-    # 乐句整体起收(不是逐音!)+ 收尾自然衰减
+    # whole-phrase start/end (not per note!) + natural decay at the end
     env = np.ones(T)
     a = max(1, int(0.01 * SR / HOP))
     env[:a] = np.linspace(0, 1, a)
@@ -202,8 +202,8 @@ def render_cell(snap: dict, events: list | None) -> np.ndarray:
 
 
 def main():
-    """2×2(定位修订 2026-08-01:人声出局)= {Glass, Guitar 音色} × {Glass, Guitar 行为}。
-    glass 行为源(杯沿摩擦演奏)待用户录音;当前先出 guitar 行为列 + 两个静态对照。"""
+    """2×2 (positioning revision 2026-08-01: voice dropped) = {Glass, Guitar timbre} × {Glass, Guitar behaviour}.
+    The glass behaviour source (rim-rubbing performance) awaits the user's recording; for now the guitar behaviour column + two static controls are produced."""
     import soundfile as sf
 
     timbres = {
@@ -212,7 +212,7 @@ def main():
     }
     behaviors = {"guitar": ROOT / "assets/recordings/performance/guitar_perf_01.m4a"}
     glass_perf = ROOT / "assets/recordings/performance/glass_perf_01.wav"
-    if glass_perf.exists():  # 用户录好即自动进 2×2
+    if glass_perf.exists():  # automatically enters the 2×2 once the user has recorded it
         behaviors["glass"] = glass_perf
     out = ROOT / "assets/ear_tests/stimuli_2x2_v1"
     out.mkdir(parents=True, exist_ok=True)

@@ -1,16 +1,16 @@
-"""跨音高音色保真评估 —— FR-13（音色保真硬指标）。
+"""Cross-pitch timbre fidelity evaluation: FR-13 (hard metric for timbre fidelity).
 
-核心主张的量化证据：**Quill 的共振峰保持重合成，在远离参考音高处比朴素采样器移调
-更忠于真实乐器。** 做法：
+Quantitative evidence for the core claim: **Quill's formant-preserving resynthesis is more faithful to the real instrument than naive sampler
+transposition far from the reference pitch.** Method:
 
-  从音高 A 的真录音建 TimbreSnapshot → 重合成到音高 B
-    Quill   : 共振峰保持加法重合成（render_offline / synth.render）
-    Sampler : librosa.effects.pitch_shift（相位声码器移调，无共振峰校正）= 典型采样器基线
-  两者各与**音高 B 的真录音**比谱包络距（稳态段平均 log 幅度谱 L1，对时序鲁棒）。
-  Quill 距 < Sampler 距 = 共振峰保持更保真（共振峰乐器尤其显著）。
+  Build a TimbreSnapshot from a real recording at pitch A -> resynthesise to pitch B
+    Quill   : formant-preserving additive resynthesis (render_offline / synth.render)
+    Sampler : librosa.effects.pitch_shift (phase-vocoder transposition, no formant correction) = typical sampler baseline
+  Each is compared with the **real recording at pitch B** by spectral-envelope distance (L1 of the mean log magnitude spectrum over the steady segment, robust to timing).
+  Quill distance < Sampler distance = formant preservation is more faithful (especially for formant instruments).
 
-输入是一组 (pitch_midi, audio) 同乐器多音高样本；现支持用户人声三音高 / IDMT 吉他 /
-NSynth（下好后）。
+Input is a set of (pitch_midi, audio) multi-pitch samples of the same instrument; currently supports the user's voice at three pitches / IDMT guitar /
+NSynth (once downloaded).
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ SR = 44100
 
 
 # --------------------------------------------------------------------------- #
-# 谱包络距（稳态段平均 log 幅度谱 L1，对相位/时序鲁棒）
+# Spectral-envelope distance (L1 of the mean log magnitude spectrum over the steady segment, robust to phase/timing)
 # --------------------------------------------------------------------------- #
 def _steady_logspec(y, sr=SR, n_fft=2048, fmax=8000.0):
     seg = y[len(y) // 5 : -len(y) // 5] if len(y) > 10 else y
@@ -43,7 +43,7 @@ def _steady_logspec(y, sr=SR, n_fft=2048, fmax=8000.0):
     mag = np.mean(S, axis=0) if S else np.abs(np.fft.rfft(seg[:n_fft] * np.hanning(n_fft)))
     f = np.fft.rfftfreq(n_fft, 1 / sr)
     mag = mag[f <= fmax]
-    mag = mag / (mag.sum() + 1e-12)  # 归一化（去整体响度，比形状）
+    mag = mag / (mag.sum() + 1e-12)  # normalise (remove overall loudness, compare shape)
     return np.log(mag + 1e-6)
 
 
@@ -54,7 +54,7 @@ def spectral_distance(y1, y2, sr=SR):
 
 
 def _sampler_pitch_shift(y, semitones, sr=SR):
-    """采样器基线：相位声码器移调（librosa），不保共振峰。"""
+    """Sampler baseline: phase-vocoder transposition (librosa), formants not preserved."""
     import librosa
 
     if abs(semitones) < 1e-3:
@@ -65,14 +65,14 @@ def _sampler_pitch_shift(y, semitones, sr=SR):
 
 
 # --------------------------------------------------------------------------- #
-# 一件乐器的跨音高保真
+# Cross-pitch fidelity of one instrument
 # --------------------------------------------------------------------------- #
 def evaluate_instrument(samples, name="instrument", sr=SR, quasi=False, max_semis=None):
-    """samples: [(pitch_midi, audio), ...] 同乐器多音高真录音。
+    """samples: [(pitch_midi, audio), ...] real multi-pitch recordings of the same instrument.
 
-    取中位音高为参考建快照；**每样本的真实 f0 由 PESTO 实测**（不依赖标注/估计音高），
-    Quill 渲染到目标真实 f0、采样器按真实 f0 比例移调；与目标真录音比谱距。
-    max_semis 限制目标移调幅度（音乐上合理区间，避免 3 个八度的非现实极端拖累两方）。
+    The median pitch is the reference for the snapshot; **each sample's true f0 is measured with PESTO** (independent of annotated/estimated pitch);
+    Quill renders to the target's true f0 and the sampler transposes by the true f0 ratio; both are compared with the target's real recording by spectral distance.
+    max_semis limits the target transposition (a musically reasonable range, so unrealistic 3-octave extremes do not drag both down).
     """
     from analysis.harmonic import f0_scalar, track_f0
 
@@ -97,7 +97,7 @@ def evaluate_instrument(samples, name="instrument", sr=SR, quasi=False, max_semi
         semis = 12.0 * np.log2(f0_tgt_real / f0_ref_real)
         if max_semis is not None and abs(semis) > max_semis:
             continue
-        f0_tgt = f0_ref * (f0_tgt_real / f0_ref_real)  # 快照参考基频 × 真实比例
+        f0_tgt = f0_ref * (f0_tgt_real / f0_ref_real)  # snapshot reference f0 × true ratio
         n = len(real)
         quill = render(snap, f0_tgt, length=n, mode="formant", add_attack=False)
         sampler = _sampler_pitch_shift(ref_audio, semis, sr)
@@ -111,34 +111,34 @@ def evaluate_instrument(samples, name="instrument", sr=SR, quasi=False, max_semi
 
 def _report(rows, name):
     if not rows:
-        print(f"  [{name}] 样本不足（需≥2 音高）")
+        print(f"  [{name}] not enough samples (need ≥2 pitches)")
         return None
     q = np.mean([r["quill"] for r in rows])
     s = np.mean([r["sampler"] for r in rows])
     win = np.mean([r["quill_better"] for r in rows])
-    print(f"\n=== {name} ({len(rows)} 个目标音高) ===")
-    print(f"  {'移调(半音)':>10} {'Quill谱距':>10} {'采样器谱距':>10}  优胜")
+    print(f"\n=== {name} ({len(rows)} target pitches) ===")
+    print(f"  {'shift (st)':>10} {'Quill dist':>10} {'sampler dist':>10}  winner")
     for r in sorted(rows, key=lambda x: x["semis"]):
         print(
             f"  {r['semis']:>+10d} {r['quill']:>10.4f} {r['sampler']:>10.4f}  "
-            f"{'Quill' if r['quill_better'] else '采样器'}"
+            f"{'Quill' if r['quill_better'] else 'sampler'}"
         )
     print(
-        f"  均值: Quill {q:.4f} vs 采样器 {s:.4f}  "
-        f"-> Quill {'更保真' if q < s else '未优于'}（越低越像真录音）；"
-        f"Quill 胜率 {win * 100:.0f}%"
+        f"  mean: Quill {q:.4f} vs sampler {s:.4f}  "
+        f"-> Quill {'more faithful' if q < s else 'not better'} (lower is closer to the real recording); "
+        f"Quill win rate {win * 100:.0f}%"
     )
     return {"name": name, "quill": q, "sampler": s, "win_rate": win}
 
 
 # --------------------------------------------------------------------------- #
-# 数据源
+# Data sources
 # --------------------------------------------------------------------------- #
 def voice_samples():
-    """用户人声三音高（强共振峰 -> Quill 优势应显著）。"""
+    """User's voice at three pitches (strong formants -> Quill's advantage should be clear)."""
     base = Path(__file__).resolve().parents[1] / "assets" / "recordings" / "tones"
     out = []
-    midi = {"low": 50, "mid": 60, "high": 69}  # 估计音区（仅作参考序，真 f0 用 analyze）
+    midi = {"low": 50, "mid": 60, "high": 69}  # estimated register (only as a reference order; true f0 comes from analyze)
     for reg in ("low", "mid", "high"):
         for ext in (".m4a", ".wav", ".mp3"):
             p = base / f"voice_tone_{reg}{ext}"
@@ -150,14 +150,14 @@ def voice_samples():
 
 
 def idmt_samples(root, guitar_subdir=None, max_notes=12):
-    """IDMT 同一把吉他的多音高单音（弱共振峰 -> Quill 优势温和）。"""
+    """Multi-pitch single notes from the same IDMT guitar (weak formants -> Quill's advantage is modest)."""
     import glob
     import os
 
     from analysis.datasets import load_idmt_smt_guitar
 
     evs = load_idmt_smt_guitar(root)
-    # 选一个 subdir 的单音文件（每文件常含数音；取 pluck/normal 的）
+    # pick single-note files from one subdir (files often contain several notes; take pluck/normal ones)
     from collections import defaultdict
 
     byf = defaultdict(list)
@@ -166,7 +166,7 @@ def idmt_samples(root, guitar_subdir=None, max_notes=12):
     out = []
     seen_pitch = set()
     for f, es in byf.items():
-        if len(es) != 1:  # 取单音文件，纯净
+        if len(es) != 1:  # take single-note files only, clean
             continue
         e = es[0]
         if e["pitch_midi"] in seen_pitch:
@@ -184,13 +184,13 @@ def idmt_samples(root, guitar_subdir=None, max_notes=12):
 
 
 # --------------------------------------------------------------------------- #
-# 多乐器广度数据源（TinySOL 管弦真录音 / NSynth 基准）
+# Multi-instrument breadth data sources (TinySOL real orchestral recordings / NSynth benchmark)
 # --------------------------------------------------------------------------- #
 _NOTE = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 
 
 def _note_to_midi(s):
-    """音名 -> MIDI：'A4'->69, 'C#5', 'Bb3', 支持 #/♯ b/♭。"""
+    """Note name -> MIDI: 'A4'->69, 'C#5', 'Bb3', supports #/♯ b/♭."""
     s = s.strip()
     name = s[0].upper()
     i, acc = 1, 0
@@ -201,7 +201,7 @@ def _note_to_midi(s):
 
 
 def _spread(samples, max_n):
-    """从已按音高排序的样本里均匀抽 max_n 个（含两端），控制运行时长。"""
+    """Evenly pick max_n samples (including both ends) from samples sorted by pitch, to bound run time."""
     if len(samples) <= max_n:
         return samples
     idx = np.linspace(0, len(samples) - 1, max_n).round().astype(int)
@@ -209,12 +209,12 @@ def _spread(samples, max_n):
 
 
 def tinysol_groups(root, technique="ord", dynamics="mf", max_pitch=9, min_pitch=3):
-    """TinySOL -> [(TinySOL/Family/Instrument, [(midi,audio),...]), ...]。
+    """TinySOL -> [(TinySOL/Family/Instrument, [(midi,audio),...]), ...].
 
-    真实布局 <Family>/<Instrument>/<technique>/<Instr-tech-Pitch-Dyn-...>.wav
-    （如 Brass/Bass_Tuba/ordinario/BTb-ord-F#1-pp-N-N.wav）。Family/Instrument 取
-    路径倒数第 4/3 段（对根目录多层嵌套鲁棒）；文件名解析 tech/pitch/dyn，固定
-    ordinario + 单一 dynamics 保音色一致。
+    Real layout <Family>/<Instrument>/<technique>/<Instr-tech-Pitch-Dyn-...>.wav
+    (e.g. Brass/Bass_Tuba/ordinario/BTb-ord-F#1-pp-N-N.wav). Family/Instrument are taken from
+    the 4th/3rd path segments from the end (robust to nested root directories); the file name is parsed for tech/pitch/dyn, fixed to
+    ordinario + a single dynamics level to keep the timbre consistent.
     """
     import glob
     import os
@@ -251,10 +251,10 @@ def tinysol_groups(root, technique="ord", dynamics="mf", max_pitch=9, min_pitch=
 
 
 def nsynth_groups(root, per_family=1, max_pitch=9, min_pitch=3, families=None, velocity=None):
-    """NSynth -> [(NSynth/family, [(midi,audio),...]), ...]。
+    """NSynth -> [(NSynth/family, [(midi,audio),...]), ...].
 
-    文件名 <family>_<source>_<instrID>-<pitch>-<velocity>.wav，pitch 即 MIDI；
-    按乐器（family_source_instrID）分组，每个 family 取 per_family 件乐器。
+    File name <family>_<source>_<instrID>-<pitch>-<velocity>.wav, pitch is MIDI;
+    grouped by instrument (family_source_instrID), per_family instruments taken per family.
     """
     import glob
     import os
@@ -280,7 +280,7 @@ def nsynth_groups(root, per_family=1, max_pitch=9, min_pitch=3, families=None, v
             fam_of[head] = fam
         except ValueError:
             continue
-    # 每 family 选 per_family 件音高跨度最大的乐器，velocity 固定
+    # per family, pick the per_family instruments with the widest pitch span, velocity fixed
     fam_instrs = defaultdict(list)
     for head, items in by_instr.items():
         fam_instrs[fam_of[head]].append((head, items))
@@ -300,7 +300,7 @@ def nsynth_groups(root, per_family=1, max_pitch=9, min_pitch=3, families=None, v
 
 
 def _run_breadth(groups, quasi=False, max_semis=18.0):
-    """跑一批 (name, samples) 分组，按 family 前缀聚合返回 per-group + per-family。"""
+    """Run a batch of (name, samples) groups and return per-group + per-family results aggregated by family prefix."""
     from collections import defaultdict
 
     fam_rows = defaultdict(list)
@@ -316,8 +316,8 @@ def _run_breadth(groups, quasi=False, max_semis=18.0):
         fam = "/".join(name.split("/")[:2])
         fam_rows[fam].extend(rows)
         print(
-            f"  {name:32s} Quill {q:.3f} vs 采样器 {s:.3f}  "
-            f"胜率 {win * 100:3.0f}%  ({'✓' if q < s else '×'})"
+            f"  {name:32s} Quill {q:.3f} vs sampler {s:.3f}  "
+            f"win rate {win * 100:3.0f}%  ({'✓' if q < s else '×'})"
         )
     fam_summary = []
     for fam, rows in sorted(fam_rows.items()):
@@ -329,69 +329,69 @@ def _run_breadth(groups, quasi=False, max_semis=18.0):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="跨音高音色保真 vs 采样器基线")
-    ap.add_argument("--idmt", default=None, help="IDMT 根目录（加测吉他）")
-    ap.add_argument("--tinysol", default=None, help="TinySOL 根目录（管弦广度）")
-    ap.add_argument("--nsynth", default=None, help="NSynth 根目录（基准广度）")
-    ap.add_argument("--per-family", type=int, default=1, help="NSynth 每 family 取几件乐器")
+    ap = argparse.ArgumentParser(description="Cross-pitch timbre fidelity vs sampler baseline")
+    ap.add_argument("--idmt", default=None, help="IDMT root directory (adds guitar)")
+    ap.add_argument("--tinysol", default=None, help="TinySOL root directory (orchestral breadth)")
+    ap.add_argument("--nsynth", default=None, help="NSynth root directory (benchmark breadth)")
+    ap.add_argument("--per-family", type=int, default=1, help="instruments per NSynth family")
     args = ap.parse_args(argv)
 
     summary = []
     vs = voice_samples()
     if len(vs) >= 2:
-        rows, _ = evaluate_instrument(vs, name="voice(人声·强共振峰)")
-        r = _report(rows, "voice(人声·强共振峰)")
+        rows, _ = evaluate_instrument(vs, name="voice (voice, strong formants)")
+        r = _report(rows, "voice (voice, strong formants)")
         if r:
             summary.append(r)
     else:
-        print("（人声样本 <2，跳过；需 tones/voice_tone_low/mid/high）")
+        print("(fewer than 2 voice samples, skipped; needs tones/voice_tone_low/mid/high)")
 
     if args.idmt:
         gs = idmt_samples(args.idmt)
         if len(gs) >= 2:
-            rows, _ = evaluate_instrument(gs, name="guitar(吉他·弱共振峰)")
-            r = _report(rows, "guitar(吉他·弱共振峰)")
+            rows, _ = evaluate_instrument(gs, name="guitar (guitar, weak formants)")
+            r = _report(rows, "guitar (guitar, weak formants)")
             if r:
                 summary.append(r)
 
-    # ---- 多乐器广度 ----
+    # ---- Multi-instrument breadth ----
     fam_all = []
     if args.tinysol:
-        print("\n========== TinySOL 管弦广度（真录音·强共振峰） ==========")
+        print("\n========== TinySOL orchestral breadth (real recordings, strong formants) ==========")
         groups = tinysol_groups(args.tinysol)
-        print(f"  （{len(groups)} 件乐器）")
+        print(f"  ({len(groups)} instruments)")
         _, fam = _run_breadth(groups)
         fam_all += fam
     if args.nsynth:
-        print("\n========== NSynth 基准广度 ==========")
+        print("\n========== NSynth benchmark breadth ==========")
         groups = nsynth_groups(args.nsynth, per_family=args.per_family)
-        print(f"  （{len(groups)} 件乐器）")
+        print(f"  ({len(groups)} instruments)")
         _, fam = _run_breadth(groups)
         fam_all += fam
 
     if summary:
-        print("\n---------------- 跨音高保真汇总（用户素材） ----------------")
+        print("\n---------------- Cross-pitch fidelity summary (user material) ----------------")
         for r in summary:
             print(
-                f"  {r['name']:24s} Quill {r['quill']:.4f} vs 采样器 {r['sampler']:.4f}  "
-                f"胜率 {r['win_rate'] * 100:.0f}%  ({'✓ Quill 更保真' if r['quill'] < r['sampler'] else '×'})"
+                f"  {r['name']:24s} Quill {r['quill']:.4f} vs sampler {r['sampler']:.4f}  "
+                f"win rate {r['win_rate'] * 100:.0f}%  ({'✓ Quill more faithful' if r['quill'] < r['sampler'] else '×'})"
             )
-        print("  口径：谱距越低越忠于真录音；共振峰乐器上 Quill 优势应更明显。")
+        print("  Criterion: lower spectral distance is closer to the real recording; Quill's advantage should be larger on formant instruments.")
 
     if fam_all:
-        print("\n---------------- 多乐器广度汇总（按族） ----------------")
+        print("\n---------------- Multi-instrument breadth summary (by family) ----------------")
         n_win = sum(f["quill"] < f["sampler"] for f in fam_all)
         for f in fam_all:
             print(
-                f"  {f['name']:22s} Quill {f['quill']:.3f} vs 采样器 {f['sampler']:.3f}  "
-                f"胜率 {f['win_rate'] * 100:3.0f}%  n={f['n']:<3d} "
-                f"({'✓ Quill 更保真' if f['quill'] < f['sampler'] else '×'})"
+                f"  {f['name']:22s} Quill {f['quill']:.3f} vs sampler {f['sampler']:.3f}  "
+                f"win rate {f['win_rate'] * 100:3.0f}%  n={f['n']:<3d} "
+                f"({'✓ Quill more faithful' if f['quill'] < f['sampler'] else '×'})"
             )
         gq = np.mean([f["quill"] for f in fam_all])
         gs = np.mean([f["sampler"] for f in fam_all])
         print(
-            f"  ── 全体 {n_win}/{len(fam_all)} 族 Quill 更保真；"
-            f"宏平均 Quill {gq:.3f} vs 采样器 {gs:.3f} ──"
+            f"  ── overall Quill more faithful in {n_win}/{len(fam_all)} families; "
+            f"macro average Quill {gq:.3f} vs sampler {gs:.3f} ──"
         )
     return 0
 

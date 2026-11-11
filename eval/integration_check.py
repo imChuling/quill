@@ -1,14 +1,14 @@
-"""中途集成检查点（6.25）—— sustain-only 端到端全数据通路。
+"""Mid-project integration checkpoint (6.25): sustain-only end-to-end full data path.
 
-按素材采集协议：单音 -> 快照 -> 键盘实时演奏，验证 analysis -> assets -> runtime
-整条通路在 6.25 就跑通（首次全链路集成不留到 6.29）。接口问题打印出来记入阶段6联调清单。
+Following the material capture protocol: single note -> snapshot -> real-time keyboard performance, verifying that the whole analysis -> assets -> runtime
+path runs by 6.25 (the first full-chain integration is not left to 6.29). Interface problems are printed and recorded in the stage 6 integration checklist.
 
-本机离线版（无声卡/麦克风也可跑）：合成稳态单音替代现场录音，其余通路完全一致：
+Offline local version (runs without a sound card/microphone): a synthetic steady note replaces the live recording, the rest of the path is identical:
   analyze_timbre -> save_snapshot(.npz) -> load_snapshot -> build_instrument -> Engine.render_offline
 
-用法：
-  python -m eval.integration_check                 # 合成单音跑通通路
-  python -m eval.integration_check --record 4      # 现场录 4s 单音（需麦克风）
+Usage:
+  python -m eval.integration_check                 # run the path with a synthetic note
+  python -m eval.integration_check --record 4      # record a 4s note live (needs a microphone)
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ SNAP_DIR = Path(__file__).resolve().parents[1] / "assets" / "snapshots"
 
 
 def _synth_tone(f0=196.0, dur=2.0, sr=SR):
-    """稳态谐波单音（替代现场录音；通路其余环节一致）。"""
+    """Steady harmonic single note (replaces the live recording; the rest of the path is identical)."""
     t = np.arange(int(sr * dur)) / sr
     y = sum((1.0 / k) * np.sin(2 * np.pi * k * f0 * t) for k in range(1, 25))
     env = np.minimum(1.0, t / 0.05) * np.minimum(1.0, (dur - t) / 0.1)
@@ -45,20 +45,20 @@ def _dominant_hz(y, sr):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Quill 中途集成检查点（sustain-only）")
-    ap.add_argument("--record", type=float, default=0.0, help="现场录音秒数")
+    ap = argparse.ArgumentParser(description="Quill mid-project integration checkpoint (sustain-only)")
+    ap.add_argument("--record", type=float, default=0.0, help="live recording length in seconds")
     args = ap.parse_args(argv)
 
-    issues = []  # 接口问题清单 -> 阶段6 联调
+    issues = []  # interface problem list -> stage 6 integration
 
-    # ① analysis：录音/合成 -> 快照
+    # (1) analysis: recording/synthesis -> snapshot
     if args.record > 0:
         from analysis.io import record
 
-        print(f"现场录音 {args.record}s 单音 …")
+        print(f"Recording a {args.record}s note live ...")
         y = record(args.record, sr=SR)
     else:
-        print("（离线）合成稳态单音替代现场录音 …")
+        print("(offline) synthetic steady note replaces the live recording ...")
         y = _synth_tone()
     snap = analyze_timbre(y, sr=SR, name="integration_check")
     print(
@@ -66,16 +66,16 @@ def main(argv=None):
         f"H{snap['H_env'].shape}, N{snap['N_env'].shape}"
     )
 
-    # ② assets：快照序列化往返
+    # (2) assets: snapshot serialisation round trip
     p = save_snapshot(SNAP_DIR / "integration_check.npz", snap)
     snap2 = load_snapshot(p)
     if not np.allclose(snap["H_env"], snap2["H_env"]):
-        issues.append("snapshot H_env 序列化往返不一致")
+        issues.append("snapshot H_env serialisation round trip mismatch")
     print(
-        f"  save/load snapshot -> {p.name}  往返一致={np.allclose(snap['H_env'], snap2['H_env'])}"
+        f"  save/load snapshot -> {p.name}  round trip identical={np.allclose(snap['H_env'], snap2['H_env'])}"
     )
 
-    # ③ runtime：快照 -> 乐器 -> 引擎实时演奏（离线渲染同一 process_block 路径）
+    # (3) runtime: snapshot -> instrument -> real-time engine performance (offline rendering on the same process_block path)
     inst = build_instrument(snap2, noise_level=0.3)
     eng = Engine(inst, eval_mode=True)
     note = 64  # E4
@@ -85,25 +85,25 @@ def main(argv=None):
     cents = 1200 * np.log2(got / f0_target)
     clean = bool(np.all(np.isfinite(y_play)) and np.max(np.abs(y_play)) <= 1.0)
     if abs(cents) > 30:
-        issues.append(f"演奏音高偏差 {cents:.0f} cents（note {note} 期望 {f0_target:.1f}Hz）")
+        issues.append(f"performance pitch deviation {cents:.0f} cents (note {note} expected {f0_target:.1f}Hz)")
     if not clean:
-        issues.append("引擎输出非有限/越界")
+        issues.append("engine output non-finite/out of range")
     if eng.error_flag:
-        issues.append("引擎 error_flag 置位")
+        issues.append("engine error_flag set")
     print(
-        f"  engine 演奏 note {note}: f0={got:.1f}Hz (期望 {f0_target:.1f}, {cents:+.0f}cents), "
+        f"  engine plays note {note}: f0={got:.1f}Hz (expected {f0_target:.1f}, {cents:+.0f}cents), "
         f"clean={clean}"
     )
 
-    print("\n---------------- 集成检查汇总 ----------------")
+    print("\n---------------- Integration check summary ----------------")
     ok = not issues
-    print(f"  analysis -> assets -> runtime 全通路：{'PASS' if ok else 'FAIL'}")
+    print(f"  analysis -> assets -> runtime full path: {'PASS' if ok else 'FAIL'}")
     if issues:
-        print("  接口问题（记入阶段6联调清单）：")
+        print("  Interface problems (recorded in the stage 6 integration checklist):")
         for s in issues:
             print(f"   - {s}")
     else:
-        print("  无接口问题；sustain-only 端到端打通（首次全链路集成完成）")
+        print("  No interface problems; sustain-only end to end works (first full-chain integration complete)")
     return 0 if ok else 1
 
 

@@ -1,10 +1,10 @@
-"""P1 泛化扫描(防过拟合,7.2 用户警醒)—— 一套锁死参数 × 多样真实声源。
+"""P1 generalisation sweep (guarding against overfitting, a user warning on 7.2): one locked parameter set × diverse real sources.
 
-原则:liveness 参数全局一套(0.85/0/0.8),**禁止逐文件调参**;运动本身来自每个源
-自己的录音(数据驱动),全局常数只有深度。本脚本在 TinySOL(铜管/木管/弦乐/键盘)
-+ 项目自录(人声×3/合成垫)上验证:不削波、无咔哒(残差峰度)、运动量在合理带内。
+Principle: one global set of liveness parameters (0.85/0/0.8), **no per-file tuning**; the motion itself comes from each source's
+own recording (data-driven), and the only global constant is depth. This script verifies on TinySOL (brass/woodwind/strings/keyboard)
++ the project's own recordings (voice ×3 / synth pad): no clipping, no clicks (residual kurtosis), motion within a reasonable band.
 
-用法:python -m eval.p1_generalize
+Usage: python -m eval.p1_generalize
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TSOL = Path(os.environ.get("QUILL_DATASETS", str(Path.home() / "Desktop/MT/datasets"))) / "TinySOL"
 SR = 44100
 DUR = 11.5
-LIVE = (0.85, 0.0, 0.8)  # 锁死的全局参数(与产品默认一致)
+LIVE = (0.85, 0.0, 0.8)  # locked global parameters (same as the product default)
 
 EVENTS = [
     (0.2, "on", 57, 96, 0.0, -1),
@@ -45,7 +45,7 @@ EVENTS = [
 
 
 def mid_mf(inst_dir):
-    """乐器目录里挑一个中音区 mf 单音(排序取中,启发式,不挑好听的=防过拟合)。"""
+    """Pick a mid-register mf single note from an instrument directory (middle of the sorted list, heuristic; not picking the nice-sounding one = guarding against overfitting)."""
     fs = sorted(glob.glob(str(inst_dir / "ordinario" / "*-mf-*.wav")))
     return fs[len(fs) // 2] if fs else None
 
@@ -76,14 +76,14 @@ def sources():
 
 
 def main():
-    print(f"锁死参数 liveness={LIVE}(禁止逐文件调)\n")
+    print(f"locked parameters liveness={LIVE} (no per-file tuning)\n")
     bad = 0
     for name, path in sources():
         try:
             y, sr = load(str(path), sr=SR)
             snap = analyze_timbre(np.asarray(y, np.float32), sr=sr, name=name)
             if not (np.isfinite(snap.get("f0_ref", 0)) and snap["f0_ref"] > 0):
-                print(f"[{name:14s}] 跳过:无稳定音高")
+                print(f"[{name:14s}] skipped: no stable pitch")
                 continue
             sh = int(round((69 + 12 * np.log2(snap["f0_ref"] / 440.0) - 57) / 12.0)) * 12
             evs = [
@@ -104,14 +104,14 @@ def main():
             ok = pk <= 1.0 and np.isfinite(ys["on"]).all() and kur < 30
             bad += not ok
             print(
-                f"[{name:14s}] f0={snap['f0_ref']:6.1f}Hz 峰值={pk:.2f} 残差峰度={kur:5.1f} "
-                f"形状呼吸={tdev:.3f} 响度呼吸={adev:.3f} → {'OK' if ok else 'FAIL'}"
+                f"[{name:14s}] f0={snap['f0_ref']:6.1f}Hz peak={pk:.2f} residual kurtosis={kur:5.1f} "
+                f"shape breathing={tdev:.3f} loudness breathing={adev:.3f} -> {'OK' if ok else 'FAIL'}"
             )
         except Exception as e:
             bad += 1
-            print(f"[{name:14s}] 异常: {str(e)[:60]} → FAIL")
+            print(f"[{name:14s}] error: {str(e)[:60]} -> FAIL")
     print(
-        f"\n结论: {'全部通过 —— 一套参数泛化成立' if bad == 0 else f'{bad} 个源失败,需查(不许用调参掩盖)'}"
+        f"\nConclusion: {'all passed: one parameter set generalises' if bad == 0 else f'{bad} sources failed, investigate (no masking by tuning)'}"
     )
     set_liveness(*LIVE)
 

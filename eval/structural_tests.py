@@ -1,19 +1,19 @@
-"""结构性差异测试 —— 回应"和采样器没区别"的诚实检验(2026-08-01)。
+"""Structural difference tests: an honest check responding to "no different from a sampler" (2026-08-01).
 
-只测采样器**结构上做不到**的事(信息不在样本里,脚本补不出来),不测"没做"的事:
+Only tests what a sampler **structurally cannot do** (the information is not in the sample, a script cannot add it), not what it "has not done":
 
-T1 · 单素材和弦:同一段录音弹 6 音和弦。
-     采样器 = 同一样本移调 6 份相加 → 各声部噪声层**完全相关** → 梳状滤波/相位抵消;
-     Quill  = 6 个声部各自色散初相 + 独立噪声读指针 → 像合奏。
-     指标:声部间噪声互相关;和弦谱的梳状凹槽深度。
+T1 · single-source chord: play a 6-note chord from one recording.
+     sampler = the same sample transposed 6 times and summed -> the voices' noise layers are **fully correlated** -> comb filtering/phase cancellation;
+     Quill  = 6 voices each with dispersed initial phases + independent noise read pointers -> sounds like an ensemble.
+     Metrics: noise cross-correlation between voices; comb-notch depth of the chord spectrum.
 
-T2 · 短录音长延音:2 秒素材要弹 15 秒长音。
-     采样器 = 必须循环(交叉淡化)→ 周期性可听;Quill = 重合成,无循环点。
-     指标:包络/谱的自相关周期峰(循环痕迹)。
+T2 · long sustain from a short recording: a 2-second source has to play a 15-second note.
+     sampler = must loop (crossfade) -> audible periodicity; Quill = resynthesis, no loop point.
+     Metric: periodic autocorrelation peaks of the envelope/spectrum (loop traces).
 
-T3 · 行为迁移:采样器无此概念(对照见 stimuli_2x2)。
+T3 · behaviour transfer: samplers have no such concept (see stimuli_2x2 for the comparison).
 
-输出:客观指标 + 音频对(assets/ear_tests/structural/)。
+Outputs: objective metrics + audio pairs (assets/ear_tests/structural/).
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ from synth.instrument import build_instrument  # noqa: E402
 from synth.render import render  # noqa: E402
 
 SR = 44100
-CHORD = [55, 59, 62, 67, 71, 74]  # 6 音,含八度与五度(最易暴露相位问题)
+CHORD = [55, 59, 62, 67, 71, 74]  # 6 notes, including octaves and fifths (most likely to expose phase problems)
 
 
 def rms_norm(y, r=0.08):
@@ -44,7 +44,7 @@ def rms_norm(y, r=0.08):
 
 
 def sampler_chord(snap, dur=3.0):
-    """采样器和弦:同一样本移调 N 份相加(这就是采样器物理上做的事)。"""
+    """Sampler chord: the same sample transposed N times and summed (this is physically what a sampler does)."""
     import librosa
 
     f0_ref = float(snap["f0_ref"])
@@ -61,9 +61,9 @@ def sampler_chord(snap, dur=3.0):
 
 
 def quill_chord(snap, dur=3.0):
-    """Quill 和弦:引擎 6 声部(色散初相 + 各自噪声读指针)。"""
+    """Quill chord: 6 engine voices (dispersed initial phases + their own noise read pointers)."""
     inst = build_instrument(snap, noise_level=0.02)
-    eng = Engine(inst, eval_mode=False)  # eval_mode=False → 噪声起点随机化
+    eng = Engine(inst, eval_mode=False)  # eval_mode=False -> randomised noise start points
     eng.reset()
     evs = []
     for m in CHORD:
@@ -73,23 +73,23 @@ def quill_chord(snap, dur=3.0):
 
 
 def comb_depth(y):
-    """梳状凹槽深度:谱包络去趋势后的谷/峰起伏(dB)。相位抵消越重越大。"""
+    """Comb-notch depth: valley/peak excursion (dB) of the detrended spectral envelope. Heavier phase cancellation gives larger values."""
     S = np.abs(np.fft.rfft(y[: 1 << 16] * np.hanning(min(len(y), 1 << 16))))
     f = np.fft.rfftfreq(min(len(y), 1 << 16), 1 / SR)
     m = (f > 200) & (f < 6000)
     lg = 20 * np.log10(np.maximum(S[m], 1e-9))
-    k = 101  # 平滑趋势
+    k = 101  # trend smoothing
     trend = np.convolve(lg, np.ones(k) / k, mode="same")
     d = lg[k:-k] - trend[k:-k]
     return float(np.percentile(d, 95) - np.percentile(d, 5))
 
 
 def loop_periodicity(y, min_lag_s=0.5):
-    """循环痕迹:包络自相关在 >0.5s 滞后处的最大峰(0=无周期,越大越像在循环)。"""
+    """Loop trace: the maximum autocorrelation peak of the envelope at lags >0.5s (0 = no periodicity, larger = more like looping)."""
     hop = 441
     n = len(y) // hop * hop
     e = np.sqrt((y[:n].reshape(-1, hop) ** 2).mean(1) + 1e-12)
-    e = e[int(0.5 * SR / hop) :]  # 掐掉起音
+    e = e[int(0.5 * SR / hop) :]  # drop the attack
     e = e - e.mean()
     if len(e) < 40:
         return 0.0
@@ -100,17 +100,17 @@ def loop_periodicity(y, min_lag_s=0.5):
 
 
 def sampler_sustain(snap, src_len=2.0, out_len=15.0, xfade=0.25):
-    """采样器长延音:2 秒素材循环(交叉淡化)到 15 秒——采样器唯一能做的事。"""
+    """Sampler long sustain: loop (crossfade) a 2-second source to 15 seconds: the only thing a sampler can do."""
     f0_ref = float(snap["f0_ref"])
     src = render(snap, f0_ref, length=int(src_len * SR), mode="formant", add_attack=True).astype(
         np.float64
     )
     xf = int(xfade * SR)
-    loop = src[int(0.3 * SR) :]  # 循环区(跳过起音)
+    loop = src[int(0.3 * SR) :]  # loop region (skipping the attack)
     out = list(src[: int(0.3 * SR)])
     body = loop.copy()
     while len(out) < int(out_len * SR):
-        if len(out) > xf:  # 等功率交叉淡化(标准采样器循环)
+        if len(out) > xf:  # equal-power crossfade (standard sampler loop)
             tail = np.array(out[-xf:])
             head = body[:xf]
             w = np.linspace(0, 1, xf)
@@ -122,7 +122,7 @@ def sampler_sustain(snap, src_len=2.0, out_len=15.0, xfade=0.25):
 
 
 def quill_sustain(snap, out_len=15.0):
-    """Quill 长延音:重合成到任意长度,无循环点。"""
+    """Quill long sustain: resynthesise to any length, no loop point."""
     inst = build_instrument(snap, noise_level=0.02)
     eng = Engine(inst, eval_mode=False)
     eng.reset()
@@ -143,10 +143,10 @@ def main():
     ]:
         snap = load_snapshot(str(ROOT / path))
 
-        # T1 和弦
+        # T1 chord
         s_ch, s_voices = sampler_chord(snap)
         q_ch = quill_chord(snap)
-        # 声部间噪声相关(采样器:同一样本→高度相关)
+        # noise correlation between voices (sampler: same sample -> highly correlated)
         cors = []
         for i in range(len(s_voices)):
             for j in range(i + 1, len(s_voices)):
@@ -155,7 +155,7 @@ def main():
         sf.write(str(out / f"{name}_chord_sampler.wav"), rms_norm(s_ch), SR)
         sf.write(str(out / f"{name}_chord_quill.wav"), rms_norm(q_ch), SR)
 
-        # T2 长延音
+        # T2 long sustain
         s_su = sampler_sustain(snap)
         q_su = quill_sustain(snap)
         sf.write(str(out / f"{name}_sustain15s_sampler.wav"), rms_norm(s_su), SR)
@@ -174,18 +174,18 @@ def main():
         }
         print(f"{name}:")
         print(
-            f"  T1 和弦梳状深度(dB,越小越干净): sampler={res[name]['chord_comb_depth_dB']['sampler']}"
+            f"  T1 chord comb depth (dB, smaller is cleaner): sampler={res[name]['chord_comb_depth_dB']['sampler']}"
             f"  quill={res[name]['chord_comb_depth_dB']['quill']}"
         )
         print(
-            f"     采样器声部间相关={res[name]['chord_voice_corr_mean_sampler']}(越高=越像一个声音复制)"
+            f"     sampler voice correlation={res[name]['chord_voice_corr_mean_sampler']} (higher = more like copies of one sound)"
         )
         print(
-            f"  T2 15秒长音循环痕迹(0=无循环): sampler={res[name]['sustain_loop_periodicity']['sampler']}"
+            f"  T2 15s sustain loop trace (0 = no loop): sampler={res[name]['sustain_loop_periodicity']['sampler']}"
             f"  quill={res[name]['sustain_loop_periodicity']['quill']}"
         )
     (ROOT / "results/structural_tests.json").write_text(json.dumps(res, indent=1))
-    print(f"\n音频 → {out.relative_to(ROOT)}")
+    print(f"\naudio -> {out.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":
@@ -193,11 +193,11 @@ if __name__ == "__main__":
 
 
 # --------------------------------------------------------------------- #
-# T4 · 参数空间形变(采样器结构上做不到:叠加≠形变)
+# T4 · parameter-space morphing (structurally impossible for a sampler: layering ≠ morphing)
 # --------------------------------------------------------------------- #
 def morph_snapshots(sa: dict, sb: dict, w: float = 0.5) -> dict:
-    """谱参数插值:得到一件**从未存在过的乐器**(不是两个声音叠加)。
-    对齐到 A 的分量频率轴,log 域插值 H_steady/N_env;f0_ref 取几何中点。"""
+    """Spectral parameter interpolation: yields an **instrument that never existed** (not two sounds layered).
+    Aligned to A's component frequency axis, log-domain interpolation of H_steady/N_env; f0_ref is the geometric midpoint."""
     out = dict(sa)
     Ha = np.asarray(sa["H_env"], np.float64)
     Hb = np.asarray(sb["H_env"], np.float64)
@@ -211,7 +211,7 @@ def morph_snapshots(sa: dict, sb: dict, w: float = 0.5) -> dict:
         else np.arange(1, Ka + 1) * fa
     )
     Kb = Hb.shape[0]
-    # B 的包络按**相对谐波序号**重采样到 A 的轴(音高无关的音色形状插值)
+    # B's envelope is resampled to A's axis by **relative harmonic index** (pitch-independent timbre-shape interpolation)
     ta = np.arange(1, Ka + 1, dtype=float)
     tb = np.arange(1, Kb + 1, dtype=float)
     T = min(Ha.shape[1], Hb.shape[1])
@@ -235,7 +235,7 @@ def morph_snapshots(sa: dict, sb: dict, w: float = 0.5) -> dict:
 
 
 def peak_set(y, n=12):
-    """谱峰位置集合(Hz):判断是"两套峰共存"(叠加)还是"一套中间峰"(形变)。"""
+    """Set of spectral peak positions (Hz): decides between "two peak sets coexisting" (layering) and "one set of intermediate peaks" (morphing)."""
     S = np.abs(np.fft.rfft(y[: 1 << 16] * np.hanning(min(len(y), 1 << 16))))
     f = np.fft.rfftfreq(min(len(y), 1 << 16), 1 / SR)
     m = (f > 100) & (f < 5000)
@@ -263,7 +263,7 @@ def morph_test():
     yb = render(sb, f0, length=n, mode="formant", add_attack=True)
     layer = rms_norm(
         0.5 * (ya / max(np.abs(ya).max(), 1e-9) + yb / max(np.abs(yb).max(), 1e-9))
-    )  # 采样器:叠加
+    )  # sampler: layering
     sm = morph_snapshots(sa, sb, 0.5)
     ymorph = rms_norm(render(sm, f0, length=n, mode="formant", add_attack=True))
     sf.write(str(out / "morph_sampler_layered.wav"), layer, SR)
@@ -287,14 +287,14 @@ def morph_test():
         "morph_peaks_from_A": frac_from(pm, pa),
         "morph_peaks_from_B": frac_from(pm, pb),
     }
-    print("\nT4 参数形变 vs 叠加(谱峰归属):")
+    print("\nT4 parameter morphing vs layering (spectral peak attribution):")
     print(
-        f"  叠加(采样器能做的): 来自A {r['layered_peaks_from_A']:.0%}  来自B {r['layered_peaks_from_B']:.0%}"
-        f"  → 合计 {r['layered_peaks_from_A'] + r['layered_peaks_from_B']:.0%}(>100%=两套峰共存)"
+        f"  layering (what a sampler can do): from A {r['layered_peaks_from_A']:.0%}  from B {r['layered_peaks_from_B']:.0%}"
+        f"  -> total {r['layered_peaks_from_A'] + r['layered_peaks_from_B']:.0%} (>100% = two peak sets coexist)"
     )
     print(
-        f"  参数形变(Quill 独有): 来自A {r['morph_peaks_from_A']:.0%}  来自B {r['morph_peaks_from_B']:.0%}"
-        f"  → 合计 {r['morph_peaks_from_A'] + r['morph_peaks_from_B']:.0%}(低=新的中间峰,新乐器)"
+        f"  parameter morphing (Quill only): from A {r['morph_peaks_from_A']:.0%}  from B {r['morph_peaks_from_B']:.0%}"
+        f"  -> total {r['morph_peaks_from_A'] + r['morph_peaks_from_B']:.0%} (low = new intermediate peaks, a new instrument)"
     )
     return r
 

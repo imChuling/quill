@@ -1,40 +1,40 @@
-"""Gate 0 · Oracle —— Neural Timbre Atlas 的 go/no-go 前置实验。
+"""Gate 0 · Oracle: the go/no-go prerequisite experiment for the Neural Timbre Atlas.
 
-冲刺本子 §5.8 Gate 0:**若真实 target-note snapshot 的 DSP render 未超过预注册的
-static-source 改善阈值,先检查/增强 renderer,停止 Atlas。**
+Sprint notebook §5.8 Gate 0: **if the DSP render of the real target-note snapshot does not exceed the preregistered
+static-source improvement threshold, check/strengthen the renderer first and stop the Atlas.**
 
-问题:Atlas 想做的事是"给定未见乐器的 1-3 个 reference note,预测该乐器在新 pitch/
-velocity 下相对静态快照的参数修正"。一个**完美**的这种模型,最好也只能预测出
-「目标音自己的快照参数」。所以先量这个上界:
+Question: what the Atlas aims to do is "given 1-3 reference notes of an unseen instrument, predict the parameter correction of that instrument at a new pitch/
+velocity relative to the static snapshot". A **perfect** model of this kind can at best predict
+"the target note's own snapshot parameters". So measure this upper bound first:
 
-    static : snapshot(参考音 A) → 渲染到 f0_B        ← 当前 L0 出货路径
-    oracle : snapshot(**真实目标音 B**) → 渲染到 f0_B  ← 任何参数预测模型的上界
-    sampler: pitch_shift(A → B)                      ← 朴素采样器基线(已知可听差异)
+    static : snapshot(reference note A) -> rendered to f0_B        <- current L0 shipping path
+    oracle : snapshot(**real target note B**) -> rendered to f0_B  <- upper bound of any parameter prediction model
+    sampler: pitch_shift(A -> B)                      <- naive sampler baseline (known audible difference)
 
-三者都与**目标音 B 的真录音**比稳态 log 谱距(analysis 与产品同链路)。
+All three are compared with the **real recording of target note B** by steady-state log spectral distance (analysis uses the same chain as the product).
 
-若 oracle ≈ static:参数空间里没有可赚的东西,瓶颈在 renderer(合成器表达力)而不在
-参数预测 → 训模型是浪费,应先增强 renderer。
-若 oracle ≫ static:存在真实 headroom,Atlas 值得投 Sprint 2。
+If oracle ≈ static: there is nothing to gain in parameter space; the bottleneck is the renderer (synthesiser expressiveness), not
+parameter prediction -> training a model is wasted, strengthen the renderer first.
+If oracle ≫ static: real headroom exists and the Atlas is worth Sprint 2.
 
 --------------------------------------------------------------------------- #
-预注册判据(2026-07-29 写死,**先于任何结果**;改动须在 claim ledger 留痕)
+Preregistered criteria (fixed on 2026-07-29, **before any results**; any change must be recorded in the claim ledger)
 --------------------------------------------------------------------------- #
-H1 绝对 headroom : median (static-oracle)/static  ≥ 0.10   (至少 10% 谱距可赚)
-H2 校准 headroom : median (static-oracle)/(sampler-static) ≥ 0.50
-                   ——可赚的量至少是「已被证实可听」的 static-vs-sampler 差距的一半。
-                   这条把抽象谱距锚到一个已知有听感意义的尺度上。
-H3 一致性        : oracle 优于 static 的 (乐器,目标音) 对占比 ≥ 0.70
+H1 absolute headroom : median (static-oracle)/static  ≥ 0.10   (at least 10% of spectral distance to gain)
+H2 calibrated headroom : median (static-oracle)/(sampler-static) ≥ 0.50
+                   : the gain is at least half of the static-vs-sampler gap that is "already shown to be audible".
+                   This anchors the abstract spectral distance to a scale known to be perceptually meaningful.
+H3 consistency        : fraction of (instrument, target note) pairs where oracle beats static ≥ 0.70
 
-判定:
-  GO        = H1 ∧ H3 通过,且 H2 通过        → Atlas 进 Sprint 2
-  WEAK      = H1 ∧ H3 通过,H2 未过           → headroom 存在但可能不可听;
-                                               Sprint 2 降为 2 天 spike,先做 ridge(Gate 1)
-  NO-GO     = H1 或 H3 未过                   → 停 Atlas,转而增强 renderer;L0 继续出货
+Decision:
+  GO        = H1 ∧ H3 pass, and H2 passes        -> Atlas goes into Sprint 2
+  WEAK      = H1 ∧ H3 pass, H2 fails           -> headroom exists but may not be audible;
+                                               Sprint 2 shrinks to a 2-day spike, do ridge first (Gate 1)
+  NO-GO     = H1 or H3 fails                   -> stop the Atlas, strengthen the renderer instead; L0 keeps shipping
 
-用法:
-    python eval/oracle_gate.py --dataset tinysol --limit 6      # 快速 pilot
-    python eval/oracle_gate.py --dataset tinysol                # 全量
+Usage:
+    python eval/oracle_gate.py --dataset tinysol --limit 6      # quick pilot
+    python eval/oracle_gate.py --dataset tinysol                # full run
     python eval/oracle_gate.py --dataset guitarset --out results/oracle_gate_gset.json
 """
 
@@ -56,14 +56,14 @@ from analysis.timbre import analyze_timbre  # noqa: E402
 from eval.fidelity import SR, _sampler_pitch_shift, spectral_distance  # noqa: E402
 from synth.render import render  # noqa: E402
 
-# 预注册阈值(勿在看到结果后修改)
+# preregistered thresholds (do not change after seeing results)
 H1_MIN_REL = 0.10
 H2_MIN_CALIB = 0.50
 H3_MIN_WINRATE = 0.70
 
 
 def oracle_rows(samples, name, sr=SR, quasi=False, max_semis=18.0):
-    """一件乐器:对每个非参考音算 static / oracle / sampler 三个谱距。"""
+    """One instrument: compute the static / oracle / sampler spectral distances for every non-reference note."""
     enriched = []
     for pitch, audio in samples:
         y = np.asarray(audio, np.float32)
@@ -88,15 +88,15 @@ def oracle_rows(samples, name, sr=SR, quasi=False, max_semis=18.0):
             continue
         n = len(real)
 
-        # static: 参考音快照 → 渲染到目标 f0(当前出货路径)
+        # static: reference-note snapshot -> rendered to the target f0 (current shipping path)
         f0_tgt = f0_ref * (f0_tgt_real / f0_ref_real)
         y_static = render(snap_s, f0_tgt, length=n, mode="formant", add_attack=False)
 
-        # oracle: 目标音**自己的**快照 → 在自己的参考基频上渲染(零移调=参数上界)
+        # oracle: the target note's **own** snapshot -> rendered at its own reference f0 (zero transposition = parameter upper bound)
         try:
             snap_o = analyze_timbre(real, sr=sr, name=f"{name}_oracle", quasi_harmonic=quasi)
             y_oracle = render(snap_o, snap_o["f0_ref"], length=n, mode="formant", add_attack=False)
-        except Exception as exc:  # 取色失败的音跳过,不静默计成好结果
+        except Exception as exc:  # notes whose capture fails are skipped, not silently counted as good results
             rows.append(
                 {
                     "pitch": int(pitch),
@@ -169,7 +169,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", default="tinysol", choices=["tinysol", "guitarset", "nsynth"])
     ap.add_argument("--root", default=None)
-    ap.add_argument("--limit", type=int, default=None, help="只跑前 N 件乐器(pilot)")
+    ap.add_argument("--limit", type=int, default=None, help="run only the first N instruments (pilot)")
     ap.add_argument("--max-pitch", type=int, default=7)
     ap.add_argument("--out", default="results/oracle_gate.json")
     a = ap.parse_args(argv)
@@ -190,14 +190,14 @@ def main(argv=None):
         groups = [("GuitarSet/mic", s)] if s else []
 
     if not groups:
-        print(f"[oracle-gate] 数据集为空: {a.dataset}")
+        print(f"[oracle-gate] dataset is empty: {a.dataset}")
         return 1
     if a.limit:
         groups = groups[: a.limit]
 
     print(
-        f"[oracle-gate] {a.dataset}: {len(groups)} 件乐器 "
-        f"(预注册 H1≥{H1_MIN_REL} H2≥{H2_MIN_CALIB} H3≥{H3_MIN_WINRATE})"
+        f"[oracle-gate] {a.dataset}: {len(groups)} instruments "
+        f"(preregistered H1≥{H1_MIN_REL} H2≥{H2_MIN_CALIB} H3≥{H3_MIN_WINRATE})"
     )
     t0 = time.time()
     all_rows, per_inst = [], []
@@ -217,7 +217,7 @@ def main(argv=None):
                 }
             )
         else:
-            print(f"  {name:42s} (无有效样本)")
+            print(f"  {name:42s} (no valid samples)")
         for r in rows:
             r["instrument"] = name
         all_rows += rows
@@ -235,24 +235,24 @@ def main(argv=None):
 
     print("\n" + "=" * 66)
     print(
-        f"H1 绝对 headroom  median (static-oracle)/static = {summ['H1_median_rel_headroom']:+.3f} "
+        f"H1 absolute headroom  median (static-oracle)/static = {summ['H1_median_rel_headroom']:+.3f} "
         f"(≥{H1_MIN_REL}) {'PASS' if summ['H1_pass'] else 'FAIL'}"
     )
     print(
-        f"H2 校准 headroom  median /(sampler-static)      = {summ['H2_median_calib_headroom']:+.3f} "
+        f"H2 calibrated headroom  median /(sampler-static)      = {summ['H2_median_calib_headroom']:+.3f} "
         f"(≥{H2_MIN_CALIB}) {'PASS' if summ['H2_pass'] else 'FAIL'}"
     )
     print(
-        f"H3 oracle 胜率                                  = {summ['H3_oracle_winrate']:.3f} "
+        f"H3 oracle win rate                              = {summ['H3_oracle_winrate']:.3f} "
         f"(≥{H3_MIN_WINRATE}) {'PASS' if summ['H3_pass'] else 'FAIL'}"
     )
     print(
-        f"谱距中位: static={summ['median_d_static']:.4f} "
+        f"median spectral distance: static={summ['median_d_static']:.4f} "
         f"oracle={summ['median_d_oracle']:.4f} sampler={summ['median_d_sampler']:.4f}"
     )
     print(
-        f"\n>>> GATE 0 判定: {summ['verdict']}   "
-        f"(n={summ['n_pairs']} 对, {summ['n_instruments']} 件乐器, {summ['elapsed_s']}s)"
+        f"\n>>> GATE 0 decision: {summ['verdict']}   "
+        f"(n={summ['n_pairs']} pairs, {summ['n_instruments']} instruments, {summ['elapsed_s']}s)"
     )
     print("=" * 66)
     print(f"artifact: {a.out}")

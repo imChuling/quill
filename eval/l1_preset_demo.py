@@ -1,9 +1,9 @@
-"""L1 取色检索 demo —— 按"感觉"选音色 → 检索好预设 → 带演奏法弹(同一招牌乐句)。
+"""L1 capture retrieval demo: choose a timbre by "feel" -> retrieve a good preset -> play with articulations (the same signature phrase).
 
-证明产品完整度:不止"现录现取色"(L0),还能"**按描述符浏览/检索预设库 → 立刻是可演奏法的乐器**"。
-与 fr9_recombine 共用同一 _PHRASE + 演奏法库,故"检索到的任意音色"都自带滑/连/扫/颤。
+Shows product completeness: not only "record and capture on the spot" (L0), but also "**browse/retrieve the preset library by descriptor -> immediately a playable instrument with articulations**".
+Shares the same _PHRASE + articulation library with fr9_recombine, so "any retrieved timbre" comes with slide/legato/strum/vibrato.
 
-用法:
+Usage:
   python -m eval.l1_preset_demo --corpus ../../datasets/quill_corpus
 """
 
@@ -26,7 +26,7 @@ from library import SnapshotLibrary  # noqa: E402
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="L1 取色检索 demo")
+    ap = argparse.ArgumentParser(description="L1 capture retrieval demo")
     ap.add_argument("--corpus", default="../../datasets/quill_corpus")
     ap.add_argument("--articulation", default="assets/libraries/guitar.tplib")
     ap.add_argument(
@@ -41,19 +41,19 @@ def main(argv=None):
     art = load_tplib(args.articulation)
     DEMO_DIR.mkdir(parents=True, exist_ok=True)
 
-    print(f"=== 库浏览（{len(lib.good_entries())}/{len(lib.index)} 张通过质量白名单）===")
+    print(f"=== Library browse ({len(lib.good_entries())}/{len(lib.index)} pass the quality whitelist) ===")
     for desc, n, fams in lib.browse():
-        print(f"  {desc:14s} {n:3d} 张  {fams}")
+        print(f"  {desc:14s} {n:3d}  {fams}")
 
-    print("\n=== 选描述符 → 检索 → 带演奏法弹（招牌乐句:滑/连/扫/颤）===")
+    print("\n=== Choose descriptor -> retrieve -> play with articulations (signature phrase: slide/legato/strum/vibrato) ===")
     ok = True
     for desc in args.descriptors:
         try:
             snap, meta = lib.retrieve_descriptor(desc, pitch_midi=args.pitch)
         except KeyError as e:
-            print(f"  [{desc}] 跳过: {e}")
+            print(f"  [{desc}] skipped: {e}")
             continue
-        y, shift, red = render_aligned(snap, art, noise=0.2)  # 八度对齐到音色音区
+        y, shift, red = render_aligned(snap, art, noise=0.2)  # octave-aligned to the timbre's register
         clean = bool(np.all(np.isfinite(y)) and np.max(np.abs(y)) <= 1.0)
         ok = ok and clean
         name = f"l1_{desc.split()[0]}"
@@ -65,9 +65,9 @@ def main(argv=None):
             f"({meta['f0_ref']:.0f}Hz) → {name}.wav  clean={clean}"
         )
 
-    print("\n---------------- L1 验收 ----------------")
-    print(f"  [{'OK ' if ok else 'FAIL'}] 选 tag/描述符 → 检索预设 → 立刻可弹 + 自带演奏法")
-    print("  = 取色笔的'按需检索'那条腿（与'现录现取'L0 互补,产品完整）")
+    print("\n---------------- L1 acceptance ----------------")
+    print(f"  [{'OK ' if ok else 'FAIL'}] choose tag/descriptor -> retrieve preset -> immediately playable + articulations included")
+    print("  = the 'retrieve on demand' leg of the capture pen (complements 'record and capture' L0; the product is complete)")
     return 0 if ok else 1
 
 

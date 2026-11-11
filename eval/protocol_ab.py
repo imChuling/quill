@@ -1,11 +1,11 @@
-"""协议 A/B —— 旧协议(稳定持续音)vs 新协议(演奏段)。**同一段录音**,公平对比。
+"""Protocol A/B: old protocol (steady sustained note) vs new protocol (performance segment). **The same recording**, a fair comparison.
 
-OLD:与产品当前取色路径一致——`analyze_timbre(window="auto")` 自动挑稳定段、中段切窗
-     (跳过起音颗粒),得到"一个稳态点"的音色。
-NEW:`capture_from_performance` —— 取含起音的完整代表音(保留瞬态与谱波动),
-     并从同一录音抽出 .tplib 行为轨迹。
+OLD: matches the product's current capture path: `analyze_timbre(window="auto")` automatically picks a stable segment and cuts a mid-section window
+     (skipping the attack grain), giving the timbre of "one steady point".
+NEW: `capture_from_performance`: takes a complete representative note including its attack (keeping transients and spectral flux),
+     and extracts .tplib behaviour trajectories from the same recording.
 
-两臂用**同一乐句**渲染,RMS 对齐。NEW 另出一版"带行为轨迹"的(笔法也用上)。
+Both arms are rendered with **the same phrase**, RMS-matched. NEW also gets a version "with behaviour trajectories" (using the gesture as well).
 """
 
 from __future__ import annotations
@@ -77,9 +77,9 @@ def main(src=None, tag=None, quasi=False):
     out = ROOT / "assets/ear_tests/protocol_ab"
     out.mkdir(parents=True, exist_ok=True)
     y = load_any(src)
-    print(f"素材 {src.name}  {len(y) / SR:.1f}s")
+    print(f"material {src.name}  {len(y) / SR:.1f}s")
 
-    # OLD:产品当前路径(自动选稳定窗 + 中段切窗)
+    # OLD: the product's current path (automatic stable window + mid-section cut)
     snap_old = analyze_timbre(
         y,
         sr=SR,
@@ -89,7 +89,7 @@ def main(src=None, tag=None, quasi=False):
         window="auto",
         cross_check=False,
     )
-    # NEW:演奏式取色(含起音的完整代表音 + 行为轨迹)
+    # NEW: performance capture (complete representative note with attack + behaviour trajectories)
     snap_new, behaviors, info = capture_from_performance(
         y, sr=SR, name=f"{tag}_new", quasi_harmonic=quasi
     )
@@ -115,11 +115,11 @@ def main(src=None, tag=None, quasi=False):
         },
     }
     (ROOT / f"results/protocol_ab_{tag}.json").write_text(json.dumps(res, indent=1))
-    print(f"\n{'':14s} {'H帧':>5s} {'谱波动':>8s} {'起音RMS':>9s} {'f0':>7s}")
+    print(f"\n{'':14s} {'H frames':>5s} {'spec flux':>8s} {'attack RMS':>9s} {'f0':>7s}")
     for k in ("OLD", "NEW"):
         r = res[k]
         print(
-            f"{k + ' 协议':14s} {r['H_frames']:5d} {r['spectral_flux']:8.4f} "
+            f"{k + ' protocol':14s} {r['H_frames']:5d} {r['spectral_flux']:8.4f} "
             f"{r['attack_rms']:9.5f} {r['f0_ref']:7.1f}"
         )
     print(f"\n→ {out.relative_to(ROOT)}/{tag}_{{OLD_sustained,NEW_performance}}.wav")

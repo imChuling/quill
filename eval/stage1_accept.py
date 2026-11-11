@@ -1,19 +1,19 @@
-"""阶段1 验收脚本 —— FR-2 前半。
+"""Stage 1 acceptance script: first half of FR-2.
 
-对每个输入声音跑 分析 -> 重合成 全链路，产出：
-  * A/B wav（原音 vs 重合成）         -> assets/demos/<name>_orig.wav / _resynth.wav
-  * H 谐波热图 PNG                     -> assets/demos/<name>_Hheatmap.png
-  * 原音 vs 重合成 频谱对比 PNG         -> assets/demos/<name>_spectrum.png
-  * 控制台指标：f0、逐谐波 dB 误差、多尺度谱损失、混叠/非谐波能量比
+Runs the full analysis -> resynthesis chain for each input sound and produces:
+  * A/B wav (original vs resynthesis)          -> assets/demos/<name>_orig.wav / _resynth.wav
+  * H harmonic heatmap PNG                    -> assets/demos/<name>_Hheatmap.png
+  * original vs resynthesis spectrum PNG      -> assets/demos/<name>_spectrum.png
+  * console metrics: f0, per-harmonic dB error, multi-scale spectral loss, aliasing/inharmonic energy ratio
 
-用法::
+Usage::
 
-    python -m eval.stage1_accept                 # 用内置合成长音（人声/钢琴/酒杯）
-    python -m eval.stage1_accept a.wav b.wav     # 用真实录音（盲听用）
-    python -m eval.stage1_accept --record 4       # 现场录 4s 再分析
+    python -m eval.stage1_accept                 # use built-in synthetic long notes (voice/piano/wine glass)
+    python -m eval.stage1_accept a.wav b.wav     # use real recordings (for blind listening)
+    python -m eval.stage1_accept --record 4       # record 4s live, then analyse
 
-“盲听过关”的硬验收需要真实人声 + 钢琴长音：把两个 wav 拖进来即可。
-内置合成信号用于无录音时的链路自检与 CI。
+The hard "passes blind listening" acceptance needs real voice + long piano notes: just drop the two wavs in.
+The built-in synthetic signals are for chain self-checks and CI when no recordings are available.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import soundfile as sf
 
-# 允许 `python eval/stage1_accept.py` 与 `python -m eval.stage1_accept` 两种入口
+# allow both `python eval/stage1_accept.py` and `python -m eval.stage1_accept` as entry points
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from analysis.harmonic import f0_scalar, harmonics, track_f0  # noqa: E402
@@ -41,20 +41,20 @@ DEMO_DIR = Path(__file__).resolve().parents[1] / "assets" / "demos"
 
 
 # --------------------------------------------------------------------------- #
-# 内置合成长音（无录音时用）
+# Built-in synthetic long notes (used when there are no recordings)
 # --------------------------------------------------------------------------- #
 def synth_voice(dur=2.0, sr=SR):
-    """类人声长音：双共振峰包络 + 轻微颤音。"""
+    """Voice-like long note: two-formant envelope + slight vibrato."""
     t = np.arange(int(sr * dur)) / sr
     f0 = 174.6  # F3
-    vib = 1.0 + 0.003 * np.sin(2 * np.pi * 5.0 * t)  # 5Hz 颤音
+    vib = 1.0 + 0.003 * np.sin(2 * np.pi * 5.0 * t)  # 5Hz vibrato
     phase = np.cumsum(2 * np.pi * f0 * vib / sr)
     y = np.zeros_like(t)
     for k in range(1, 41):
         fk = k * f0
         if fk >= sr / 2:
             break
-        # 两个共振峰 ~700Hz / ~1800Hz
+        # two formants ~700Hz / ~1800Hz
         form = np.exp(-(((fk - 700) / 350) ** 2)) + 0.6 * np.exp(-(((fk - 1800) / 600) ** 2)) + 0.03
         y += form * np.cos(k * phase)
     env = np.minimum(1.0, t / 0.05) * np.minimum(1.0, (dur - t) / 0.1)
@@ -62,7 +62,7 @@ def synth_voice(dur=2.0, sr=SR):
 
 
 def synth_piano(dur=2.5, sr=SR):
-    """类钢琴长音：1/k 滚降 + 逐谐波指数衰减 + 快起音。"""
+    """Piano-like long note: 1/k rolloff + per-harmonic exponential decay + fast attack."""
     t = np.arange(int(sr * dur)) / sr
     f0 = 261.63  # C4
     y = np.zeros_like(t)
@@ -70,16 +70,16 @@ def synth_piano(dur=2.5, sr=SR):
         fk = k * f0
         if fk >= sr / 2:
             break
-        decay = np.exp(-t * (1.0 + 0.35 * k))  # 高次谐波衰减更快
+        decay = np.exp(-t * (1.0 + 0.35 * k))  # higher harmonics decay faster
         y += (1.0 / k) * decay * np.sin(2 * np.pi * fk * t + 0.1 * k)
     atk = np.minimum(1.0, t / 0.005)
     return normalize((y * atk).astype(np.float32)), "piano"
 
 
 def synth_wineglass(dur=2.0, sr=SR):
-    """准谐波酒杯：部分音相对 k*f0 轻微 stretch（测 partial_freqs 路径）。"""
+    """Quasi-harmonic wine glass: partials slightly stretched relative to k*f0 (tests the partial_freqs path)."""
     t = np.arange(int(sr * dur)) / sr
-    partials = [660.0, 1335.0, 2025.0, 2740.0]  # 略高于 k*660
+    partials = [660.0, 1335.0, 2025.0, 2740.0]  # slightly above k*660
     amps = [1.0, 0.45, 0.2, 0.1]
     y = sum(a * np.sin(2 * np.pi * fp * t) for fp, a in zip(partials, amps))
     env = np.exp(-t * 1.2) * np.minimum(1.0, t / 0.003)
@@ -87,10 +87,10 @@ def synth_wineglass(dur=2.0, sr=SR):
 
 
 # --------------------------------------------------------------------------- #
-# 指标
+# Metrics
 # --------------------------------------------------------------------------- #
 def multiscale_spectral_loss(y, y_re, sr=SR, ffts=(512, 1024, 2048, 4096)):
-    """多尺度对数幅度谱 L1（MSS，FR-13 的雏形）。"""
+    """Multi-scale log-magnitude spectral L1 (MSS, the prototype of FR-13)."""
     n = min(len(y), len(y_re))
     y, y_re = y[:n], y_re[:n]
     losses = []
@@ -115,7 +115,7 @@ def _logmag_stft(y, nfft, hop):
 
 
 def inharmonic_energy_ratio(y, f0_ref, sr=SR, tol_hz=25.0):
-    """非谐波（含混叠折返）能量占比：远离任意 k*f0 的谱能量 / 总能量。"""
+    """Inharmonic (including aliasing foldback) energy share: spectral energy far from any k*f0 / total energy."""
     y = y[len(y) // 8 : -len(y) // 8] if len(y) > 16 else y
     spec = np.abs(np.fft.rfft(y * np.hanning(len(y)))) ** 2
     freqs = np.fft.rfftfreq(len(y), 1 / sr)
@@ -125,13 +125,13 @@ def inharmonic_energy_ratio(y, f0_ref, sr=SR, tol_hz=25.0):
     kmax = int((sr / 2) / f0_ref)
     for k in range(1, kmax + 1):
         harm_mask |= np.abs(freqs - k * f0_ref) <= tol_hz
-    harm_mask |= freqs < 40.0  # 忽略极低频 DC 区
+    harm_mask |= freqs < 40.0  # ignore the very-low-frequency DC region
     total = spec.sum() + 1e-12
     return float(spec[~harm_mask].sum() / total)
 
 
 def per_harmonic_db_error(y_re, f0_ref, amps_ref=None, sr=SR, K=20):
-    """对重合成再分析得逐谐波幅度（dB），可与参考幅度比对。"""
+    """Reanalyse the resynthesis to get per-harmonic amplitudes (dB), comparable with the reference amplitudes."""
     H, _, _ = harmonics(y_re, f0_ref, sr=sr, n_harmonics=K)
     T = H.shape[1]
     est = np.median(H[:, int(T * 0.3) : int(T * 0.7)], axis=1)
@@ -139,7 +139,7 @@ def per_harmonic_db_error(y_re, f0_ref, amps_ref=None, sr=SR, K=20):
 
 
 # --------------------------------------------------------------------------- #
-# 单个声音的处理 + 出图
+# Processing + plotting for a single sound
 # --------------------------------------------------------------------------- #
 def process(y, sr, name):
     DEMO_DIR.mkdir(parents=True, exist_ok=True)
@@ -147,36 +147,36 @@ def process(y, sr, name):
 
     f0, conf, ftimes = track_f0(y, sr=sr)
     f0_ref = f0_scalar(f0)
-    measure = name == "wineglass"  # 准谐波声源走实测部分音路径
+    measure = name == "wineglass"  # quasi-harmonic sources take the measured-partial path
     H, htimes, info = harmonics(y, f0, sr=sr, f0_times=ftimes, measure_partials=measure)
     pf = info["partial_freqs"]
     y_re = resynth(H, info["f0_per_frame"], sr=sr, partial_freqs=pf, f0_ref=f0_ref, length=len(y))
     y_re = normalize(y_re)
 
-    # --- 落盘 A/B wav ---
+    # --- write A/B wav ---
     orig_p = DEMO_DIR / f"{name}_orig.wav"
     re_p = DEMO_DIR / f"{name}_resynth.wav"
     sf.write(orig_p, y, sr)
     sf.write(re_p, y_re, sr)
 
-    # --- H 热图 ---
+    # --- H heatmap ---
     _save_heatmap(H, htimes, name, f0_ref)
-    # --- 频谱对比 ---
+    # --- spectrum comparison ---
     _save_spectrum(y, y_re, sr, name, f0_ref)
 
-    # --- 指标 ---
+    # --- metrics ---
     mss = multiscale_spectral_loss(y, y_re, sr)
     alias_orig = inharmonic_energy_ratio(y, f0_ref, sr)
     alias_re = inharmonic_energy_ratio(y_re, f0_ref, sr)
 
     print(f"\n=== {name} ===")
     print(f"  f0_ref           : {f0_ref:8.2f} Hz")
-    print(f"  有效谐波数(<Nyq) : {int(np.sum(np.any(H > 1e-4, axis=1)))}")
-    print(f"  多尺度谱损失 MSS : {mss:8.4f}  (越低越像)")
-    print(f"  非谐波能量比 原音: {alias_orig * 100:6.3f}%")
-    print(f"  非谐波能量比 重合: {alias_re * 100:6.3f}%  (应接近原音，无混叠折返)")
+    print(f"  harmonics in use (<Nyq) : {int(np.sum(np.any(H > 1e-4, axis=1)))}")
+    print(f"  multi-scale spectral loss MSS : {mss:8.4f}  (lower is closer)")
+    print(f"  inharmonic energy ratio, original: {alias_orig * 100:6.3f}%")
+    print(f"  inharmonic energy ratio, resynth : {alias_re * 100:6.3f}%  (should be close to the original, no aliasing foldback)")
     if measure and pf is not None:
-        print(f"  实测部分音(Hz)   : {np.round(pf[:4], 1).tolist()}")
+        print(f"  measured partials (Hz)   : {np.round(pf[:4], 1).tolist()}")
     print(f"  A/B  -> {orig_p.name} | {re_p.name}")
     return {"name": name, "f0": f0_ref, "mss": mss, "alias_orig": alias_orig, "alias_re": alias_re}
 
@@ -226,16 +226,16 @@ def _save_spectrum(y, y_re, sr, name, f0_ref):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Quill 阶段1 验收")
-    ap.add_argument("wavs", nargs="*", help="真实录音 wav（盲听用）")
-    ap.add_argument("--record", type=float, default=0.0, help="现场录音秒数（替代文件输入）")
+    ap = argparse.ArgumentParser(description="Quill stage 1 acceptance")
+    ap.add_argument("wavs", nargs="*", help="real recording wav (for blind listening)")
+    ap.add_argument("--record", type=float, default=0.0, help="live recording length in seconds (instead of file input)")
     args = ap.parse_args(argv)
 
     jobs = []
     if args.record > 0:
         from analysis.io import record
 
-        print(f"录音 {args.record}s …（首次会弹麦克风权限）")
+        print(f"Recording {args.record}s ... (microphone permission prompt on first use)")
         y = record(args.record, sr=SR)
         jobs.append((y, "recorded"))
     for w in args.wavs:
@@ -244,27 +244,27 @@ def main(argv=None):
         y, _ = load(w, sr=SR)
         jobs.append((y, Path(w).stem))
     if not jobs:
-        print("未提供录音，使用内置合成长音（人声/钢琴/酒杯）做链路自检。")
+        print("No recordings given, using built-in synthetic long notes (voice/piano/wine glass) for a chain self-check.")
         for fn in (synth_voice, synth_piano, synth_wineglass):
             y, nm = fn()
             jobs.append((y, nm))
 
     results = [process(y, SR, nm) for y, nm in jobs]
 
-    print("\n---------------- 验收汇总 ----------------")
+    print("\n---------------- Acceptance summary ----------------")
     ok = True
     for r in results:
-        # 链路健康判据：重合成的非谐波能量未显著高于原音（无混叠爆发）
+        # chain health criterion: inharmonic energy of the resynthesis is not clearly higher than the original (no aliasing burst)
         drift = r["alias_re"] - r["alias_orig"]
         flag = "OK " if drift < 0.05 else "WARN"
         if drift >= 0.05:
             ok = False
         print(
             f"  [{flag}] {r['name']:10s} f0={r['f0']:7.1f}Hz "
-            f"MSS={r['mss']:.3f} 非谐波Δ={drift * 100:+.2f}%"
+            f"MSS={r['mss']:.3f} inharmonicΔ={drift * 100:+.2f}%"
         )
-    print(f"产物目录: {DEMO_DIR}")
-    print("盲听: 用播放器对比 *_orig.wav 与 *_resynth.wav；目检 *_Hheatmap.png 与 *_spectrum.png。")
+    print(f"Output directory: {DEMO_DIR}")
+    print("Blind listening: compare *_orig.wav and *_resynth.wav in a player; inspect *_Hheatmap.png and *_spectrum.png visually.")
     return 0 if ok else 1
 
 

@@ -1,10 +1,10 @@
-"""IDMT-SMT-Guitar 正式评估 —— FR-6 双口径（阶段8 提前）。
+"""IDMT-SMT-Guitar formal evaluation: FR-6 dual criteria (stage 8, brought forward).
 
-三方 ablation：规则树 vs 随机森林 vs MERT 探针，在 IDMT 公开集上算宏 F1 + 混淆矩阵。
-出口口径（产品计划成功指标）：规则树宏F1≥0.7 / MERT探针≥0.8。
+Three-way ablation: rule tree vs random forest vs MERT probe, macro F1 + confusion matrix on the public IDMT set.
+Exit criteria (product plan success metrics): rule tree macro F1≥0.7 / MERT probe≥0.8.
 
-数据集需手动下载（Fraunhofer IDMT-SMT-Guitar，多 GB）；缺失时优雅提示。
-用法：
+The dataset must be downloaded manually (Fraunhofer IDMT-SMT-Guitar, several GB); a friendly message is shown when missing.
+Usage:
   python -m eval.eval_idmt --root /path/to/IDMT-SMT-GUITAR_V2 [--mert] [--max-files 40]
 """
 
@@ -31,7 +31,7 @@ DEMO_DIR = Path(__file__).resolve().parents[1] / "assets" / "demos"
 
 
 def _find_wav(root, stem):
-    """在数据集树里找与标注同名的音频（wav 优先）。"""
+    """Find the audio file with the same name as the annotation in the dataset tree (wav preferred)."""
     for ext in (".wav", ".WAV", ".flac", ".mp3"):
         hits = glob.glob(os.path.join(root, "**", stem + ext), recursive=True)
         if hits:
@@ -53,13 +53,13 @@ def _load_events_with_features(root, max_files=None, want_audio_for_mert=False):
     if max_files and max_files < len(files):
         import random
 
-        random.Random(0).shuffle(files)  # 打乱保证子集覆盖 slide/sustain
+        random.Random(0).shuffle(files)  # shuffle so a subset still covers slide/sustain
         files = files[:max_files]
     out, audio_by_file = [], {}
     n = len(files)
     for k, f in enumerate(files):
         if k % 25 == 0:
-            print(f"  特征提取 {k}/{n} 文件，事件累计 {len(out)} …", flush=True)
+            print(f"  feature extraction {k}/{n} files, {len(out)} events so far ...", flush=True)
         stem = os.path.splitext(f)[0]
         wav = _find_wav(root, stem)
         if wav is None:
@@ -69,7 +69,7 @@ def _load_events_with_features(root, max_files=None, want_audio_for_mert=False):
         except Exception:
             continue
         evs = by_file[f]
-        compute_event_features(y, SR, evs)  # 补特征 + f0_track
+        compute_event_features(y, SR, evs)  # add features + f0_track
         out.extend(evs)
         if want_audio_for_mert:
             audio_by_file[f] = y
@@ -77,19 +77,19 @@ def _load_events_with_features(root, max_files=None, want_audio_for_mert=False):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="IDMT 正式评估（规则 vs 森林 vs MERT）")
-    ap.add_argument("--root", required=True, help="IDMT-SMT-Guitar 根目录")
-    ap.add_argument("--mert", action="store_true", help="加 MERT 探针（慢，逐事件抽嵌入）")
+    ap = argparse.ArgumentParser(description="IDMT formal evaluation (rules vs forest vs MERT)")
+    ap.add_argument("--root", required=True, help="IDMT-SMT-Guitar root directory")
+    ap.add_argument("--mert", action="store_true", help="add the MERT probe (slow, embeddings extracted per event)")
     ap.add_argument("--max-files", type=int, default=None)
-    ap.add_argument("--refresh", action="store_true", help="忽略缓存重新提取特征")
+    ap.add_argument("--refresh", action="store_true", help="ignore the cache and re-extract features")
     args = ap.parse_args(argv)
 
     if not available(args.root):
-        print(f"[缺失] 未找到 IDMT 数据集: {args.root}")
-        print("  下载 Fraunhofer IDMT-SMT-Guitar 后传 --root 指向解压目录。")
+        print(f"[missing] IDMT dataset not found: {args.root}")
+        print("  Download Fraunhofer IDMT-SMT-Guitar and pass --root pointing to the extracted directory.")
         return 2
 
-    # 特征缓存（提取耗时 ~20min，缓存后重跑秒级；--refresh 强刷）
+    # feature cache (extraction takes ~20min, reruns take seconds once cached; --refresh forces a refresh)
     import hashlib
     import pickle
     from collections import Counter, defaultdict
@@ -98,11 +98,11 @@ def main(argv=None):
     cache = Path(f"/tmp/quill_idmt_cache_{key}.pkl")
     audio_by_file = {}
     if cache.exists() and not args.refresh:
-        print(f"载入特征缓存 {cache.name} …")
+        print(f"Loading feature cache {cache.name} ...")
         with open(cache, "rb") as fh:
             events = pickle.load(fh)
     else:
-        print("载入 IDMT 标注 + 逐事件特征 …")
+        print("Loading IDMT annotations + per-event features ...")
         events, audio_by_file = _load_events_with_features(
             args.root, args.max_files, want_audio_for_mert=args.mert
         )
@@ -110,16 +110,16 @@ def main(argv=None):
             with open(cache, "wb") as fh:
                 pickle.dump(events, fh)
     if not events:
-        print("[空] 解析到 0 个带音频的事件——检查目录结构 / 音频文件名是否与标注同名。")
+        print("[empty] parsed 0 events with audio; check the directory layout / whether audio file names match the annotations.")
         return 2
     true = [e["label"] for e in events]
-    print(f"  {len(events)} 事件，分布: {dict(Counter(true))}")
+    print(f"  {len(events)} events, distribution: {dict(Counter(true))}")
 
     results = {}
 
-    # 规则树：**按文件分组分类**（避免跨文件 t_on 碰撞误判 strum——多文件事件起点都
-    # 集中在 0.2-2.5s，全量混在一起会被同窗 strum 规则错判）。
-    present = set(true)  # 数据集实际标签空间
+    # rule tree: **classify grouped by file** (avoids cross-file t_on collisions being misjudged as strum: event onsets in many files
+    # are concentrated at 0.2-2.5s, and mixing them all together would trip the same-window strum rule).
+    present = set(true)  # label space actually present in the dataset
     by_file = defaultdict(list)
     for e in events:
         by_file[e.get("_source_file", "?")].append(e)
@@ -129,7 +129,7 @@ def main(argv=None):
     results["rule"] = classification_report(true, rule_pred)
     plot_confusion(true, rule_pred, DEMO_DIR / "idmt_confusion_rule.png", title="IDMT rule-tree")
 
-    # 随机森林 + MERT：分层 train/test
+    # random forest + MERT: stratified train/test
     from sklearn.model_selection import train_test_split
 
     idx = np.arange(len(events))
@@ -145,16 +145,16 @@ def main(argv=None):
     plot_confusion(yte, pf, DEMO_DIR / "idmt_confusion_forest.png", title="IDMT forest")
 
     if args.mert:
-        print("抽 MERT 嵌入（逐事件，较慢）…")
+        print("Extracting MERT embeddings (per event, slow) ...")
         from analysis.io import load as _load
         from analysis.mert_probe import mert_embed, probe_predict, train_probe
 
-        # 逐事件按其所属文件音频抽嵌入；缓存命中时 audio_by_file 为空 -> 按需重读 wav
+        # embeddings are extracted per event from its file's audio; on a cache hit audio_by_file is empty -> reread the wav on demand
         audio_cache = dict(audio_by_file)
         emb = []
         for k, e in enumerate(events):
             if k % 200 == 0:
-                print(f"  MERT 嵌入 {k}/{len(events)} …", flush=True)
+                print(f"  MERT embeddings {k}/{len(events)} ...", flush=True)
             sf_ = e.get("_source_file")
             y = audio_cache.get(sf_)
             if y is None:
@@ -177,21 +177,21 @@ def main(argv=None):
         results["mert"] = classification_report(yte, pm)
         plot_confusion(yte, pm, DEMO_DIR / "idmt_confusion_mert.png", title="IDMT MERT probe")
 
-    # 汇总
-    print("\n---------------- IDMT 三方 ablation（宏 F1）----------------")
+    # summary
+    print("\n---------------- IDMT three-way ablation (macro F1) ----------------")
     targets = {"rule": 0.7, "mert": 0.8}
     for k in ("rule", "forest", "mert"):
         if k not in results:
             continue
         r = results[k]
         tgt = targets.get(k)
-        flag = "" if tgt is None else (" PASS" if r["macro_f1"] >= tgt else " <目标")
+        flag = "" if tgt is None else (" PASS" if r["macro_f1"] >= tgt else " <target")
         print(
-            f"  {k:8s}: 宏F1={r['macro_f1']:.3f}  acc={r['accuracy']:.3f}"
-            + (f"  (目标≥{tgt}{flag})" if tgt else "")
+            f"  {k:8s}: macro F1={r['macro_f1']:.3f}  acc={r['accuracy']:.3f}"
+            + (f"  (target≥{tgt}{flag})" if tgt else "")
         )
-    print(f"混淆矩阵图 -> {DEMO_DIR}/idmt_confusion_*.png")
-    print("口径（产品计划）：规则树≥0.7 / MERT探针≥0.8")
+    print(f"Confusion matrix plots -> {DEMO_DIR}/idmt_confusion_*.png")
+    print("Criteria (product plan): rule tree≥0.7 / MERT probe≥0.8")
     return 0
 
 

@@ -1,12 +1,12 @@
-"""阶段6 验收 —— FR-8 ｜ 吉他链路集成 demo。
+"""Stage 6 acceptance: FR-8 | guitar chain integration demo.
 
-全链路:真吉他音色快照(.tplib sustain) + 真吉他演奏法库 + 手势解释器 + 实时引擎,
-用一段 MIDI 手势谱弹出带 拨/连/滑/扫/颤 的"那把吉他"。
+Full chain: real guitar timbre snapshot (.tplib sustain) + real guitar articulation library + gesture interpreter + real-time engine,
+playing "that guitar" with pluck/legato/slide/strum/vibrato from a MIDI gesture score.
 
-产物:assets/demos/stage6_guitar_chain.wav + stage6_f0_trajectory.png
+Outputs: assets/demos/stage6_guitar_chain.wav + stage6_f0_trajectory.png
 
-用法:
-  python -m eval.stage6_accept                       # 用 assets/libraries/guitar.tplib
+Usage:
+  python -m eval.stage6_accept                       # uses assets/libraries/guitar.tplib
   python -m eval.stage6_accept --lib path/to.tplib
 """
 
@@ -33,22 +33,22 @@ SR = 44100
 DEMO_DIR = Path(__file__).resolve().parents[1] / "assets" / "demos"
 LIB_DIR = Path(__file__).resolve().parents[1] / "assets" / "libraries"
 
-# 手势谱（raw MIDI）：拨 -> 连音 -> 滑音 -> 扫弦 -> 颤音
+# gesture score (raw MIDI): pluck -> legato -> slide -> strum -> vibrato
 _PHRASE = [
     (0.20, "on", 52, 100),
     (0.70, "off", 52, 0),  # pluck E3
     (0.85, "on", 55, 95),  # pluck G3
-    (1.05, "on", 57, 85),  # +2 半音 -> legato
+    (1.05, "on", 57, 85),  # +2 semitones -> legato
     (1.45, "off", 57, 0),
     (1.45, "off", 55, 0),
     (1.65, "on", 52, 90),  # pluck
-    (1.85, "on", 59, 110),  # +7 半音 -> slide(力度大=快)
+    (1.85, "on", 59, 110),  # +7 semitones -> slide (high velocity = fast)
     (2.45, "off", 59, 0),
     (2.45, "off", 52, 0),
     (2.70, "on", 48, 100),
     (2.715, "on", 52, 100),
     (2.73, "on", 55, 100),  # strum C
-    (2.9, "cc", -1, 100),  # CC1 -> 颤音
+    (2.9, "cc", -1, 100),  # CC1 -> vibrato
     (3.7, "off", 48, 0),
     (3.7, "off", 52, 0),
     (3.7, "off", 55, 0),
@@ -64,8 +64,8 @@ def _load_guitar(lib_path):
         lib = load_tplib(lib_path)
         if lib.get("sustain"):
             inst = build_instrument(lib["sustain"], noise_level=0.3)
-            return inst, lib, f".tplib({Path(lib_path).name}) sustain 快照 + 演奏法库"
-    # 兜底：合成吉他状乐器 + 空库
+            return inst, lib, f".tplib({Path(lib_path).name}) sustain snapshot + articulation library"
+    # fallback: synthetic guitar-like instrument + empty library
     K = 40
     inst = Instrument(
         1.0 / np.arange(1, K + 1),
@@ -76,12 +76,12 @@ def _load_guitar(lib_path):
         SR,
         noise_level=0.2,
     )
-    return inst, None, "合成兜底乐器（无库）"
+    return inst, None, "synthetic fallback instrument (no library)"
 
 
 def _simple_f0(y, sr=SR, fmin=80.0, fmax=700.0):
-    """librosa.pyin 逐帧基频（自相关，能找弱基频；PESTO 对纯重合成 conf 偏低，
-    FFT 主峰又会被吉他强上谐波带偏）。"""
+    """librosa.pyin per-frame f0 (autocorrelation, finds weak fundamentals; PESTO confidence is low on pure resynthesis,
+    and the FFT main peak gets pulled off by strong upper guitar harmonics)."""
     import librosa
 
     f0, _, _ = librosa.pyin(y.astype(np.float32), sr=sr, fmin=fmin, fmax=fmax, hop_length=256)
@@ -94,7 +94,7 @@ def _plot_f0(y, cooked, name="stage6"):
     ft, f0 = _simple_f0(y)
     fig, ax = plt.subplots(figsize=(12, 4))
     ax.plot(ft, f0, ".", ms=4, color="C0", label="rendered f0 (pyin)")
-    # 标注手势
+    # annotate gestures
     cmap = {"on": "C1", "slide": "C3", "legato": "C2", "vibrato": "C4", "bend": "C5"}
     seen = set()
     for c in cooked:
@@ -120,25 +120,25 @@ def _plot_f0(y, cooked, name="stage6"):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Quill 阶段6 验收（FR-8 吉他链路）")
+    ap = argparse.ArgumentParser(description="Quill stage 6 acceptance (FR-8 guitar chain)")
     ap.add_argument("--lib", default=str(LIB_DIR / "guitar.tplib"))
     args = ap.parse_args(argv)
 
     inst, lib, src = _load_guitar(args.lib)
-    print(f"乐器/库来源: {src}  (K={inst.K}, f0_ref={inst.f0_ref:.1f}Hz)")
+    print(f"Instrument/library source: {src}  (K={inst.K}, f0_ref={inst.f0_ref:.1f}Hz)")
 
     gi = GestureInterpreter(library=lib)
     print(
-        f"slide 曲线: {'库实测 ' + str(len(gi.slide_curve)) + ' 点' if gi.slide_curve is not None else '默认线性'}"
+        f"slide curve: {'library measurement ' + str(len(gi.slide_curve)) + ' points' if gi.slide_curve is not None else 'default linear'}"
     )
     cooked = gi.process(_PHRASE)
     from collections import Counter
 
-    print("手势 -> 演奏法:", dict(Counter(c[1] for c in cooked)))
+    print("gestures -> articulations:", dict(Counter(c[1] for c in cooked)))
     for c in cooked:
         if c[1] in ("slide", "legato"):
             print(
-                f"  {c[1]}: note{c[5]}->note{c[2]} ({abs(c[2] - c[5])}半音) dur={c[4] * 1000:.0f}ms"
+                f"  {c[1]}: note{c[5]}->note{c[2]} ({abs(c[2] - c[5])} st) dur={c[4] * 1000:.0f}ms"
             )
 
     eng = Engine(inst, eval_mode=True)
@@ -157,14 +157,14 @@ def main(argv=None):
         k in Counter(c[1] for c in cooked) for k in ("on", "legato", "slide", "vibrato", "bend")
     )
     print(f"\n  demo wav -> {out.name}  ({len(y) / SR:.1f}s, clean={clean})")
-    print("  f0 轨迹图 -> stage6_f0_trajectory.png")
+    print("  f0 trajectory plot -> stage6_f0_trajectory.png")
 
-    print("\n---------------- 阶段6 验收汇总 ----------------")
+    print("\n---------------- Stage 6 acceptance summary ----------------")
     print(
-        f"  [{'OK ' if has_all else 'WARN'}] 五类手势齐发（pluck/legato/slide/strum/vibrato/bend）"
+        f"  [{'OK ' if has_all else 'WARN'}] all five gesture classes fired (pluck/legato/slide/strum/vibrato/bend)"
     )
-    print(f"  [{'OK ' if clean else 'FAIL'}] 吉他链路集成渲染干净有界")
-    print("  盲听 stage6_guitar_chain.wav：拨→连→滑→扫→颤一气呵成 = '用键盘弹出他的弹法'")
+    print(f"  [{'OK ' if clean else 'FAIL'}] guitar chain integration renders clean and bounded")
+    print("  Blind listening stage6_guitar_chain.wav: pluck->legato->slide->strum->vibrato in one go = 'playing his technique from a keyboard'")
     return 0 if (clean and has_all) else 1
 
 

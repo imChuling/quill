@@ -1,11 +1,11 @@
-"""评估工具集 —— FR-13（报告/参赛图表一键再生成）。
+"""Evaluation toolkit: FR-13 (one-click regeneration of report/competition figures).
 
-* confusion_matrix / classification_report：宏 F1 + 逐类 P/R/F1（演奏法分类口径）
-* plot_confusion：混淆矩阵热图 PNG
-* latency_decomposition：端到端延迟分解表（MIDI→控制→渲染计算→缓冲→设备）
-* multiscale_spectral_loss：MSS（音色保真，跨 stage 统一口径）
+* confusion_matrix / classification_report: macro F1 + per-class P/R/F1 (articulation classification criteria)
+* plot_confusion: confusion matrix heatmap PNG
+* latency_decomposition: end-to-end latency decomposition table (MIDI->control->render compute->buffer->device)
+* multiscale_spectral_loss: MSS (timbre fidelity, the same criterion across stages)
 
-依赖 numpy + matplotlib（eval 侧可用）；与 IDMT/MERT 评估共用同一指标口径。
+Depends on numpy + matplotlib (available on the eval side); shares the same metric definitions with the IDMT/MERT evaluation.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ ARTIC_LABELS = ["pluck", "slide", "legato", "strum", "sustain"]
 
 
 # --------------------------------------------------------------------------- #
-# 分类指标
+# Classification metrics
 # --------------------------------------------------------------------------- #
 def confusion_matrix(true, pred, labels=ARTIC_LABELS):
     idx = {l: i for i, l in enumerate(labels)}
@@ -30,7 +30,7 @@ def confusion_matrix(true, pred, labels=ARTIC_LABELS):
 
 
 def classification_report(true, pred, labels=ARTIC_LABELS):
-    """返回 {label: {precision,recall,f1,support}, 'macro_f1':..., 'accuracy':...}。"""
+    """Return {label: {precision,recall,f1,support}, 'macro_f1':..., 'accuracy':...}."""
     M = confusion_matrix(true, pred, labels)
     out = {}
     f1s = []
@@ -42,7 +42,7 @@ def classification_report(true, pred, labels=ARTIC_LABELS):
         rec = tp / (tp + fn) if (tp + fn) else 0.0
         f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
         out[l] = {"precision": prec, "recall": rec, "f1": f1, "support": int(M[i, :].sum())}
-        if M[i, :].sum() > 0:  # 仅对出现过的类计入宏平均
+        if M[i, :].sum() > 0:  # only classes that occur count toward the macro average
             f1s.append(f1)
     out["macro_f1"] = float(np.mean(f1s)) if f1s else 0.0
     out["accuracy"] = float(np.trace(M) / M.sum()) if M.sum() else 0.0
@@ -87,10 +87,10 @@ def plot_confusion(true, pred, path, labels=ARTIC_LABELS, title="Confusion matri
 
 
 # --------------------------------------------------------------------------- #
-# 延迟分解表（NFR-1：端到端 <30ms）
+# Latency decomposition table (NFR-1: end to end <30ms)
 # --------------------------------------------------------------------------- #
 def measure_render_compute_ms(engine, n_voices=16, n_blocks=400):
-    """满载渲染计算耗时（每块），gc.disable 复现演奏条件。"""
+    """Render compute time per block at full load; gc.disable reproduces performance conditions."""
     import gc
     import time
 
@@ -121,39 +121,39 @@ def measure_render_compute_ms(engine, n_voices=16, n_blocks=400):
 
 
 def latency_decomposition(engine, device_output_ms=None, midi_jitter_ms=1.0):
-    """端到端延迟分解表（MIDI→控制→渲染→缓冲→设备）。
+    """End-to-end latency decomposition table (MIDI->control->render->buffer->device).
 
-    可本机测：渲染计算、缓冲预算；需硬件实测：设备输出延迟（传入 device_output_ms，
-    或由 engine.stream_latency_ms() 提供）。返回 (rows[(组件, ms, 备注)], total_ms)。
+    Measurable locally: render compute, buffer budget; needs hardware measurement: device output latency (pass device_output_ms,
+    or provided by engine.stream_latency_ms()). Returns (rows[(component, ms, note)], total_ms).
     """
     sr = engine.sr
     bs = engine.blocksize
     buffer_ms = bs / sr * 1000.0
     med_ms, p95_ms = measure_render_compute_ms(engine)
-    ctrl_ms = 1000.0 / 250.0  # 250Hz ControlFrame 粒度（块内斜坡）
+    ctrl_ms = 1000.0 / 250.0  # 250Hz ControlFrame granularity (in-block ramps)
     dev_ms = device_output_ms if device_output_ms is not None else engine.stream_latency_ms()
     rows = [
-        ("MIDI 输入抖动", midi_jitter_ms, "队列→块起始，最坏一个块"),
-        ("控制更新", ctrl_ms, "250Hz ControlFrame / 块内线性斜坡"),
-        ("渲染计算(16复音)", p95_ms, f"p95；中位 {med_ms:.2f}ms（满载）"),
-        ("输出缓冲", buffer_ms, f"blocksize {bs} / {sr}Hz"),
-        ("设备输出", dev_ms, "声卡实测(环回法/sd stream.latency)"),
+        ("MIDI input jitter", midi_jitter_ms, "queue->block start, worst case one block"),
+        ("control update", ctrl_ms, "250Hz ControlFrame / in-block linear ramp"),
+        ("render compute (16 voices)", p95_ms, f"p95; median {med_ms:.2f}ms (full load)"),
+        ("output buffer", buffer_ms, f"blocksize {bs} / {sr}Hz"),
+        ("device output", dev_ms, "measured on sound card (loopback / sd stream.latency)"),
     ]
     total = sum(r[1] for r in rows if np.isfinite(r[1]))
     return rows, float(total)
 
 
 def format_latency_table(rows, total):
-    lines = ["延迟分解（MIDI→DAC）:", f"  {'组件':<16}{'ms':>8}  备注"]
+    lines = ["Latency decomposition (MIDI->DAC):", f"  {'component':<16}{'ms':>8}  note"]
     for name, ms, note in rows:
         v = f"{ms:8.2f}" if np.isfinite(ms) else "    n/a "
         lines.append(f"  {name:<16}{v}  {note}")
-    lines.append(f"  {'合计':<16}{total:8.2f}  （NFR-1 目标 <30ms；设备缓冲是大头）")
+    lines.append(f"  {'total':<16}{total:8.2f}  (NFR-1 target <30ms; the device buffer dominates)")
     return "\n".join(lines)
 
 
 # --------------------------------------------------------------------------- #
-# 多尺度谱损失（MSS，音色保真）
+# Multi-scale spectral loss (MSS, timbre fidelity)
 # --------------------------------------------------------------------------- #
 def multiscale_spectral_loss(y, y_re, sr=44100, ffts=(512, 1024, 2048, 4096)):
     n = min(len(y), len(y_re))

@@ -1,15 +1,15 @@
-"""Gate 1 · Ridge 线性基线(v2 双通道)—— Sprint 2。
+"""Gate 1 · Ridge linear baseline (v2 two-channel), Sprint 2.
 
-v2 变化(7.31 分解实验驱动):
-  - 残差 = [谐波包络残差(64), 噪声包络残差(64)],**联合**修正
-    (单侧 recovery≈0,双侧 0.82——归一化谱距耦合两层相对电平);
-  - 谐波侧打在 target 绝对频率(render env_correction 入口);
-    噪声侧直接缩放 N_env 各带(噪声不随音高搬移,带中心即绝对频率);
-  - 渲染评测读全快照缓存(SNAP_DIR),不再重复 analyze_timbre;
-  - 同场输出 true-patch 上界(本机制可兑现的极限)作对照。
+v2 changes (driven by the 7.31 decomposition experiment):
+  - residual = [harmonic envelope residual(64), noise envelope residual(64)], corrected **jointly**
+    (one side alone recovery≈0, both sides 0.82: the normalised spectral distance couples the relative levels of the two layers);
+  - the harmonic side is applied at the target absolute frequencies (render env_correction entry point);
+    the noise side scales the N_env bands directly (noise does not shift with pitch, band centre = absolute frequency);
+  - render evaluation reads the full snapshot cache (SNAP_DIR) instead of rerunning analyze_timbre;
+  - the true-patch upper bound (the limit this mechanism can realise) is reported alongside for comparison.
 
-预注册判读(不变):ridge_recovery 中位 ≥0.5 KEEP-RIDGE-BAR-HIGH /
-0.15–0.5 NEURAL-WORTH-TRYING / <0.15 CHECK-REPRESENTATION。
+Preregistered reading (unchanged): median ridge_recovery ≥0.5 KEEP-RIDGE-BAR-HIGH /
+0.15–0.5 NEURAL-WORTH-TRYING / <0.15 CHECK-REPRESENTATION.
 """
 
 from __future__ import annotations
@@ -28,13 +28,13 @@ from eval.atlas_data import GRID, build_note_table, load_snap, train_test_split 
 from eval.fidelity import SR, spectral_distance, tinysol_groups  # noqa: E402
 from synth.render import render  # noqa: E402
 
-BOUND = 3.0  # 残差限幅(log nat ≈ ±26dB;v1 ±1.5 时越限率 33%)
+BOUND = 3.0  # residual clipping (log nat ≈ ±26dB; with v1's ±1.5 the clipping rate was 33%)
 RENDER_EVAL_N = 48
 
 
 def apply_residual(snap: dict, res128: np.ndarray) -> dict:
-    """residual → 修正后的快照副本。谐波侧留给 render 的 env_correction(target 侧);
-    噪声侧在此缩放 N_env(带中心=绝对频率,无需随音高搬移)。返回 (snap', harm_res)。"""
+    """residual -> corrected snapshot copy. The harmonic side is left to render's env_correction (target side);
+    the noise side scales N_env here (band centre = absolute frequency, no shifting with pitch). Returns (snap', harm_res)."""
     res = np.clip(np.asarray(res128, np.float64), -BOUND, BOUND)
     harm_res, noise_res = res[:64], res[64:]
     out = dict(snap)
@@ -76,8 +76,8 @@ def main():
     e_static = float(np.mean(np.abs(Yte)))
     e_ridge = float(np.mean(np.abs(P - Yte)))
     print(
-        f"包络空间(128维) mean|res|: static={e_static:.3f}  ridge={e_ridge:.3f}  "
-        f"(降 {100 * (1 - e_ridge / e_static):.0f}%)"
+        f"envelope space (128 dims) mean|res|: static={e_static:.3f}  ridge={e_ridge:.3f}  "
+        f"(down {100 * (1 - e_ridge / e_static):.0f}%)"
     )
 
     audio_by = {}
@@ -125,7 +125,7 @@ def main():
             }
         )
         if (j + 1) % 12 == 0:
-            print(f"  渲染评测 {j + 1}/{len(order)} ({time.time() - t0:.0f}s)", flush=True)
+            print(f"  render evaluation {j + 1}/{len(order)} ({time.time() - t0:.0f}s)", flush=True)
 
     ds = np.array([r["d_static"] for r in rows])
     dr = np.array([r["d_ridge"] for r in rows])
@@ -162,16 +162,16 @@ def main():
     p = ROOT / "results" / "atlas" / "ridge_gate1_v2.json"
     p.write_text(json.dumps(out, indent=1))
     print(
-        f"\n渲染空间中位: static={out['render_median']['static']:.3f}  "
+        f"\nrender-space median: static={out['render_median']['static']:.3f}  "
         f"ridge={out['render_median']['ridge']:.3f}  "
         f"true={out['render_median']['true_patch']:.3f}  "
         f"oracle={out['render_median']['oracle']:.3f}"
     )
     print(
-        f"recovery 中位: ridge={med_rec:.2f}  true-patch上界={out['truepatch_recovery_median']:.2f}  "
-        f"ridge 胜率={out['ridge_beats_static_rate']:.2f}"
+        f"recovery median: ridge={med_rec:.2f}  true-patch upper bound={out['truepatch_recovery_median']:.2f}  "
+        f"ridge win rate={out['ridge_beats_static_rate']:.2f}"
     )
-    print(f">>> GATE 1(v2) 判读: {out['verdict']}   artifact: {p.relative_to(ROOT)}")
+    print(f">>> GATE 1 (v2) reading: {out['verdict']}   artifact: {p.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":

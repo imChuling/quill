@@ -1,17 +1,17 @@
-"""听测 v2 统计分析 —— 严格按 prereg_v2.md 执行。
+"""Listening test v2 statistical analysis, carried out strictly according to prereg_v2.md.
 
-输入: raw_codes_v2.txt(答案码,一行一人)+ study_v2_manifest.json
-输出: listening_stats_v2.json + 终端对账表(论文数字以此为准)
+Input: raw_codes_v2.txt (answer codes, one line per participant) + study_v2_manifest.json
+Output: listening_stats_v2.json + a reconciliation table in the terminal (the paper's numbers follow this)
 
-预注册规则(prereg_v2.md, 2026-08-09 定稿):
-- M1/M2/M4/M6 单侧二项(方向: M1→v0, M2→labeled, M4→diff, M6→diff);M3 双侧。
-- M5 配对 Wilcoxon(Quill v0 = 刺激0 vs MIDI-DDSP = 刺激7)。
-- ABX: unsure 剔除出正确率但报告数量;X1–X6 pooled 单侧二项;
-  逐题二项 + Bonferroni(0.05/8);per-participant 准确率 + Wilcoxon vs 0.5。
-  X7/X8 单独报告,不并入 X1–X6 pooled。
-- 重复编号取第一份;无法解码整人剔除并报告。
+Preregistered rules (prereg_v2.md, finalised 2026-08-09):
+- M1/M2/M4/M6 one-sided binomial (direction: M1->v0, M2->labeled, M4->diff, M6->diff); M3 two-sided.
+- M5 paired Wilcoxon (Quill v0 = stimulus 0 vs MIDI-DDSP = stimulus 7).
+- ABX: unsure excluded from accuracy but the count is reported; X1–X6 pooled one-sided binomial;
+  per-trial binomial + Bonferroni (0.05/8); per-participant accuracy + Wilcoxon vs 0.5.
+  X7/X8 reported separately, not pooled with X1–X6.
+- duplicate IDs: the first submission is kept; participants whose code cannot be decoded are excluded entirely and reported.
 
-跑: python3 eval/listening/analyze_study_v2.py
+Run: python3 eval/listening/analyze_study_v2.py
 """
 
 import json
@@ -23,17 +23,17 @@ HERE = Path(__file__).resolve().parent
 MANIFEST = json.loads((HERE / "study_v2_manifest.json").read_text())
 ABX_KEY = {t["qid"]: t for t in MANIFEST["abx"]}
 
-# 预注册的方向假设: qid -> (正确/假设方向的取值, 备择方向)
+# preregistered directional hypotheses: qid -> (correct/hypothesised value, alternative)
 MAIN_HYPOTH = {
-    "M1": ("0", "greater"),  # v0 检索行为(刺激0)
-    "M2": ("2", "greater"),  # labeled(刺激2)
-    "M3": ("4", "two-sided"),  # v2 参数化(刺激4),探索、双侧
+    "M1": ("0", "greater"),  # v0 retrieved behaviour (stimulus 0)
+    "M2": ("2", "greater"),  # labeled (stimulus 2)
+    "M3": ("4", "two-sided"),  # v2 parametric (stimulus 4), exploratory, two-sided
     "M4": ("diff", "greater"),
     "M6": ("diff", "greater"),
 }
-ABX_MAIN = ["X1", "X2", "X3", "X4", "X5", "X6"]  # 跨乐器主张
-ABX_GLASS = ["X7", "X8"]  # 单独报告
-BONFERRONI_M = 8  # 0.05/8, 预注册
+ABX_MAIN = ["X1", "X2", "X3", "X4", "X5", "X6"]  # cross-instrument claim
+ABX_GLASS = ["X7", "X8"]  # reported separately
+BONFERRONI_M = 8  # 0.05/8, preregistered
 
 
 def parse_codes():
@@ -62,9 +62,9 @@ def main():
     rows, n_lines, bad = parse_codes()
     n = len(rows)
     out = {"n_lines": n_lines, "n_participants": n, "n_undecodable": bad}
-    print(f"共 {n_lines} 行 -> N={n}(去重后),无法解码 {bad}")
+    print(f"total {n_lines} lines -> N={n} (after deduplication), undecodable {bad}")
 
-    # ---- 主听测二元题 ----
+    # ---- Main listening test binary questions ----
     out["main"] = {}
     for qid, (target, alt) in MAIN_HYPOTH.items():
         votes = [d[qid] for d in rows if qid in d]
@@ -73,14 +73,14 @@ def main():
         out["main"][qid] = {"k": k, "n": len(votes), "alternative": alt, "p": p}
         print(f"  {qid}: {k}/{len(votes)}  ({alt}) p={p:.6f}")
 
-    # ---- M5 配对评分 ----
+    # ---- M5 paired ratings ----
     q = [int(d["M5r0"]) for d in rows if "M5r0" in d and "M5r7" in d]
     m = [int(d["M5r7"]) for d in rows if "M5r0" in d and "M5r7" in d]
     if q:
         try:
             w = stats.wilcoxon(q, m, alternative="two-sided", method="exact")
             p_w = float(w.pvalue)
-        except ValueError:  # 全部差值为0时
+        except ValueError:  # when all differences are 0
             p_w = 1.0
         out["main"]["M5"] = {
             "n": len(q),
@@ -89,7 +89,7 @@ def main():
             "wilcoxon_p": p_w,
         }
         print(
-            f"  M5: Quill 中位 {out['main']['M5']['quill_median']:.0f} vs "
+            f"  M5: Quill median {out['main']['M5']['quill_median']:.0f} vs "
             f"MIDI-DDSP {out['main']['M5']['mididdsp_median']:.0f}  "
             f"Wilcoxon p={p_w:.6f}"
         )
@@ -151,13 +151,13 @@ def main():
             "wilcoxon_p": p_pp,
         }
         print(
-            f"  per-participant(X1-X6): 中位准确率 "
+            f"  per-participant (X1-X6): median accuracy "
             f"{out['abx']['per_participant']['median_acc']:.1%}  "
             f"Wilcoxon vs 0.5 p={p_pp:.6f}"
         )
 
     (HERE / "listening_stats_v2.json").write_text(json.dumps(out, ensure_ascii=False, indent=1))
-    print(f"已写 {HERE / 'listening_stats_v2.json'}")
+    print(f"Wrote {HERE / 'listening_stats_v2.json'}")
 
 
 if __name__ == "__main__":

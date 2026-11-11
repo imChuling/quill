@@ -1,8 +1,8 @@
-"""从 IDMT-SMT-Bass 扒贝斯演奏法 -> bass.tplib + 指弹/slap/滑音 对比 demo。
+"""Extract bass articulations from IDMT-SMT-Bass -> bass.tplib + fingerstyle/slap/slide comparison demo.
 
-IDMT-SMT-Bass 布局：PS/{FS,PK,MU,ST,SP}（拨弦风格，NO 表情）、ES/{NO,VIF,SLU,SLD,...}。
-单音带已知技法（从路径），无需分类——直接按风格扒起音颗粒 + 从 SLU 扒滑音曲线 + 取
-一个干净音建 sustain 快照。第二个从真演奏数据扒出演奏法的家族（取色笔·跨家族）。
+IDMT-SMT-Bass layout: PS/{FS,PK,MU,ST,SP} (plucking styles, NO expression), ES/{NO,VIF,SLU,SLD,...}.
+Single notes carry a known technique (from the path), so no classification is needed: extract attack grains per style + slide curves from SLU + take
+one clean note to build a sustain snapshot. The second family whose articulations are extracted from real performance data (capture pen, cross-family).
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ PLUCK_STYLES = {"FS": "finger", "PK": "pick", "MU": "mute", "ST": "slap_thumb", 
 
 
 def _attack_grain(y, sr=SR):
-    """从一个贝斯单音扒起音残差颗粒（谐波减除后的瞬态）。"""
+    """Extract the attack residual grain from one bass note (the transient after harmonic subtraction)."""
     f0, conf, ft = track_f0(y, sr=sr)
     H, ht, info = harmonics(y, f0, sr=sr, f0_times=ft, n_harmonics=60)
     res = extract_residual(y, H, info["f0_per_frame"], sr=sr, n_fft=info["n_fft"], hop=512)
@@ -44,7 +44,7 @@ def build(root, out="assets/libraries/bass.tplib", per_style=6):
         "sustain": None,
         "meta": {"instrument_guess": "bass", "source": "IDMT-SMT-Bass", "format_version": 1},
     }
-    # 1) 每拨弦风格的起音颗粒（slap-thumb/slap-pluck 是贝斯标志性技法）
+    # 1) attack grain per plucking style (slap-thumb/slap-pluck are the signature bass techniques)
     for code, name in PLUCK_STYLES.items():
         files = sorted(glob.glob(os.path.join(root, "PS", code, "*.wav")))[:per_style]
         grains = []
@@ -54,12 +54,12 @@ def build(root, out="assets/libraries/bass.tplib", per_style=6):
             except Exception:
                 continue
         if grains:
-            g = np.mean(np.stack(grains), axis=0).astype(np.float32)  # 代表颗粒
+            g = np.mean(np.stack(grains), axis=0).astype(np.float32)  # representative grain
             rms = float(np.sqrt(np.mean(g**2)))
             lib["pluck"].append({"rms_bucket": 1, "grain": g, "style": name})
-            print(f"  pluck[{name:10s}] 颗粒 from {len(grains)} 音, rms={rms:.4f}")
+            print(f"  pluck[{name:10s}] grain from {len(grains)} notes, rms={rms:.4f}")
 
-    # 2) 滑音曲线 g(τ)∈[0,1]：从 SLU（滑上）扒 f0 轨迹归一
+    # 2) slide curve g(τ)∈[0,1]: normalised f0 track extracted from SLU (slide up)
     slu = sorted(glob.glob(os.path.join(root, "ES", "SLU", "*.wav")))[:12]
     curves = []
     for f in slu:
@@ -70,29 +70,29 @@ def build(root, out="assets/libraries/bass.tplib", per_style=6):
         rise = np.log2(f0 / f0[0])
         if rise[-1] <= 1e-3:
             continue
-        g = rise / rise[-1]  # 归一到 [0,1]
+        g = rise / rise[-1]  # normalise to [0,1]
         curves.append(np.interp(np.linspace(0, 1, 8), np.linspace(0, 1, len(g)), g))
     if curves:
         curve = np.clip(np.mean(np.stack(curves), axis=0), 0, 1).astype(np.float32)
         lib["slide"].append({"interval_st": 2.0, "dur_s": 0.25, "curve_ctrl": curve})
-        print(f"  slide 曲线 from {len(curves)} 滑音: {np.round(curve, 2)}")
+        print(f"  slide curve from {len(curves)} slides: {np.round(curve, 2)}")
 
-    # 3) sustain 快照：取一个干净 finger 音建 TimbreSnapshot
+    # 3) sustain snapshot: build a TimbreSnapshot from one clean finger note
     fs = sorted(glob.glob(os.path.join(root, "PS", "FS", "*.wav")))
     if fs:
         snap = analyze_timbre(load(fs[len(fs) // 2], sr=SR)[0], name="bass_FS")
         lib["sustain"] = snap
-        print(f"  sustain 快照 f0={snap['f0_ref']:.1f}Hz")
+        print(f"  sustain snapshot f0={snap['f0_ref']:.1f}Hz")
 
     lib["meta"]["stats"] = {k: len(lib[k]) for k in ("pluck", "slide", "legato", "strum")}
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     save_tplib(out, lib)
-    print(f"-> {out}  (pluck {len(lib['pluck'])} 风格, slide {len(lib['slide'])})")
+    print(f"-> {out}  (pluck {len(lib['pluck'])} styles, slide {len(lib['slide'])})")
     return lib
 
 
 def demo(lib, out_dir="assets/demos"):
-    """指弹 vs slap vs 滑音 对比 demo（同一贝斯线）。"""
+    """Fingerstyle vs slap vs slide comparison demo (same bass line)."""
     import soundfile as sf
 
     from runtime.engine import Engine
@@ -108,7 +108,7 @@ def demo(lib, out_dir="assets/demos"):
             inst.attack_grain = np.ascontiguousarray(style_grain, dtype=np.float64)
         return Engine(inst, eval_mode=True)
 
-    # 一段贝斯 riff（低音区根-五-八-滑）
+    # a bass riff (low register root-fifth-octave-slide)
     riff = [
         (0.1, "on", 40, 110, 0.0),
         (0.45, "off", 40, 0, 0.0),
@@ -128,7 +128,7 @@ def demo(lib, out_dir="assets/demos"):
         y = np.asarray(eng.render_offline(riff, dur_s=2.8), np.float32)
         y = (y / (np.max(np.abs(y)) + 1e-9) * 0.9).astype(np.float32)
         sf.write(os.path.join(out_dir, f"bass_{style}.wav"), y, SR)
-        print(f"  贝斯 riff × {style} -> {out_dir}/bass_{style}.wav")
+        print(f"  bass riff × {style} -> {out_dir}/bass_{style}.wav")
 
 
 def main(argv=None):

@@ -1,9 +1,9 @@
-"""重组画廊 —— 批量产出"任意音色 × 同一演奏法"的 demo（视频素材 + FR-9 泛化展示）。
+"""Recombination gallery: batch-produce "any timbre × the same articulation" demos (video material + FR-9 generalisation showcase).
 
-同一手势谱 + 同一吉他演奏法库，套到不同音色快照上：吉他本身 / 人声 / 酒杯……
-弹法完全相同、音色各异 —— 一眼（一耳）看出音色与演奏法解耦。
+The same gesture score + the same guitar articulation library applied to different timbre snapshots: the guitar itself / voice / wine glass...
+Identical technique, different timbres: timbre and articulation are visibly (audibly) decoupled at a glance.
 
-用法：python -m eval.gallery   [--lib assets/libraries/guitar.tplib]
+Usage: python -m eval.gallery   [--lib assets/libraries/guitar.tplib]
 """
 
 from __future__ import annotations
@@ -29,32 +29,32 @@ ROOT = Path(__file__).resolve().parents[1]
 DEMO_DIR = ROOT / "assets" / "demos"
 SNAP_DIR = ROOT / "assets" / "snapshots"
 
-# (快照文件, 展示名, 噪声端比例)
+# (snapshot file, display name, noise-side ratio)
 _TIMBRES = [
-    ("guitar.npz", "guitar", 0.3),  # 源乐器本身（对照）
-    ("voice_tone_mid.npz", "voice", 0.2),  # 会吉他滑音的人声
-    ("wineglass.npz", "wineglass", 0.15),  # 会吉他滑音的酒杯
+    ("guitar.npz", "guitar", 0.3),  # the source instrument itself (reference)
+    ("voice_tone_mid.npz", "voice", 0.2),  # a voice that can do guitar slides
+    ("wineglass.npz", "wineglass", 0.15),  # a wine glass that can do guitar slides
 ]
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="FR-9 重组画廊")
+    ap = argparse.ArgumentParser(description="FR-9 recombination gallery")
     ap.add_argument("--lib", default=str(ROOT / "assets" / "libraries" / "guitar.tplib"))
     args = ap.parse_args(argv)
 
     if not Path(args.lib).exists():
-        print(f"[缺] 演奏法库不存在: {args.lib}（先跑 eval.build_library）")
+        print(f"[missing] articulation library not found: {args.lib} (run eval.build_library first)")
         return 2
     lib = load_tplib(args.lib)
     aname = Path(args.lib).stem
     DEMO_DIR.mkdir(parents=True, exist_ok=True)
 
-    print(f"演奏法库: {aname}  | 同一手势谱套到不同音色：")
+    print(f"Articulation library: {aname}  | same gesture score applied to different timbres:")
     made = []
     for fn, label, noise in _TIMBRES:
         p = SNAP_DIR / fn
         if not p.exists():
-            print(f"  [跳过] {label}: 缺快照 {fn}")
+            print(f"  [skipped] {label}: missing snapshot {fn}")
             continue
         snap = load_snapshot(p)
         inst = build_instrument(snap, noise_level=noise)
@@ -68,9 +68,9 @@ def main(argv=None):
         made.append((label, out.name, clean))
         print(f"  ✓ {label:10s} × {aname}  -> {out.name}  ({'clean' if clean else 'WARN'})")
 
-    print(f"\n画廊产出 {len(made)} 条，目录 {DEMO_DIR}")
+    print(f"\nGallery produced {len(made)} clips, directory {DEMO_DIR}")
     print(
-        "视频用法：三条并排播——弹法逐音对齐、音色 guitar/voice/wineglass 各异 = 解耦+重组一目了然"
+        "Video use: play the three side by side: technique aligned note by note, timbres guitar/voice/wineglass differ = decoupling + recombination at a glance"
     )
     return 0 if made else 2
 

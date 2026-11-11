@@ -1,38 +1,38 @@
-# 听测幸存记录与数据保留声明
+# Surviving listening test records and data retention statement
 
-## 结论
+## Conclusion
 
-两次听测的**逐人原始回答均未留存**。可审计的只有当时项目日志中的
-汇总计数。据此,论文(2026-08 修订版)只保留能由幸存汇总支撑的统计:
+**Per-participant raw answers from both listening tests were not kept.** The only auditable data are the
+summary counts in the project log at the time. Accordingly, the paper (2026-08 revision) keeps only statistics supported by the surviving summaries:
 
-- 保留:主听测 Q2 11/13(单侧二项 p=0.011)、Q4 13/13(p<0.001);
-  ABX pooled 98/107(单侧二项 p<1e-5)。
-- 删除:ABX 逐题 Bonferroni 声明、per-listener 91.7% Wilcoxon 声明
-  ——所需的逐题/逐人数据不存在,无法审计。
+- Kept: main listening test Q2 11/13 (one-sided binomial p=0.011), Q4 13/13 (p<0.001);
+  ABX pooled 98/107 (one-sided binomial p<1e-5).
+- Removed: the ABX per-trial Bonferroni claim and the per-listener 91.7% Wilcoxon claim,
+  since the per-trial/per-participant data they need does not exist and cannot be audited.
 
-## 幸存记录及出处
+## Surviving records and sources
 
-### 主听测(N=13,收回 2026-08-05)
+### Main listening test (N=13, collected 2026-08-05)
 
-出处:`docs/ismir_lbd_abstract_draft_2026-08-04.md`(当时的项目日志,逐题汇总):
+Source: `docs/ismir_lbd_abstract_draft_2026-08-04.md` (the project log at the time, per-question summary):
 
-| 题 | 结果 |
+| Question | Result |
 |---|---|
-| Q1 行为 vs flat | 13/13 选行为 |
-| Q2 标注 vs allplain | 11/13 选带标注 |
-| Q3 v2 参数化 vs v0 检索 | 8/13(tie) |
-| Q4 跨乐器行为感知 | 13/13 听出不同 |
-| Q5 自然度 | Quill 3.9/5,MIDI-DDSP 4.5/5 |
+| Q1 behaviour vs flat | 13/13 chose behaviour |
+| Q2 labelled vs allplain | 11/13 chose labelled |
+| Q3 v2 parametric vs v0 retrieval | 8/13 (tie) |
+| Q4 cross-instrument behaviour perception | 13/13 heard a difference |
+| Q5 naturalness | Quill 3.9/5, MIDI-DDSP 4.5/5 |
 
-参与者构成:13 人中 8 人受过正式音乐训练(当时口头汇总,无逐人记录)。
+Participant makeup: 8 of 13 had formal musical training (verbal summary at the time, no per-participant record).
 
-### ABX(N=18,6 trials/人)
+### ABX (N=18, 6 trials per participant)
 
-出处:`docs/changelog.md`(汇总):总回答 108,1 个 unsure 剔除,
-98/107 正确(91.6%)。逐题与逐人明细未留存。
+Source: `docs/changelog.md` (summary): 108 answers in total, 1 unsure excluded,
+98/107 correct (91.6%). Per-trial and per-participant details were not kept.
 
-## 教训与后续
+## Lessons and follow-up
 
-- 本目录的 `analyze_listening.py` + CSV schema 为**未来重测**准备:
-  表单收集、逐人导出、per-participant 随机化、预注册 unsure 规则。
-- 若进行 N≥30 重测,其结果将整体替换上述旧数字。
+- The `analyze_listening.py` + CSV schema in this directory are prepared for **future reruns**:
+  form collection, per-participant export, per-participant randomisation, a preregistered unsure rule.
+- If an N≥30 rerun takes place, its results will replace the old numbers above entirely.

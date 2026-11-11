@@ -1,12 +1,12 @@
-"""阶段5 验收 —— FR-6 基础 + FR-7 ｜ 出口：.tplib 往返无损 + 目检≥80%。
+"""Stage 5 acceptance: FR-6 basics + FR-7 | exit: lossless .tplib round trip + visual check ≥80%.
 
-构造一组**已知演奏法**的合成事件（pluck/sustain/slide/legato/strum，含 vibrato 修饰），
-跑规则优先级树分类 -> 与真值算准确率（替代"自录素材目检≥80%"的可复现口径）；
-随机森林兜底作 ablation；再用分类结果构建 .tplib 并验证读写往返无损。
+Builds a set of synthetic events with **known articulations** (pluck/sustain/slide/legato/strum, with vibrato modifiers),
+runs the rule priority tree classification -> accuracy against ground truth (a reproducible substitute for the "visual check of self-recorded material ≥80%" criterion);
+a random forest fallback serves as the ablation; then builds a .tplib from the classification and verifies a lossless read/write round trip.
 
-（IDMT 正式宏 F1 双口径在阶段8；本阶段验证规则树管线 + 库往返。）
+(The formal IDMT macro F1 dual criteria are in stage 8; this stage validates the rule-tree pipeline + library round trip.)
 
-用法：python -m eval.stage5_accept
+Usage: python -m eval.stage5_accept
 """
 
 from __future__ import annotations
@@ -37,10 +37,10 @@ DEMO_DIR = Path(__file__).resolve().parents[1] / "assets" / "demos"
 
 
 # --------------------------------------------------------------------------- #
-# 合成演奏法发声器（已知真值）
+# Synthetic articulation generators (known ground truth)
 # --------------------------------------------------------------------------- #
 def gen_pluck(f0, sr=SR, dur=0.5):
-    """快起音 + 高亮度 + 拨弦噪声 -> log_attack 小、质心高。"""
+    """Fast attack + high brightness + pluck noise -> small log_attack, high centroid."""
     t = np.arange(int(sr * dur)) / sr
     y = np.zeros_like(t)
     for k in range(1, 60):
@@ -54,9 +54,9 @@ def gen_pluck(f0, sr=SR, dur=0.5):
 
 
 def gen_sustain(f0, sr=SR, dur=1.0, vib=False):
-    """慢起音 + 低亮度（谐波少）-> 非 pluck；vib=True 叠 5.5Hz 颤音。"""
+    """Slow attack + low brightness (few harmonics) -> not pluck; vib=True adds 5.5Hz vibrato."""
     t = np.arange(int(sr * dur)) / sr
-    # fmod 必须是数组：vib=False 时若用标量 0.0，cumsum 会塌成长度 1（载波丢失）
+    # fmod must be an array: with a scalar 0.0 when vib=False, cumsum collapses to length 1 (the carrier is lost)
     fmod = np.ones_like(t)
     if vib:
         fmod = fmod + 0.017 * np.sin(2 * np.pi * 5.5 * t)  # ~30 cents
@@ -67,7 +67,7 @@ def gen_sustain(f0, sr=SR, dur=1.0, vib=False):
 
 
 def gen_slide(f0a, semis, sr=SR, dur=0.45):
-    """连续滑音 semis 半音 -> f0 净斜率大、单调。"""
+    """Continuous slide of semis semitones -> large, monotonic net f0 slope."""
     t = np.arange(int(sr * dur)) / sr
     f0t = f0a * 2 ** (semis * (t / dur) / 12.0)
     ph = np.cumsum(2 * np.pi * f0t / sr)
@@ -77,12 +77,12 @@ def gen_slide(f0a, semis, sr=SR, dur=0.45):
 
 
 def gen_legato_target(f0, sr=SR, dur=0.6):
-    """legato 目标音：软起音（无瞬态）、稳态、低亮度。"""
+    """legato target note: soft attack (no transient), steady, low brightness."""
     return gen_sustain(f0, sr, dur, vib=False)
 
 
 def _dominant_pitch(clip, sr):
-    """FFT 主峰 -> midi（PESTO 对纯合成静音 conf 偏低时的兜底）。"""
+    """FFT main peak -> midi (fallback when PESTO confidence is low on purely synthetic quiet signals)."""
     seg = clip[len(clip) // 8 : -len(clip) // 8] if len(clip) > 16 else clip
     S = np.abs(np.fft.rfft(seg * np.hanning(len(seg))))
     f = np.fft.rfftfreq(len(seg), 1 / sr)
@@ -94,7 +94,7 @@ def _dominant_pitch(clip, sr):
 
 
 def _mk_event(eid, clip, sr, t_on):
-    """从片段算特征，组装事件（含 f0_track/vibrato，时间挂到 t_on）。"""
+    """Compute features from a clip and assemble the event (with f0_track/vibrato, time anchored at t_on)."""
     f0, conf, ft = track_f0(clip, sr=sr)
     dur = len(clip) / sr
     track_rel = f0_track_for(f0, ft, 0, dur)
@@ -128,14 +128,14 @@ def _mk_event(eid, clip, sr, t_on):
 
 
 def build_labeled_set(sr=SR):
-    """构造已知真值的事件集 + 拼接时间线（供 .tplib 取颗粒/曲线）。"""
-    specs = []  # (clip, true_label, t_on)  —— t_on 留位，后面排布
-    # 单事件类
+    """Build an event set with known ground truth + a concatenated timeline (for taking grains/curves for the .tplib)."""
+    specs = []  # (clip, true_label, t_on): t_on is a placeholder, laid out later
+    # single-event classes
     for f0 in (147, 165, 196, 220, 247, 294):
         specs.append((gen_pluck(f0), "pluck"))
     for f0 in (165, 196, 247):
         specs.append((gen_sustain(f0), "sustain"))
-    for f0 in (175, 220, 262):  # 颤音 -> 仍属 sustain
+    for f0 in (175, 220, 262):  # vibrato -> still sustain
         specs.append((gen_sustain(f0, vib=True), "sustain"))
     for f0, s in ((165, 4), (196, 3), (220, 5), (147, 4), (262, 3), (175, 4)):
         specs.append((gen_slide(f0, s), "slide"))
@@ -158,16 +158,16 @@ def build_labeled_set(sr=SR):
     for clip, lab in specs:
         _place(clip, lab)
 
-    # legato 对：前音(sustain) + 紧随的 legato 目标（小音程、软起音、间隔10ms）
+    # legato pair: previous note (sustain) + an immediately following legato target (small interval, soft attack, 10ms gap)
     for f0a, f0b in ((196, 220), (220, 247), (165, 175)):
         a = gen_sustain(f0a, dur=0.5)
         _place(a, "sustain")
-        cur_t -= 0.15 - 0.01  # 把 gap 收到 ~10ms 让 legato 衔接
+        cur_t -= 0.15 - 0.01  # shrink the gap to ~10ms so the legato joins
         cur_samp = int(cur_t * sr)
         b = gen_legato_target(f0b, dur=0.5)
         _place(b, "legato")
 
-    # strum 组：3 音 25ms 错峰（同窗 onset≥3）
+    # strum group: 3 notes staggered by 25ms (onset≥3 in the same window)
     for base in (130, 165):
         chord = [
             gen_pluck(base, dur=0.6),
@@ -183,11 +183,11 @@ def build_labeled_set(sr=SR):
         cur_t += 0.6 + 0.15
         cur_samp = int(cur_t * sr)
 
-    # 复音度重算（基于最终时间布局）
+    # recompute polyphony (based on the final time layout)
     for ev in events:
         ev["features"]["polyphony"] = polyphony_at(ev, events)
 
-    # 拼接时间线音频（供库构建取颗粒/曲线）
+    # concatenate timeline audio (for taking grains/curves when building the library)
     total = max(s + len(c) for s, c in timeline) + sr
     y = np.zeros(total, dtype=np.float32)
     for s, c in timeline:
@@ -206,26 +206,26 @@ def _confusion(true, pred, labels):
 
 
 def main():
-    print("构造已知演奏法事件集 …")
+    print("Building the known-articulation event set ...")
     events, true, y, sr = build_labeled_set()
     labels = ["pluck", "slide", "legato", "strum", "sustain"]
 
-    # 规则树
-    classify_events([dict(e) for e in events])  # warm（不改原）
+    # rule tree
+    classify_events([dict(e) for e in events])  # warm (does not modify the original)
     classified = classify_events(events)
     pred = [e["label"] for e in classified]
     acc = float(np.mean([t == p for t, p in zip(true, pred)]))
     M = _confusion(true, pred, labels)
 
-    # 颤音检出（sustain 子情形）
+    # vibrato detection (sustain subcase)
     vib_true = sum(1 for e, t in zip(events, true) if t == "sustain" and e.get("vibrato"))
-    print(f"\n  事件总数: {len(events)}  规则树准确率: {acc * 100:.1f}%  (判据 ≥80%)")
-    print("  混淆矩阵 (行=真值, 列=预测):  " + " ".join(f"{l[:4]:>5}" for l in labels))
+    print(f"\n  total events: {len(events)}  rule tree accuracy: {acc * 100:.1f}%  (criterion ≥80%)")
+    print("  confusion matrix (rows=truth, cols=predicted):  " + " ".join(f"{l[:4]:>5}" for l in labels))
     for i, l in enumerate(labels):
         print(f"    {l:8s} " + " ".join(f"{M[i, j]:5d}" for j in range(len(labels))))
-    print(f"  颤音检出（sustain 含 vibrato 字段）: {vib_true} 例")
+    print(f"  vibrato detected (sustain with vibrato field): {vib_true} cases")
 
-    # 随机森林 ablation（train/test split）
+    # random forest ablation (train/test split)
     from sklearn.model_selection import train_test_split
 
     try:
@@ -236,15 +236,15 @@ def main():
         fpred = forest_predict(clf, Xte)
         facc = float(np.mean([a == b for a, b in zip(yte, fpred)]))
         print(
-            f"\n  森林 ablation: 测试集准确率 {facc * 100:.1f}% "
-            f"(train {len(Xtr)} / test {len(Xte)})  —— 规则 vs 森林对照"
+            f"\n  forest ablation: test accuracy {facc * 100:.1f}% "
+            f"(train {len(Xtr)} / test {len(Xte)}): rules vs forest comparison"
         )
     except Exception as exc:
         facc = float("nan")
-        print(f"  森林 ablation 跳过: {exc}")
+        print(f"  forest ablation skipped: {exc}")
 
-    # FR-7：构建 .tplib + 往返无损
-    print("\n  构建 .tplib 演奏法库 …")
+    # FR-7: build .tplib + lossless round trip
+    print("\n  Building the .tplib articulation library ...")
     sustain_clip = gen_sustain(196, dur=1.5)
     snap = analyze_timbre(sustain_clip, sr=sr, name="stage5_guitar")
     lib = build_library(
@@ -255,22 +255,22 @@ def main():
     lib2 = load_tplib(p)
     lossless = _tplib_equal(lib, lib2)
     print(
-        f"    库内容: pluck×{len(lib['pluck'])} slide×{len(lib['slide'])} "
+        f"    Library contents: pluck×{len(lib['pluck'])} slide×{len(lib['slide'])} "
         f"legato×{len(lib['legato'])} strum×{len(lib['strum'])} "
-        f"sustain={'有' if lib['sustain'] else '无'}"
+        f"sustain={'yes' if lib['sustain'] else 'none'}"
     )
-    print(f"    .tplib -> {p.name}  往返无损: {'PASS' if lossless else 'FAIL'}")
+    print(f"    .tplib -> {p.name}  lossless round trip: {'PASS' if lossless else 'FAIL'}")
 
     ok = acc >= 0.80 and lossless
-    print("\n---------------- 阶段5 验收汇总 ----------------")
-    print(f"  [{'OK ' if acc >= 0.8 else 'FAIL'}] 规则树分类准确率 {acc * 100:.1f}% (≥80%)")
-    print(f"  [{'OK ' if lossless else 'FAIL'}] .tplib 往返无损")
-    print("  注：自录/IDMT 宏 F1 双口径（规则≥0.7 / MERT≥0.8）在阶段8 正式评估")
+    print("\n---------------- Stage 5 acceptance summary ----------------")
+    print(f"  [{'OK ' if acc >= 0.8 else 'FAIL'}] rule tree classification accuracy {acc * 100:.1f}% (≥80%)")
+    print(f"  [{'OK ' if lossless else 'FAIL'}] lossless .tplib round trip")
+    print("  Note: the self-recorded/IDMT macro F1 dual criteria (rules≥0.7 / MERT≥0.8) are formally evaluated in stage 8")
     return 0 if ok else 1
 
 
 def _tplib_equal(a, b):
-    """逐数组/标量比较两个库（往返无损判定）。"""
+    """Compare two libraries array by array/scalar by scalar (lossless round-trip check)."""
     try:
         for cat in ("pluck", "slide", "legato", "strum"):
             if len(a[cat]) != len(b[cat]):

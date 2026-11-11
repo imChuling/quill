@@ -1,14 +1,14 @@
-"""FAD（Fréchet Audio Distance）评估 —— 音色保真的分布级标准指标。
+"""FAD (Fréchet Audio Distance) evaluation: the standard distribution-level metric for timbre fidelity.
 
-Kilgour et al. 2019 提出的 FAD 是 DDSP/RAVE/AFTER/TokenSynth 等音频生成工作的
-标准可比指标。本脚本计算 Quill 重合成与真实录音间的 FAD，并对比 sampler 基线。
+FAD, proposed by Kilgour et al. 2019, is the standard comparable metric in audio generation work such as DDSP/RAVE/AFTER/TokenSynth.
+This script computes the FAD between Quill resynthesis and real recordings, and compares it with the sampler baseline.
 
-用法：
-  python eval/fad.py                          # 用内置 ear_test 数据
+Usage:
+  python eval/fad.py                          # use the built-in ear_test data
   python eval/fad.py --ref-dir path/to/ref --eval-dir path/to/eval
-  python eval/fad.py --generate               # 从快照自动生成评估对
+  python eval/fad.py --generate               # generate evaluation pairs automatically from snapshots
 
-依赖：frechet_audio_distance (pip install frechet_audio_distance)
+Dependency: frechet_audio_distance (pip install frechet_audio_distance)
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ SR = 16000
 
 
 def _ensure_16k_mono(src_dir: Path, dst_dir: Path, sr_out: int = SR):
-    """将 src_dir 中所有 .wav 重采样到 16kHz mono 并写入 dst_dir。"""
+    """Resample every .wav in src_dir to 16kHz mono and write it to dst_dir."""
     import librosa
 
     dst_dir.mkdir(parents=True, exist_ok=True)
@@ -43,7 +43,7 @@ def _ensure_16k_mono(src_dir: Path, dst_dir: Path, sr_out: int = SR):
 
 def compute_fad(ref_dir: str | Path, eval_dir: str | Path,
                 model: str = "vggish") -> float:
-    """计算两个目录间的 FAD。返回 float（越低越好）。"""
+    """Compute the FAD between two directories. Returns a float (lower is better)."""
     from frechet_audio_distance import FrechetAudioDistance
 
     fad = FrechetAudioDistance(model_name=model, sample_rate=SR,
@@ -55,10 +55,10 @@ def compute_fad(ref_dir: str | Path, eval_dir: str | Path,
 
 def generate_pairs(out_base: Path, snap_paths: list[Path] | None = None,
                    n_pitches: int = 8, dur_s: float = 2.0):
-    """从快照生成 FAD 评估对：Quill 重合成 vs sampler 移调。
+    """Generate FAD evaluation pairs from snapshots: Quill resynthesis vs sampler transposition.
 
-    每个快照渲染 n_pitches 个不同音高（±1 八度内均匀），
-    写入 out_base/{quill,sampler}/ 目录。
+    Each snapshot is rendered at n_pitches different pitches (evenly spread within ±1 octave),
+    written to the out_base/{quill,sampler}/ directories.
     """
     import librosa
 
@@ -100,10 +100,10 @@ def generate_pairs(out_base: Path, snap_paths: list[Path] | None = None,
 
 
 def run_builtin():
-    """用 ear_test 音频计算 E2 FAD: Quill vs 真实录音、sampler vs 真实录音。
+    """Compute E2 FAD with ear_test audio: Quill vs real recordings, sampler vs real recordings.
 
-    修正后的参照:各自 vs 真实录音,不再计算两系统互相距离。
-    quill/sampler 来自 ear_test 音频;真实录音来自 resynth_check 和 ab 目录原件。
+    Corrected reference: each system vs real recordings; the distance between the two systems is no longer computed.
+    quill/sampler come from the ear_test audio; real recordings come from the originals in the resynth_check and ab directories.
     """
     base = Path(__file__).resolve().parents[1]
     ear_ab = base / "assets/ear_tests/ab_vs_sampler"
@@ -224,10 +224,10 @@ def _run_mfcc_fad(ref_dir, quill_dir, sampler_dir):
 
 
 def run_e2(out_dir: Path, model: str = "vggish"):
-    """E2: 用 DDSP 重合成做 FAD 参照改正。
+    """E2: corrected FAD reference using DDSP resynthesis.
 
-    从 checkpoints/midi_ddsp_ref/ 和 ear_test 音频收集三组:
-    真实录音 / Quill 重合成 / 采样器基线,计算各自 vs 真实录音的 FAD。
+    Collect three groups from checkpoints/midi_ddsp_ref/ and the ear_test audio:
+    real recordings / Quill resynthesis / sampler baseline, and compute the FAD of each vs real recordings.
     """
     import json as json_mod
 

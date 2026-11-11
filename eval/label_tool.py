@@ -1,9 +1,9 @@
-"""手标工具 + 召回计算 —— FR-5 验收（阶段4 Day4）。
+"""Hand-labelling tool + recall computation: FR-5 acceptance (stage 4 Day4).
 
-* compute_recall(detected, reference): 起点+音高匹配算召回/精确率（自动验收 & 与手标对照）
-* LabelTool: matplotlib 点击播放 + 按键打标（标 50 事件做混淆矩阵/召回，真实素材用）
+* compute_recall(detected, reference): recall/precision by onset + pitch matching (automatic acceptance & comparison with hand labels)
+* LabelTool: matplotlib click-to-play + key labelling (label 50 events for the confusion matrix/recall, for real material)
 
-按键：p=pluck s=slide l=legato t=strum u=sustain  方向键切换事件  回车=播放  w=保存
+Keys: p=pluck s=slide l=legato t=strum u=sustain  arrow keys switch event  Enter=play  w=save
 """
 
 from __future__ import annotations
@@ -15,13 +15,13 @@ import numpy as np
 
 
 # --------------------------------------------------------------------------- #
-# 召回 / 精确率（起点 + 音高匹配，贪心）
+# Recall / precision (onset + pitch matching, greedy)
 # --------------------------------------------------------------------------- #
 def compute_recall(detected, reference, onset_tol_s=0.05, pitch_tol=1.0):
-    """每个参考事件匹配一个检测事件（起点±tol、音高±tol）。
+    """Match each reference event to one detected event (onset ±tol, pitch ±tol).
 
     reference / detected: [{"t_on":..,"pitch_midi":..}, ...]
-    返回 {"recall","precision","n_ref","n_det","matched", "misses":[...]}。
+    Returns {"recall","precision","n_ref","n_det","matched", "misses":[...]}.
     """
     det = sorted(detected, key=lambda e: e["t_on"])
     used = [False] * len(det)
@@ -58,7 +58,7 @@ def compute_recall(detected, reference, onset_tol_s=0.05, pitch_tol=1.0):
 
 
 # --------------------------------------------------------------------------- #
-# 交互手标工具（真实素材用；无显示环境不可用）
+# Interactive hand-labelling tool (for real material; unavailable without a display)
 # --------------------------------------------------------------------------- #
 _LABEL_KEYS = {"p": "pluck", "s": "slide", "l": "legato", "t": "strum", "u": "sustain"}
 
@@ -72,7 +72,7 @@ class LabelTool:
         self.idx = 0
         self.labels = {e["id"]: e.get("label", "") for e in events}
 
-    def run(self):  # pragma: no cover - 交互式，CI 不跑
+    def run(self):  # pragma: no cover - interactive, not run in CI
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots(figsize=(12, 4))
@@ -89,9 +89,9 @@ class LabelTool:
     def _refresh_title(self):  # pragma: no cover
         e = self.events[self.idx]
         self.ax.set_title(
-            f"事件 {self.idx + 1}/{len(self.events)}  t={e['t_on']:.2f}s "
+            f"event {self.idx + 1}/{len(self.events)}  t={e['t_on']:.2f}s "
             f"pitch={e.get('pitch_midi')}  label={self.labels[e['id']] or '?'}  "
-            f"[p/s/l/t/u 打标, ←→ 切换, 回车播放, w 保存]"
+            f"[p/s/l/t/u label, ←→ switch, Enter play, w save]"
         )
         self.fig.canvas.draw_idle()
 
@@ -114,7 +114,7 @@ class LabelTool:
             return
         elif ev.key == "w":
             self.save()
-            print(f"已保存 -> {self.out_path}")
+            print(f"saved -> {self.out_path}")
             return
         self._cursor.set_xdata([self.events[self.idx]["t_on"]] * 2)
         self._refresh_title()

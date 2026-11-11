@@ -1,11 +1,11 @@
-"""Solo 电吉他 demo —— DDSP Fender + 快起音延音模板 + 推弦/揉弦绽放的 blues 独奏。
+"""Solo electric guitar demo: DDSP Fender + fast-attack sustain template + blues solo with bend/vibrato bloom.
 
-配方(用户耳测定稿,6.23):
-  - 音色:DDSP Fender Strat(clean)。
-  - 包络:**14ms 干脆起音(凸曲线,punchy)+ 从峰值 tau≈3.5s 平滑指数衰减**。
-    不用 note_template 的原始慢爬(172ms 才到峰 → "渐强又收"),也不压平地板(→ "断气")。
-  - 演奏法:bend 170ms 快速到位(render_midi 默认)、揉弦绽放(solo 提前起振)。
-用法:python -m eval.guitar_solo
+Recipe (finalised by the user's ear test, 6.23):
+  - timbre: DDSP Fender Strat (clean).
+  - envelope: **14ms crisp attack (convex curve, punchy) + smooth exponential decay from the peak with tau≈3.5s**.
+    Not note_template's raw slow climb (172ms to peak -> "swell then fade"), and the floor is not flattened either (-> "out of breath").
+  - articulation: bend reaches pitch in 170ms (render_midi default), vibrato bloom (solo starts earlier).
+Usage: python -m eval.guitar_solo
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ NOTE_GLOB = (
     "dataset1/Fender Strat Clean Neck SC/audio/*.wav"
 )
 
-# blues 独奏:拨 → 推全音+揉(cry) → 勾弦 → 滑 → 长推弦+重揉(climax)
+# blues solo: pluck -> whole-tone bend + vibrato (cry) -> hammer-on -> slide -> long bend + heavy vibrato (climax)
 SOLO = [
     {"midi": 59, "dur": 0.45},
     {"midi": 62, "dur": 0.95, "art": "bend", "bend": 2, "vibrato": 40},
@@ -46,17 +46,17 @@ SOLO = [
 
 
 def solo_template(note_src, tau=3.5, atk_ms=14, n_frames=900):
-    """快起音 + 从峰值平滑指数衰减的 solo 响度模板(log-loudness)。
+    """Solo loudness template (log-loudness) with a fast attack + smooth exponential decay from the peak.
 
-    tau   = 衰减时间常数(秒,越大越 sing);atk_ms = 起音时长(越小越脆)。
-    取真实 Fender 音的峰值电平做参考,但**形状全合成**(避免模板慢爬/跌落伪影)。
+    tau   = decay time constant (seconds, larger sings more); atk_ms = attack duration (smaller is crisper).
+    The peak level of a real Fender note is used as reference, but **the shape is fully synthetic** (avoids template slow-climb/drop artefacts).
     """
     peak = float(np.exp(note_template(note_src)).max())
     a = max(2, int(atk_ms / 1000.0 * FPS))
     out = np.empty(n_frames)
-    out[:a] = peak * np.linspace(0, 1, a) ** 0.4  # 快起音(凸,punchy)
+    out[:a] = peak * np.linspace(0, 1, a) ** 0.4  # fast attack (convex, punchy)
     tp = np.arange(n_frames - a) / FPS
-    out[a:] = peak * np.exp(-tp / tau)  # 从峰值平滑衰减
+    out[a:] = peak * np.exp(-tp / tau)  # smooth decay from the peak
     return np.log(out + 1e-6)
 
 
@@ -65,7 +65,7 @@ def _to44(y):
 
 
 def tail_fade(y, sr=44100, start_s=3.5):
-    """尾部升余弦缓降 1→0,把 DDSP 余韵底噪平滑收到静音(保留前段自然衰减)。"""
+    """Raised-cosine ramp-down 1->0 at the tail, smoothly bringing the DDSP ring-out noise floor to silence (keeps the natural decay before it)."""
     y = y.copy()
     t0 = min(len(y) - 1, int(start_s * sr))
     nf = len(y) - t0
@@ -77,18 +77,18 @@ def tail_fade(y, sr=44100, start_s=3.5):
 def main(argv=None):
     import argparse
 
-    ap = argparse.ArgumentParser(description="Solo 电吉他 demo（solo + 扫弦）")
-    ap.add_argument("--tau", type=float, default=3.5, help="solo 衰减时间常数(秒)")
+    ap = argparse.ArgumentParser(description="Solo electric guitar demo (solo + strum)")
+    ap.add_argument("--tau", type=float, default=3.5, help="solo decay time constant (seconds)")
     args = ap.parse_args(argv)
 
     dev = "mps" if torch.backends.mps.is_available() else "cpu"
     notes = sorted(glob.glob(NOTE_GLOB))
     if not notes:
-        print("缺真实 Fender 音(IDMT-SMT-GUITAR)做峰值参考")
+        print("missing a real Fender note (IDMT-SMT-GUITAR) as peak reference")
         return 1
     note = notes[0]
 
-    # ① blues 独奏
+    # (1) blues solo
     y = _to44(render_midi(FENDER, SOLO, solo_template(note, tau=args.tau), dev))
     sf.write(
         "assets/demos/guitar_solo.wav",
@@ -97,7 +97,7 @@ def main(argv=None):
     )
     print(f"  solo  -> guitar_solo.wav ({len(y) / 44100:.1f}s)")
 
-    # ② Em 扫弦,完整衰减 + 尾部缓降收干净
+    # (2) Em strum, full decay + tail ramp-down to finish cleanly
     tmpl_long = solo_template(note, tau=2.2, n_frames=2200)
     yc = _to44(render_strum(FENDER, EM_CHORD, tmpl_long, dur=7.5, spread_ms=70, device=dev))
     yc = tail_fade(yc, 44100, start_s=3.5)
@@ -106,7 +106,7 @@ def main(argv=None):
         (yc / (np.max(np.abs(yc)) + 1e-9) * 0.92).astype(np.float32),
         44100,
     )
-    print(f"  strum -> guitar_strum.wav ({len(yc) / 44100:.1f}s, Em 完整衰减+收尾)")
+    print(f"  strum -> guitar_strum.wav ({len(yc) / 44100:.1f}s, Em full decay + clean ending)")
     return 0
 
 
