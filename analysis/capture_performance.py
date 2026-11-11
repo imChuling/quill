@@ -1,11 +1,11 @@
-"""演奏式取色:从一段演奏录音同时取出"色"(TimbreSnapshot)与"笔法"(行为轨迹)。
+"""Performance capture: extract both the "timbre" (TimbreSnapshot) and the "gesture" (behaviour trajectories) from one performance recording.
 
-一个稳态音只是该物件音色空间里的一个点;乐器身份最强的信息(起音瞬态、谱波动、激励手势)
-只在演奏里才有,信息不在录音里就无法恢复。因此录音是演奏这个物件的一小段(数个音,
-有起音/强弱/手势),从同一段录音抽:
-  1. TimbreSnapshot:取含起音的完整代表音(不掐中段),保留瞬态与 H_env 的时变;
-  2. BehaviorTrajectories(.tplib v2):每个事件四条连续残差轨迹。
-输出仍是标准 snapshot dict 加可选 behavior 列表,合成端不区分来源。
+A single steady note is just one point in the object's timbre space; the strongest information about instrument identity (attack transient,
+spectral flux, excitation gesture) only exists in performance, and information absent from the recording cannot be recovered. So the recording
+is a short performance on the object (several notes, with attacks/dynamics/gestures), and from that one recording we extract:
+  1. TimbreSnapshot: taken from a complete representative note including its attack (mid-section not cropped), keeping transients and H_env variation over time;
+  2. BehaviorTrajectories (.tplib v2): four continuous residual trajectories per event.
+Output is still a standard snapshot dict plus an optional behavior list; the synthesis side does not distinguish the source.
 """
 
 from __future__ import annotations
@@ -25,12 +25,12 @@ from analysis.timbre import analyze_timbre  # noqa: E402
 from analysis.tplib import event_trajectories  # noqa: E402
 
 SR = 44100
-_MIN_EV = 0.18  # 事件最短时长(短于此不足以取色/抽轨迹)
-_PRE_ROLL = 0.03  # 起音前留 30ms,保住瞬态完整
+_MIN_EV = 0.18  # minimum event duration (shorter is not enough for timbre capture/trajectory extraction)
+_PRE_ROLL = 0.03  # keep 30ms before the attack so the transient stays intact
 
 
 def load_any(path) -> np.ndarray:
-    """wav/m4a/mp3 皆可;统一 44.1k 单声道。"""
+    """wav/m4a/mp3 all accepted; unified to 44.1k mono."""
     try:
         import soundfile as sf
 
@@ -48,7 +48,7 @@ def load_any(path) -> np.ndarray:
 
 
 def find_events(y, sr=SR, max_events=12):
-    """演奏段 → [(t_on, t_off)];失败退回整段。"""
+    """Performance segment -> [(t_on, t_off)]; falls back to the whole segment on failure."""
     spans = []
     try:
         from analysis.segment import onset_f0_events
@@ -71,21 +71,21 @@ def find_events(y, sr=SR, max_events=12):
 
 
 def _spec_flux(seg, sr):
-    """谱波动:逐帧归一化 log 谱的相邻帧差分均值(Grey 1977 三个知觉维度之一)。"""
+    """Spectral flux: mean adjacent-frame difference of the per-frame normalised log spectrum (one of Grey 1977's three perceptual dimensions)."""
     n_fft, hop = 2048, 512
     if len(seg) < n_fft * 2:
         return 0.0
     fr = np.lib.stride_tricks.sliding_window_view(seg, n_fft)[::hop]
     S = np.abs(np.fft.rfft(fr * np.hanning(n_fft), axis=1))
-    S = S / np.maximum(S.sum(axis=1, keepdims=True), 1e-12)  # 每帧归一化,只看谱形变化
+    S = S / np.maximum(S.sum(axis=1, keepdims=True), 1e-12)  # normalise per frame, only spectral-shape change matters
     return float(np.mean(np.abs(np.diff(np.log(np.maximum(S, 1e-9)), axis=0))))
 
 
 def _score_event(y, sr, t0, t1):
-    """选取色代表音的打分,返回 (score, f0 中位数);不可用返回 (-1, None)。
+    """Score for choosing the representative note for timbre capture; returns (score, median f0); (-1, None) if unusable.
 
-    奖励谱波动与时长,能量只做门槛。不惩罚音高不稳:否则会专挑又短又死板的音,
-    把手势和谱波动全躲开。
+    Rewards spectral flux and duration; energy is only a threshold. Pitch instability is not penalised: otherwise it would pick short, rigid notes
+    and avoid gestures and spectral flux altogether.
     """
     seg = y[int(t0 * sr) : int(t1 * sr)].astype(np.float64)
     if len(seg) < int(_MIN_EV * sr):
@@ -106,11 +106,11 @@ def _score_event(y, sr, t0, t1):
 def capture_from_performance(
     path_or_audio, sr=SR, name="performance", quasi_harmonic=False, verbose=True
 ):
-    """演奏段 → (snapshot, behaviors, info)。
+    """Performance segment -> (snapshot, behaviors, info).
 
-    snapshot:  取自含起音的完整代表音(window=None,analyze_timbre 用整段,
-               保留瞬态与 H_env 时变);
-    behaviors: 每个事件的 .tplib v2 四轨迹(pitch/energy/brightness/noise)。
+    snapshot:  taken from a complete representative note including its attack (window=None, analyze_timbre uses the whole segment,
+               keeping transients and H_env variation over time);
+    behaviors: .tplib v2 four trajectories per event (pitch/energy/brightness/noise).
     """
     y = (
         load_any(path_or_audio)
@@ -124,7 +124,7 @@ def capture_from_performance(
         if s > 0:
             scored.append((s, t0, t1, f0m))
     if not scored:
-        raise ValueError("演奏段里没找到可取色的音(太短/无音高?)")
+        raise ValueError("No note usable for timbre capture found in the performance (too short / no pitch?)")
     scored.sort(reverse=True)
     _, bt0, bt1, bf0 = scored[0]
 
@@ -157,8 +157,8 @@ def capture_from_performance(
     }
     if verbose:
         print(
-            f"[perf-capture] {info['n_events']} 事件 → 代表音 {info['pick_span']}s "
-            f"@{info['pick_f0']}Hz;行为轨迹 {info['n_behaviors']} 条;"
-            f"谱波动={info['spectral_flux']}"
+            f"[perf-capture] {info['n_events']} events -> representative note {info['pick_span']}s "
+            f"@{info['pick_f0']}Hz; {info['n_behaviors']} behaviour trajectories; "
+            f"spectral flux={info['spectral_flux']}"
         )
     return snap, behaviors, info

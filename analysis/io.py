@@ -1,17 +1,17 @@
-"""音频 I/O 与增益归一化。
+"""Audio I/O and gain normalisation.
 
-  * load(path)   : 读 wav/mp3 -> (y float32 mono, sr=44100)
-  * record(sec)  : 麦克风录音 -> y（sounddevice 阻塞式）
-  * normalize(y) : 峰值归一化
+  * load(path)   : read wav/mp3 -> (y float32 mono, sr=44100)
+  * record(sec)  : microphone recording -> y (sounddevice, blocking)
+  * normalize(y) : peak normalisation
 
-立体声输入自动 downmix；统一 44.1k / mono。
+Stereo input is downmixed automatically; unified to 44.1k / mono.
 """
 
 from __future__ import annotations
 
 import numpy as np
 
-try:  # 集中配置；脱离仓库单独导入本模块时给默认值
+try:  # central config; defaults when this module is imported outside the repo
     from quill_config import CFG
 
     _SR = int(CFG["audio"]["sr"])
@@ -22,9 +22,9 @@ except Exception:  # pragma: no cover
 
 
 def normalize(y: np.ndarray, peak: float = _NORM_PEAK) -> np.ndarray:
-    """峰值归一化到 `peak`。
+    """Peak-normalise to `peak`.
 
-    静音/全零信号原样返回，避免除零放大底噪。
+    Silent/all-zero signals are returned as is, avoiding division by zero that would amplify the noise floor.
     """
     y = np.asarray(y, dtype=np.float32)
     m = float(np.max(np.abs(y))) if y.size else 0.0
@@ -33,7 +33,7 @@ def normalize(y: np.ndarray, peak: float = _NORM_PEAK) -> np.ndarray:
     return (y * (peak / m)).astype(np.float32)
 
 
-_MAX_SECONDS = 60.0  # 演奏片段上限
+_MAX_SECONDS = 60.0  # upper limit for a performance clip
 
 
 def load(
@@ -43,12 +43,12 @@ def load(
     do_normalize: bool = True,
     max_seconds: float = _MAX_SECONDS,
 ) -> tuple[np.ndarray, int]:
-    """读取音频文件 -> (y, sr)。支持 wav/mp3（librosa via soundfile/audioread）。
+    """Read an audio file -> (y, sr). Supports wav/mp3 (librosa via soundfile/audioread).
 
-    librosa 重采样到 `sr`（默认 44100）、downmix 到单声道；超过 `max_seconds`
-    （默认 60s）截断。返回 float32，范围约 [-1, 1]；`do_normalize=True` 时做峰值归一化。
+    librosa resamples to `sr` (default 44100) and downmixes to mono; truncates beyond `max_seconds`
+    (default 60s). Returns float32, range about [-1, 1]; peak-normalises when `do_normalize=True`.
     """
-    import librosa  # 局部导入：保持 analysis 之外无 librosa 依赖
+    import librosa  # local import: keep librosa out of everything outside analysis
 
     dur = float(max_seconds) if max_seconds else None
     y, sr_out = librosa.load(path, sr=sr, mono=mono, duration=dur)
@@ -61,20 +61,20 @@ def load(
 def record(
     sec: float, sr: int = _SR, do_normalize: bool = True, max_seconds: float = _MAX_SECONDS
 ) -> np.ndarray:
-    """从默认输入设备阻塞式录音 `sec` 秒 -> y（mono, float32）。
+    """Blocking recording of `sec` seconds from the default input device -> y (mono, float32).
 
-    `sec` 上限 `max_seconds`。无可用输入设备 / 权限被拒时抛 RuntimeError
-    （macOS 首次会弹麦克风授权）。
+    `sec` is capped at `max_seconds`. Raises RuntimeError when no input device is available / permission is denied
+    (macOS asks for microphone permission the first time).
     """
-    import sounddevice as sd  # 局部导入，单测/离线路径不需要声卡
+    import sounddevice as sd  # local import, unit tests/offline paths need no sound card
 
     sec = min(float(sec), float(max_seconds)) if max_seconds else float(sec)
     n = int(round(sec * sr))
     try:
         buf = sd.rec(n, samplerate=sr, channels=1, dtype="float32")
         sd.wait()
-    except Exception as exc:  # 设备缺失/权限/驱动
-        raise RuntimeError(f"录音失败（检查麦克风权限/输入设备）：{exc}") from exc
+    except Exception as exc:  # missing device/permission/driver
+        raise RuntimeError(f"Recording failed (check microphone permission/input device): {exc}") from exc
 
     y = np.ascontiguousarray(buf.reshape(-1), dtype=np.float32)
     if do_normalize:
@@ -85,8 +85,8 @@ def record(
 def trim_silence(
     y: np.ndarray, sr: int = _SR, thresh_db: float = -42.0, pad_ms: float = 60.0
 ) -> np.ndarray:
-    """能量门限修剪首尾静音:随手录音的呼吸/杂音/底噪多在首尾静默段,修掉后 f0 跟踪
-    与噪声包络都干净。阈值相对峰值 RMS;首端留 pad 保住自然起音。"""
+    """Trim leading/trailing silence by an energy threshold: breaths/noise/hiss in casual recordings sit mostly in the silent ends; trimming them
+    cleans up f0 tracking and the noise envelope. The threshold is relative to peak RMS; pad is kept at the start to preserve the natural attack."""
     y = np.asarray(y, dtype=np.float32)
     hop = 512
     n = len(y) // hop

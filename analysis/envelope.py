@@ -1,10 +1,10 @@
-"""True Envelope 谱包络估计（Röbel & Rodet 2005）。
+"""True Envelope spectral envelope estimation (Röbel & Rodet 2005).
 
-倒谱迭代真包络：反复"取谱与当前包络的逐点最大 → 倒谱低通平滑"，直到包络处处压在谱
-峰之上，给出连续、平滑、穿过谐波峰的谱包络（共振峰结构）。
+Iterative cepstral true envelope: repeatedly "take the pointwise max of the spectrum and the current envelope -> cepstral lowpass smoothing" until the
+envelope lies above the spectral peaks everywhere, giving a continuous, smooth spectral envelope through the harmonic peaks (formant structure).
 
-不接入合成路径：跨音高保真上，平滑包络丢掉了匹配真实谱所需的谐波级细节，不如直接对
-实测谐波幅度做线性插值。保留为谱包络可视化 / 噪声端的工具。只依赖 numpy。
+Not used in the synthesis path: for cross-pitch fidelity, the smoothed envelope loses the harmonic-level detail needed to match the real spectrum,
+so linear interpolation of the measured harmonic amplitudes works better. Kept as a tool for spectral-envelope visualisation / the noise side. Depends only on numpy.
 """
 
 from __future__ import annotations
@@ -13,39 +13,39 @@ import numpy as np
 
 
 def true_envelope(logmag, order, n_iter=200, thresh_db=2.0):
-    """对 log 幅度谱 `logmag`（rfft bins）估计 True Envelope（同长度 log 包络）。
+    """Estimate the True Envelope (log envelope of the same length) of the log magnitude spectrum `logmag` (rfft bins).
 
-    order: 倒谱阶（保留的低 quefrency 系数数；越小越平滑）。经验 order≈sr/(2*f0) 量级，
-           取略小于基频周期对应的 quefrency，使包络平滑过谐波但保住共振峰。
+    order: cepstral order (number of low-quefrency coefficients kept; smaller is smoother). Empirically order≈sr/(2*f0),
+           chosen slightly below the quefrency of the f0 period so the envelope smooths over harmonics but keeps formants.
     """
     logmag = np.asarray(logmag, dtype=np.float64)
     B = len(logmag)
     A = logmag.copy()
-    V = np.full(B, -60.0)  # 初始包络（dB 量级下限）
-    thresh = thresh_db / (20.0 / np.log(10.0))  # dB 阈 -> 自然 log 阈
+    V = np.full(B, -60.0)  # initial envelope (dB-scale floor)
+    thresh = thresh_db / (20.0 / np.log(10.0))  # dB threshold -> natural-log threshold
     for _ in range(n_iter):
-        A = np.maximum(A, V)  # 包络须压在谱之上
-        full = np.concatenate([A, A[-2:0:-1]])  # 对称延拓到全 DFT，长度 M=2(B-1)
-        cep = np.fft.ifft(full).real  # 实倒谱（偶对称）
+        A = np.maximum(A, V)  # the envelope must lie above the spectrum
+        full = np.concatenate([A, A[-2:0:-1]])  # symmetric extension to the full DFT, length M=2(B-1)
+        cep = np.fft.ifft(full).real  # real cepstrum (even symmetric)
         M = len(cep)
-        lifter = np.zeros(M)  # 低通 lifter：保留低 quefrency（两端因对称）
+        lifter = np.zeros(M)  # lowpass lifter: keep low quefrencies (both ends due to symmetry)
         lifter[: order + 1] = 1.0
         if order > 0:
             lifter[M - order :] = 1.0
         Vfull = np.fft.fft(cep * lifter).real
         V = Vfull[:B]
-        if np.max(A - V) < thresh:  # 收敛：包络处处压住谱
+        if np.max(A - V) < thresh:  # converged: the envelope covers the spectrum everywhere
             break
     return V
 
 
 def envelope_from_audio(y, sr, f0_ref, n_fft=4096, order=None, fmax=None):
-    """从稳态音频估计 True Envelope，返回 (freqs, log_env)（用于按绝对频率采样）。"""
+    """Estimate the True Envelope from steady audio, return (freqs, log_env) (for sampling by absolute frequency)."""
     y = np.asarray(y, dtype=np.float64)
     seg = y[len(y) // 5 : -len(y) // 5] if len(y) > 10 else y
     if len(seg) < n_fft:
         seg = np.pad(seg, (0, n_fft - len(seg)))
-    # 稳态平均幅度谱
+    # steady-state mean magnitude spectrum
     S = []
     for i in range(0, len(seg) - n_fft, n_fft // 2):
         S.append(np.abs(np.fft.rfft(seg[i : i + n_fft] * np.hanning(n_fft))))
@@ -53,14 +53,14 @@ def envelope_from_audio(y, sr, f0_ref, n_fft=4096, order=None, fmax=None):
     logmag = np.log(mag + 1e-9)
     freqs = np.fft.rfftfreq(n_fft, 1 / sr)
     if order is None:
-        # 略小于基频周期对应 quefrency，包络平滑过谐波又保共振峰
+        # slightly below the quefrency of the f0 period, so the envelope smooths over harmonics and keeps formants
         order = max(8, int(0.7 * sr / max(f0_ref, 1.0)))
     env = true_envelope(logmag, order=order)
     return freqs, env
 
 
 def sample_envelope_db(freqs, log_env, query_hz, rolloff_db_oct=12.0):
-    """在 (freqs, log_env) 上按绝对频率采样 -> 线性幅度；支撑外按 rolloff 衰减外推。"""
+    """Sample (freqs, log_env) at absolute frequencies -> linear amplitude; extrapolate outside support with rolloff decay."""
     query_hz = np.asarray(query_hz, dtype=np.float64)
     v = np.interp(query_hz, freqs, log_env, left=log_env[0], right=log_env[-1])
     hi = freqs[-1]

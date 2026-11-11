@@ -1,23 +1,23 @@
-"""演奏法库 ArticulationLibrary 与 .tplib 读写。
+"""ArticulationLibrary and .tplib I/O.
 
-已标注事件提炼成可重定向的控制曲线（演奏法库不是音频切片）：
-    pluck  : RMS 三桶颗粒（granular, Roads 2001）
-    slide  : 归一化样条控制点 g(τ)∈[0,1]（音程×时长归一化）
-    legato : ±50ms@250Hz 幅度/亮度过渡曲线（25 点）
-    strum  : 弦序时差向量 offsets_ms + 方向
-    sustain: TimbreSnapshot 引用（内嵌，自包含）
+Labelled events are distilled into retargetable control curves (the articulation library is not audio slices):
+    pluck  : three RMS-bucketed grains (granular, Roads 2001)
+    slide  : normalised spline control points g(τ)∈[0,1] (normalised by interval × duration)
+    legato : ±50ms@250Hz amplitude/brightness transition curves (25 points)
+    strum  : string-order offset vector offsets_ms + direction
+    sustain: TimbreSnapshot reference (embedded, self-contained)
 
-每个事件条目另带 traj 块：四条固定 48 点轨迹（τ∈[0,1] 随音长归一化），全部是相对该音
-中位值的残差，转移时不携带源的绝对响度/绝对质心：
-      pitch      Δpitch_cents(τ)   相对中位 f0（cents），转移时按目标 interval 重标定
-      energy     Δlog_energy(τ)    相对中位 log-RMS，应用到目标 velocity
-      brightness Δbrightness(τ)    相对中位 log2 谱质心（oct）
-      noise      Δnoise_ratio(τ)   相对中位 log10 谱平坦度，气声/摩擦占比的起伏
-每条轨迹带 provenance（"extracted"|"inferred"|"user-authored"）与 confidence∈[0,1]；
-低 confidence 分量由消费端回退为 MIDI gesture/规则模板。
+Each event entry also carries a traj block: four fixed 48-point trajectories (τ∈[0,1] normalised by note length), all residuals relative to
+the note's median, so the source's absolute loudness/absolute centroid is not carried over on transfer:
+      pitch      Δpitch_cents(τ)   relative to median f0 (cents), rescaled to the target interval on transfer
+      energy     Δlog_energy(τ)    relative to median log-RMS, applied to the target velocity
+      brightness Δbrightness(τ)    relative to median log2 spectral centroid (oct)
+      noise      Δnoise_ratio(τ)   relative to median log10 spectral flatness, fluctuation of the breath/friction share
+Each trajectory has a provenance ("extracted"|"inferred"|"user-authored") and confidence∈[0,1];
+low-confidence components fall back to MIDI gesture/rule templates on the consumer side.
 
-.tplib = zip(manifest.json + arrays.npz)，save/load 往返无损。FORMAT_VERSION=2；
-没有 traj 字段的旧文件照常加载（traj=None）。
+.tplib = zip(manifest.json + arrays.npz), lossless save/load round trip. FORMAT_VERSION=2;
+old files without a traj field load as before (traj=None).
 """
 
 from __future__ import annotations
@@ -33,8 +33,8 @@ FORMAT_VERSION = 2
 _ATTACK_LEN = 2646  # 60ms@44.1k
 _LEGATO_N = 25  # ±50ms @ 250Hz
 _SLIDE_CTRL = 8
-_TRAJ_N = 48  # 每条行为轨迹的固定采样点数(τ∈[0,1])
-_TRAJ_HOP = 512  # 轨迹分析帧移(11.6ms@44.1k)
+_TRAJ_N = 48  # fixed number of samples per behaviour trajectory (τ∈[0,1])
+_TRAJ_HOP = 512  # trajectory analysis hop (11.6ms@44.1k)
 _TRAJ_KEYS = ("pitch", "energy", "brightness", "noise")
 
 
@@ -53,7 +53,7 @@ def _grain(y, sr, t_on, length=_ATTACK_LEN):
     g = np.zeros(length, dtype=np.float32)
     seg = y[a : a + length]
     g[: len(seg)] = seg
-    fade = max(1, int(0.002 * sr))  # 首尾 2ms 淡变
+    fade = max(1, int(0.002 * sr))  # 2ms fades at both ends
     ramp = 0.5 * (1 - np.cos(np.linspace(0, np.pi, fade)))
     g[:fade] *= ramp
     g[-fade:] *= ramp[::-1]
@@ -61,7 +61,7 @@ def _grain(y, sr, t_on, length=_ATTACK_LEN):
 
 
 def _slide_curve_ctrl(track, n=_SLIDE_CTRL):
-    """f0 轨迹 -> 归一化形状 g(τ)∈[0,1] 的 n 个控制点。"""
+    """f0 track -> n control points of the normalised shape g(τ)∈[0,1]."""
     if len(track) < 2:
         return np.linspace(0, 1, n).astype(np.float32)
     t = np.array([p[0] for p in track], dtype=np.float64)
@@ -74,7 +74,7 @@ def _slide_curve_ctrl(track, n=_SLIDE_CTRL):
 
 
 def _legato_curves(y, sr, t_join, n=_LEGATO_N, half_ms=50.0):
-    """join 处 ±half_ms 的幅度与亮度（质心）曲线，各 n 点。"""
+    """Amplitude and brightness (centroid) curves within ±half_ms of the join, n points each."""
     import librosa
 
     a = t_join - half_ms / 1000.0
@@ -82,33 +82,33 @@ def _legato_curves(y, sr, t_join, n=_LEGATO_N, half_ms=50.0):
     seg = _seg(y, sr, a, b)
     if len(seg) < 64:
         return (np.ones(n, dtype=np.float32), np.zeros(n, dtype=np.float32))
-    # 幅度包络
+    # amplitude envelope
     rms = librosa.feature.rms(y=seg, frame_length=256, hop_length=64)[0]
     amp = np.interp(np.linspace(0, 1, n), np.linspace(0, 1, len(rms)), rms)
     amp = amp / (np.max(amp) + 1e-9)
-    # 亮度（质心，归一到 Nyquist）
+    # brightness (centroid, normalised to Nyquist)
     cen = librosa.feature.spectral_centroid(y=seg, sr=sr, hop_length=64)[0]
     tilt = np.interp(np.linspace(0, 1, n), np.linspace(0, 1, len(cen)), cen) / (sr / 2)
     return amp.astype(np.float32), tilt.astype(np.float32)
 
 
 def _resample_traj(vals, n=_TRAJ_N):
-    """帧序列 → 固定 n 点(线性;无有效帧返回零)。"""
+    """Frame sequence -> fixed n points (linear; zeros if no valid frames)."""
     v = np.asarray(vals, np.float64)
     ok = np.isfinite(v)
     if ok.sum() < 2:
         return np.zeros(n, np.float32), 0.0
     idx = np.arange(len(v), dtype=np.float64)
-    v_filled = np.interp(idx, idx[ok], v[ok])  # 缺帧内插
+    v_filled = np.interp(idx, idx[ok], v[ok])  # interpolate missing frames
     out = np.interp(np.linspace(0, len(v) - 1, n), idx, v_filled)
     return out.astype(np.float32), float(ok.mean())
 
 
 def event_trajectories(y, sr, t_on, t_off, f0_track=None):
-    """一个事件段 → 四条 Δ轨迹 + provenance/confidence。
+    """One event segment -> four Δ trajectories + provenance/confidence.
 
-    全部为残差(减各自中位),转移时不携带源的绝对响度/绝对质心。
-    过短段(<3 帧)全部返回 inferred/低置信,由消费端回退规则模板。
+    All are residuals (each minus its median), so the source's absolute loudness/absolute centroid is not carried over on transfer.
+    Segments that are too short (<3 frames) all return inferred/low confidence, and the consumer falls back to rule templates.
     """
     seg = _seg(y, sr, t_on, t_off).astype(np.float64)
     hop = _TRAJ_HOP
@@ -127,13 +127,13 @@ def event_trajectories(y, sr, t_on, t_off, f0_track=None):
     frames = np.lib.stride_tricks.sliding_window_view(seg[: nfr * hop + hop], hop * 2)[::hop][:nfr]
     win = np.hanning(hop * 2)
 
-    # energy:log-RMS 残差(永远可提取)
+    # energy: log-RMS residual (always extractable)
     rms = np.sqrt((frames**2).mean(axis=1))
     loge = np.log(np.maximum(rms, 1e-7))
     e_pts, _ = _resample_traj(loge - np.median(loge))
     out["energy"] = {"pts": e_pts, "provenance": "extracted", "confidence": 1.0}
 
-    # brightness/noise:谱质心(log2 oct)与谱平坦度(log10)残差;静帧记 NaN
+    # brightness/noise: residuals of spectral centroid (log2 oct) and spectral flatness (log10); silent frames recorded as NaN
     spec = np.abs(np.fft.rfft(frames * win, axis=1))
     freqs = np.fft.rfftfreq(hop * 2, 1 / sr)
     pw = spec.sum(axis=1)
@@ -149,16 +149,16 @@ def event_trajectories(y, sr, t_on, t_off, f0_track=None):
     n_pts, n_conf = _resample_traj(flat_l - np.nanmedian(flat_l))
     out["noise"] = {"pts": n_pts, "provenance": "extracted", "confidence": n_conf}
 
-    # pitch:cents 残差。优先用分割器带来的 f0_track [(t,hz)];否则 PESTO 现算
+    # pitch: cents residual. Prefer the f0_track [(t,hz)] from the segmenter; otherwise compute with PESTO
     hz = None
     if f0_track is not None and len(f0_track) >= 3:
         tr = np.asarray(f0_track, np.float64)
         tt = np.linspace(t_on, t_off, nfr)
         hz = np.interp(tt, tr[:, 0], tr[:, 1])
     else:
-        # 轨迹提取必须用连续 f0:PESTO(track_f0)输出按 1/3 半音 bin 量化(33.3c 台阶),
-        # 取单音中位无害,但会把揉弦/滑音轨迹整段抹平。pyin 连续输出;离线库构建,
-        # 慢一点无妨。
+        # trajectory extraction needs continuous f0: PESTO (track_f0) output is quantised to 1/3-semitone bins (33.3c steps),
+        # harmless for a single-note median but it flattens whole vibrato/slide trajectories. pyin gives continuous output; this is an offline library build,
+        # so slower is fine.
         try:
             import librosa
 
@@ -173,7 +173,7 @@ def event_trajectories(y, sr, t_on, t_off, f0_track=None):
             hz = np.where(vflag, hz_p, np.nan).astype(np.float64)
         except Exception:
             try:
-                from analysis.harmonic import track_f0  # 兜底:量化但胜于无
+                from analysis.harmonic import track_f0  # fallback: quantised, but better than none
 
                 hz = np.asarray(track_f0(seg.astype(np.float32), sr=sr)[0], np.float64)
             except Exception:
@@ -182,8 +182,8 @@ def event_trajectories(y, sr, t_on, t_off, f0_track=None):
         cents = np.where(hz > 0, 1200 * np.log2(np.maximum(hz, 1e-6)), np.nan)
         if len(cents) >= 5:
             cents = cents.copy()
-            cents[0] = cents[-1] = np.nan  # 掐首尾帧:窗口暖机毛刺
-            m = cents.copy()  # 3 点中值滤波:杀孤立倍频错帧
+            cents[0] = cents[-1] = np.nan  # drop first/last frames: window warm-up glitches
+            m = cents.copy()  # 3-point median filter: kills isolated octave-error frames
             for j in range(1, len(cents) - 1):
                 m[j] = np.nanmedian(cents[j - 1 : j + 2])
             cents = m
@@ -201,11 +201,11 @@ def event_trajectories(y, sr, t_on, t_off, f0_track=None):
 def build_library(
     events, y, sr, sustain_snapshot=None, instrument_guess="guitar", source="", n_buckets=3
 ):
-    """已标注事件 + 源音频 -> ArticulationLibrary（dict）。"""
+    """Labelled events + source audio -> ArticulationLibrary (dict)."""
     lib = {"pluck": [], "slide": [], "legato": [], "strum": [], "sustain": None, "meta": {}}
     ev_sorted = sorted(events, key=lambda e: e["t_on"])
 
-    # strum 分组：连续 strum 标签聚成一簇
+    # strum grouping: consecutive strum labels form one cluster
     i = 0
     while i < len(ev_sorted):
         e = ev_sorted[i]
@@ -281,7 +281,7 @@ def build_library(
 
 
 # --------------------------------------------------------------------------- #
-# .tplib 序列化（zip = manifest.json + arrays.npz）往返无损
+# .tplib serialisation (zip = manifest.json + arrays.npz), lossless round trip
 # --------------------------------------------------------------------------- #
 def save_tplib(path, lib):
     path = Path(path)
@@ -300,7 +300,7 @@ def save_tplib(path, lib):
     }
 
     def _pack_traj(entry, prefix, mrec):
-        """四条轨迹入 arrays,provenance/confidence 入 manifest。"""
+        """Four trajectories go into arrays, provenance/confidence into the manifest."""
         traj = entry.get("traj")
         if not traj:
             return
@@ -375,7 +375,7 @@ def load_tplib(path):
             arrays = {k: data[k] for k in data.files}
 
     def _unpack_traj(mrec):
-        """traj dict;没有 traj 字段的旧文件 → None(消费端回退)。"""
+        """traj dict; old files without a traj field -> None (consumer falls back)."""
         tm = mrec.get("traj")
         if not tm:
             return None

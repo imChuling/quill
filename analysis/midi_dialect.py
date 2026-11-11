@@ -1,23 +1,23 @@
-"""MIDI 方言适配层:任何方言进来,统一 IR 出去。
+"""MIDI dialect adapter layer: any dialect in, one unified IR out.
 
-SMF 容器只有一种,但演奏法信息按乐器社区的约定藏在不同位置(方言)。
-本模块自动检测方言并收敛到 Quill 的统一中间表示:
+There is only one SMF container, but articulation information hides in different places depending on instrument-community conventions (dialects).
+This module detects the dialect automatically and converges to Quill's unified intermediate representation:
 
     [{"midi": int, "dur": float, "art": int, "onset": float}, ...]
-    art: 0=plain 1=vibrato 2=slide (与 neural/perform.py 一致)
+    art: 0=plain 1=vibrato 2=slide (same as neural/perform.py)
 
-设计约束:
-- 本模块只产出 score,不 import neural.*
-- 自动检测优先,置信度低时报告里给出候选让上层 UI 决定
-- 鼓是明确非目标:检测到纯鼓文件直接拒绝
+Design constraints:
+- this module only produces a score and does not import neural.*
+- automatic detection first; on low confidence the report lists candidates for the UI to decide
+- drums are an explicit non-goal: a pure drum file is rejected outright
 
-方言与适配动作:
-  piano         直通(velocity/CC64 不携带 Quill 需要的信息)
-  keyswitch     剔除音域外触发音符,latching 映射到 art 标签
-  multichannel  吉他/MPE:按乐器轨合并,bend 曲线转 art 标签
-  mono_lead     单声部 + bend:bend 曲线转 art 标签
-  breath        CC2 连续曲线:提取逐音符能量提示(cc_energy,引擎忽略额外键)
-  drums         拒绝(pitched monophonic 管线不适用)
+Dialects and adaptation actions:
+  piano         pass-through (velocity/CC64 do not carry information Quill needs)
+  keyswitch     remove out-of-range trigger notes, map latching switches to art labels
+  multichannel  guitar/MPE: merge per instrument track, convert bend curves to art labels
+  mono_lead     monophonic + bend: convert bend curves to art labels
+  breath        continuous CC2 curve: extract per-note energy hints (cc_energy, extra key ignored by the engine)
+  drums         rejected (the pitched monophonic pipeline does not apply)
 """
 
 from __future__ import annotations
@@ -26,18 +26,18 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-# ---- 常量 ----
-BEND_RANGE_ST = 2.0  # 标准 GM 弯音范围 ±2 半音(文件可覆写,SMF 里常缺失)
-KS_GAP_ST = 12  # keyswitch 簇与演奏音域之间的最小间隔(半音)
-KS_MAX_DUR = 0.30  # keyswitch 音符时值上限(秒)
-SLIDE_MIN_ST = 1.0  # bend 判 slide 的最小净位移(半音)
-SLIDE_MONO_FRAC = 0.8  # bend 判 slide 的单调步比例
-VIB_RATE_LO, VIB_RATE_HI = 3.0, 12.0  # bend 判 vibrato 的频率窗(Hz)
-VIB_MIN_AMP_ST = 0.08  # bend 判 vibrato 的最小峰值幅度(半音,≈8 cents)
-CHORD_EPS = 0.010  # 同一 onset 判和弦的时间容差(秒)
+# ---- Constants ----
+BEND_RANGE_ST = 2.0  # standard GM pitch-bend range ±2 semitones (can be overridden by the file, often missing in SMF)
+KS_GAP_ST = 12  # minimum gap (semitones) between the keyswitch cluster and the playing range
+KS_MAX_DUR = 0.30  # maximum keyswitch note duration (seconds)
+SLIDE_MIN_ST = 1.0  # minimum net displacement (semitones) for a bend to count as a slide
+SLIDE_MONO_FRAC = 0.8  # monotonic step fraction for a bend to count as a slide
+VIB_RATE_LO, VIB_RATE_HI = 3.0, 12.0  # frequency window (Hz) for a bend to count as vibrato
+VIB_MIN_AMP_ST = 0.08  # minimum peak amplitude (semitones, ≈8 cents) for a bend to count as vibrato
+CHORD_EPS = 0.010  # time tolerance (seconds) for treating notes at the same onset as a chord
 
-# keyswitch 簇内偏移 → art 标签(可由调用方覆写)
-DEFAULT_KS_MAP = {0: 0, 1: 1, 2: 2}  # 簇底=plain, +1=vibrato, +2=slide
+# keyswitch offset within the cluster -> art label (can be overridden by the caller)
+DEFAULT_KS_MAP = {0: 0, 1: 1, 2: 2}  # cluster bottom=plain, +1=vibrato, +2=slide
 
 ART_NAMES = {0: "plain", 1: "vibrato", 2: "slide"}
 
@@ -46,12 +46,12 @@ ART_NAMES = {0: "plain", 1: "vibrato", 2: "slide"}
 class ImportReport:
     dialect: str = "piano"
     confidence: float = 1.0
-    candidates: list = field(default_factory=list)  # 低置信度时的备选方言
+    candidates: list = field(default_factory=list)  # alternative dialects on low confidence
     n_notes_in: int = 0
     n_notes_out: int = 0
     n_channels_merged: int = 0
     n_keyswitches_stripped: int = 0
-    ks_map_used: dict = field(default_factory=dict)  # 触发音高 → art 名
+    ks_map_used: dict = field(default_factory=dict)  # trigger pitch -> art name
     n_bend_slide: int = 0
     n_bend_vibrato: int = 0
     n_overlaps_trimmed: int = 0
@@ -62,10 +62,10 @@ class ImportReport:
 
 
 class DrumFileError(ValueError):
-    """纯鼓文件:note number 是乐器身份而非音高,管线明确不支持。"""
+    """Pure drum file: note numbers are instrument identities, not pitches; the pipeline explicitly does not support this."""
 
 
-# ---- 检测 ----
+# ---- Detection ----
 
 
 def _melodic_instruments(pm):
@@ -73,10 +73,10 @@ def _melodic_instruments(pm):
 
 
 def _find_keyswitch_cluster(notes):
-    """在单乐器音符集里找 keyswitch 簇。
+    """Find a keyswitch cluster in a single-instrument note set.
 
-    判据:按音高排序后存在 ≥KS_GAP_ST 半音的断档,断档以下的音符
-    全部短促(≤KS_MAX_DUR)。返回 (簇内音高集合, 簇底音高) 或 (set(), None)。
+    Criterion: after sorting by pitch there is a gap of ≥KS_GAP_ST semitones, and all notes below the gap
+    are short (≤KS_MAX_DUR). Returns (set of pitches in the cluster, cluster bottom pitch) or (set(), None).
     """
     if len(notes) < 4:
         return set(), None
@@ -104,7 +104,7 @@ def _cc_density(ins, number):
 
 
 def detect_dialect(pm):
-    """返回 (dialect, confidence, candidates, signals_dict)。"""
+    """Return (dialect, confidence, candidates, signals_dict)."""
     melodic = _melodic_instruments(pm)
     drums = [ins for ins in pm.instruments if ins.is_drum and ins.notes]
     signals = {"n_melodic_tracks": len(melodic), "n_drum_tracks": len(drums)}
@@ -120,7 +120,7 @@ def detect_dialect(pm):
     signals["cc2_density"] = round(cc2, 2)
 
     if len(melodic) >= 3:
-        # 多轨且带 bend → 吉他/MPE 家族;不带 bend 也按多轨合并处理
+        # multitrack with bend -> guitar/MPE family; without bend still merged as multitrack
         conf = 0.9 if n_bends > 0 else 0.6
         return "multichannel", conf, (["piano"] if conf < 0.7 else []), signals
 
@@ -129,7 +129,7 @@ def detect_dialect(pm):
         signals["keyswitch_pitches"] = sorted(ks)
         return "keyswitch", 0.85, [], signals
 
-    if cc2 >= 5.0:  # 每秒 ≥5 个 CC2 事件 = 连续气息曲线
+    if cc2 >= 5.0:  # ≥5 CC2 events per second = continuous breath curve
         return "breath", 0.8, ["mono_lead"], signals
 
     if n_bends >= 8:
@@ -138,11 +138,11 @@ def detect_dialect(pm):
     return "piano", 0.9, [], signals
 
 
-# ---- bend 曲线 → art 标签 ----
+# ---- bend curve -> art label ----
 
 
 def _classify_bend(ins, note):
-    """音符区间内的 bend 曲线 → art 标签(0/1/2)。先判 slide(净位移大且单调),再判 vibrato。"""
+    """bend curve within a note span -> art label (0/1/2). Check slide first (large and monotonic net displacement), then vibrato."""
     pts = [
         (b.time, b.pitch / 8192.0 * BEND_RANGE_ST)
         for b in ins.pitch_bends
@@ -170,16 +170,16 @@ def _classify_bend(ins, note):
     return 0
 
 
-# ---- 单声部化 ----
+# ---- Monophonisation ----
 
 
 def _monophonize(events, report):
-    """排序、去和弦(保最高音)、截断重叠。events: [(onset, dur, midi, art, extra)]"""
+    """Sort, remove chords (keep the highest note), truncate overlaps. events: [(onset, dur, midi, art, extra)]"""
     events = sorted(events, key=lambda e: (e[0], -e[2]))
     out = []
     for ev in events:
         if out and abs(ev[0] - out[-1][0]) <= CHORD_EPS:
-            report.n_chord_notes_dropped += 1  # 同 onset:已保最高音
+            report.n_chord_notes_dropped += 1  # same onset: highest note already kept
             continue
         out.append(list(ev))
     for i in range(len(out) - 1):
@@ -190,7 +190,7 @@ def _monophonize(events, report):
     return out
 
 
-# ---- 逐音符 CC 能量提示 ----
+# ---- Per-note CC energy hints ----
 
 
 def _cc_energy_per_note(ins, notes_events, cc_number):
@@ -210,14 +210,14 @@ def _cc_energy_per_note(ins, notes_events, cc_number):
     return vals
 
 
-# ---- 主入口 ----
+# ---- Main entry point ----
 
 
 def import_midi(path, ks_map=None, bend_range_st=None):
-    """解析任意方言的 MIDI 文件 → (score, ImportReport)。
+    """Parse a MIDI file of any dialect -> (score, ImportReport).
 
-    score 直接可喂 neural.perform.control_from_behavior(额外键被引擎忽略)。
-    纯鼓文件抛 DrumFileError。
+    score can be fed straight to neural.perform.control_from_behavior (extra keys are ignored by the engine).
+    Raises DrumFileError for pure drum files.
     """
     global BEND_RANGE_ST
     if bend_range_st is not None:
@@ -232,14 +232,14 @@ def import_midi(path, ks_map=None, bend_range_st=None):
 
     if dialect == "drums":
         raise DrumFileError(
-            "纯鼓文件:note number 是乐器身份(36=底鼓/38=军鼓),不是音高;"
-            "Quill 的 pitched monophonic 管线不适用。"
+            "Pure drum file: note numbers are instrument identities (36=kick/38=snare), not pitches; "
+            "Quill's pitched monophonic pipeline does not apply."
         )
 
     drums = [ins for ins in pm.instruments if ins.is_drum and ins.notes]
     if drums:
         report.n_drum_tracks_dropped = len(drums)
-        report.warnings.append(f"丢弃 {len(drums)} 条鼓轨")
+        report.warnings.append(f"Dropped {len(drums)} drum tracks")
 
     melodic = _melodic_instruments(pm)
     report.n_notes_in = sum(len(ins.notes) for ins in melodic)
@@ -256,14 +256,14 @@ def import_midi(path, ks_map=None, bend_range_st=None):
         }
         unknown = {p - base for _, p in switches} - set(ks_map)
         if unknown:
-            report.warnings.append(f"未映射的 keyswitch 偏移 {sorted(unknown)} → 按 plain 处理")
+            report.warnings.append(f"Unmapped keyswitch offsets {sorted(unknown)} -> treated as plain")
         sw_t = [t for t, _ in switches]
         sw_art = [ks_map.get(p - base, 0) for _, p in switches]
         for n in ins.notes:
             if n.pitch in ks_pitches:
                 continue
             k = int(np.searchsorted(sw_t, n.start, side="right")) - 1
-            art = sw_art[k] if k >= 0 else 0  # latching:首个 KS 前默认 plain
+            art = sw_art[k] if k >= 0 else 0  # latching: default plain before the first KS
             events.append((n.start, n.end - n.start, n.pitch, art, None))
 
     elif dialect in ("multichannel", "mono_lead"):
@@ -282,8 +282,8 @@ def import_midi(path, ks_map=None, bend_range_st=None):
         for n in ins.notes:
             events.append((n.start, n.end - n.start, n.pitch, 0, None))
 
-    # 逐音符 CC 能量提示:单乐器方言里取最密的连续 CC 曲线,
-    # 吹奏式优先 CC2(breath),音源式优先 CC11(expression)/CC1(mod)。
+    # per-note CC energy hints: for single-instrument dialects take the densest continuous CC curve,
+    # wind-style prefers CC2 (breath), sound-module style prefers CC11 (expression)/CC1 (mod).
     if len(melodic) == 1 and dialect != "multichannel":
         ins = melodic[0]
         for cc_num, name in ((2, "cc2"), (11, "cc11"), (1, "cc1")):

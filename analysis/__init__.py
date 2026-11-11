@@ -1,4 +1,4 @@
-"""Quill 分析端（离线）。
+"""Quill analysis side (offline).
 
-librosa / pesto 等重依赖只许活在 `analysis/`；`synth/` 与 `runtime/` 只依赖 numpy(+numba)。
+Heavy dependencies such as librosa / pesto may only live in `analysis/`; `synth/` and `runtime/` depend only on numpy(+numba).
 """

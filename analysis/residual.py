@@ -1,10 +1,10 @@
-"""残差提取、噪声包络、起音残差。
+"""Residual extraction, noise envelope, attack residual.
 
-SMS 随机模型（Serra & Smith 1990）的分析侧：res = y − 谐波模型，然后把残差整形为
-40 mel 带 RMS 包络 `N_env[40, T]`（喂 synth.noise）。
+Analysis side of the SMS stochastic model (Serra & Smith 1990): res = y − harmonic model, then the residual is shaped into a
+40 mel-band RMS envelope `N_env[40, T]` (fed to synth.noise).
 
-减法在 STFT 复数域做：逐帧把每个谐波的主瓣幅度从 |D| 中减去、保留原相位，ISTFT 得残差。
-时域 y−resynth 因相位不匹配无法对消；复数域减法既对消谐波，又把谐波位置的底噪相位留给残差。
+Subtraction is done in the complex STFT domain: per frame, each harmonic's main-lobe magnitude is subtracted from |D| keeping the original phase, and ISTFT gives the residual.
+Time-domain y−resynth cannot cancel because of phase mismatch; complex-domain subtraction both cancels harmonics and leaves the noise-floor phase at harmonic positions to the residual.
 """
 
 from __future__ import annotations
@@ -22,19 +22,19 @@ except Exception:  # pragma: no cover
     _SR = 44100
     _HCFG = {"n_fft": 4096, "hop": 512, "nyquist_margin_hz": 50.0}
 
-_ATTACK_MS = 60.0  # attack_res = 60ms@44.1k = 2646 样本
-_LOBE_HALFWIDTH_BINS = 6  # Hann 主瓣减法的半窗（bin）
+_ATTACK_MS = 60.0  # attack_res = 60ms@44.1k = 2646 samples
+_LOBE_HALFWIDTH_BINS = 6  # half-width (bins) of the Hann main-lobe subtraction
 
 
 def _window_lobe_lut(n_fft: int, halfwidth_bins: int, oversample: int = 64):
-    """预算 Hann 窗的 DTFT 主瓣 |W(δ)|（δ 以 bin 为单位），DC 归一到相干增益 Σwin。
+    """Precompute the DTFT main lobe |W(δ)| of the Hann window (δ in bins), DC normalised to the coherent gain Σwin.
 
-    返回 (offsets[bin], wmag[bin])，用于把分数频率峰的主瓣形状采样出来。
+    Returns (offsets[bin], wmag[bin]), used to sample the main-lobe shape for peaks at fractional frequencies.
     """
     win = 0.5 - 0.5 * np.cos(2.0 * np.pi * np.arange(n_fft) / n_fft)
     Npad = n_fft * oversample
-    W = np.abs(np.fft.rfft(win, n=Npad))  # W[0] = Σwin = 相干增益
-    # 第 j 个 pad-bin 对应原始 bin 偏移 j/oversample
+    W = np.abs(np.fft.rfft(win, n=Npad))  # W[0] = Σwin = coherent gain
+    # pad-bin j corresponds to an original bin offset j/oversample
     max_j = halfwidth_bins * oversample
     offsets = np.arange(max_j + 1) / oversample
     return offsets, W[: max_j + 1]
@@ -51,10 +51,10 @@ def extract_residual(
     f0_ref: float | None = None,
     lobe_halfwidth_bins: int = _LOBE_HALFWIDTH_BINS,
 ):
-    """相位对齐减法得残差 res（时域，长度同 y）。
+    """Phase-aligned subtraction gives the residual res (time domain, same length as y).
 
-    参数与 harmonic.harmonics 对齐：H[K, T] 为谐波幅度（真实正弦幅度），
-    f0_frame[T] 为逐 STFT 帧基频；partial_freqs 给定则按准谐波频率定位主瓣。
+    Parameters match harmonic.harmonics: H[K, T] are harmonic amplitudes (true sinusoidal amplitude),
+    f0_frame[T] is the per-STFT-frame f0; if partial_freqs is given, main lobes are located at the quasi-harmonic frequencies.
     """
     import librosa
 
@@ -97,8 +97,8 @@ def extract_residual(
             target = ratio_k[k] * f0_t
             if target >= nyquist - nyq_margin:
                 break
-            p = target / bin_hz  # 分数 bin
-            peak = 0.5 * a * cg  # |D| 峰值（A=2peak/cg）
+            p = target / bin_hz  # fractional bin
+            peak = 0.5 * a * cg  # |D| peak (A=2peak/cg)
             lo = int(np.floor(p - lobe_halfwidth_bins))
             hi = int(np.ceil(p + lobe_halfwidth_bins))
             for m in range(max(0, lo), min(n_bins, hi + 1)):
@@ -124,16 +124,16 @@ def noise_envelope(
     notch_harmonics: int = 6,
     hp_hz: float | None = None,
 ):
-    """残差 -> mel 带 RMS 包络 N_env[n_mels, T]（与 synth.noise 同框架）。
+    """Residual -> mel-band RMS envelope N_env[n_mels, T] (same framework as synth.noise).
 
-    边界伪影：librosa center=True 的 istft 在首尾各约一个谐波窗长内会留下大瞬态
-    （谐波模型在信号起止处不匹配），这些边界帧会以 ~100× 主导 N_env。
-    对策：① 仅在去掉首尾 guard 的稳态内区估包络；② 每带按 中位数+k·MAD 鲁棒封顶。
+    Boundary artefacts: librosa's center=True istft leaves large transients within about one harmonic window length at each end
+    (the harmonic model does not match at signal start/end), and these boundary frames would dominate N_env by ~100×.
+    Countermeasures: (1) estimate the envelope only in the steady inner region excluding the start/end guard; (2) robust per-band cap at median+k·MAD.
 
-    f0_ref 给定时再做两件清洗（基频抖动/幅度起伏没被稳态谐波吸收的泄漏会挤在基频附近，
-    弹到别的音高上就是一团固定频率的杂音）：
-    ③ 前 notch_harmonics 个谐波 ±notch_rel 内的 bin 不计入噪声（高次谐波不剔，
-    气声/摩擦噪声主要在那里）；④ hp_hz 以下不计入（录音低频隆隆声）。
+    When f0_ref is given, two more cleanups (leakage from f0 jitter/amplitude fluctuation not absorbed by the steady harmonics piles up near f0,
+    and played at another pitch it becomes a lump of fixed-frequency noise):
+    (3) bins within ±notch_rel of the first notch_harmonics harmonics are excluded from the noise (higher harmonics are not removed,
+    breath/friction noise lives mostly there); (4) frequencies below hp_hz are excluded (low-frequency rumble in recordings).
     """
     res = np.asarray(res, dtype=np.float64)
     g = int(min(guard_samples, max(0, (len(res) - n_fft) // 2)))
@@ -148,17 +148,17 @@ def noise_envelope(
     if f0_ref and f0_ref > 0:
         for k in range(1, int(notch_harmonics) + 1):
             fc = k * float(f0_ref)
-            # 基频与二次谐波附近泄漏最宽:前两个按 ±25% 剔,其余 ±notch_rel
+            # leakage is widest near f0 and the 2nd harmonic: remove ±25% for the first two, ±notch_rel for the rest
             rel = max(notch_rel, 0.25) if k <= 2 else notch_rel
             keep &= np.abs(freqs - fc) > rel * fc
     power = power * keep[:, None]
     fb, centers = mel_filterbank(sr, n_fft, n_mels)
     denom = fb.sum(axis=1, keepdims=True)
     denom = np.where(denom > 1e-9, denom, 1.0)
-    band_power = (fb @ power) / denom  # [n_mels, T] 加权平均功率
+    band_power = (fb @ power) / denom  # [n_mels, T] weighted mean power
     N_env = np.sqrt(np.maximum(band_power, 0.0))
 
-    # 鲁棒封顶：单帧瞬态不得主导（中位数 + 8·MAD）
+    # robust cap: single-frame transients must not dominate (median + 8·MAD)
     med = np.median(N_env, axis=1, keepdims=True)
     mad = np.median(np.abs(N_env - med), axis=1, keepdims=True)
     cap = med + 8.0 * 1.4826 * mad
@@ -167,9 +167,9 @@ def noise_envelope(
 
 
 def attack_residual(res, sr: int = _SR, ms: float = _ATTACK_MS, onset_thresh: float = 0.05):
-    """截取起音残差 60ms（float32[2646]@44.1k）。
+    """Cut a 60ms attack residual (float32[2646]@44.1k).
 
-    从首个超过 onset_thresh*peak 的样本起取 `ms` 毫秒，长度不足右补零。
+    Take `ms` milliseconds starting from the first sample exceeding onset_thresh*peak, zero-padded on the right if too short.
     """
     res = np.asarray(res, dtype=np.float32)
     n = int(round(ms / 1000.0 * sr))
@@ -185,7 +185,7 @@ def attack_residual(res, sr: int = _SR, ms: float = _ATTACK_MS, onset_thresh: fl
     if len(seg) < n:
         seg = np.pad(seg, (0, n - len(seg)))
     seg = seg.astype(np.float32).copy()
-    # 颗粒首尾 2ms 升余弦淡入淡出，避免回放时块边界咔哒
+    # 2ms raised-cosine fade in/out at the grain ends, avoiding block-boundary clicks on playback
     fade = max(1, int(0.002 * sr))
     ramp = 0.5 * (1 - np.cos(np.linspace(0, np.pi, fade)))
     seg[:fade] *= ramp

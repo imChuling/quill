@@ -1,10 +1,10 @@
-"""事件切分：Basic Pitch 与自建 onset/f0 两个前端求并集。
+"""Event segmentation: union of two front ends, Basic Pitch and a custom onset/f0 detector.
 
-  * Basic Pitch（Spotify, ICASSP 2022）：带 pitch-bend 的轻量复音转录
-  * 自建 `librosa.onset.onset_detect(backtrack=True)` + PESTO 帧级 f0 分段
+  * Basic Pitch (Spotify, ICASSP 2022): lightweight polyphonic transcription with pitch bend
+  * custom `librosa.onset.onset_detect(backtrack=True)` + PESTO frame-level f0 segmentation
 
-两者都命中（同音高、同起点）= 高置信；只一方命中 = 进 disagreements 供人工裁决。
-吉他泛音会让 Basic Pitch 出幽灵高八度音，用置信度阈值 + 与 PESTO f0 一致性过滤。
+Hit by both (same pitch, same onset) = high confidence; hit by only one = goes to disagreements for manual review.
+Guitar harmonics make Basic Pitch produce ghost upper-octave notes, filtered by a confidence threshold + consistency with PESTO f0.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ except Exception:  # pragma: no cover
 
 
 # --------------------------------------------------------------------------- #
-# 音高/频率换算
+# Pitch/frequency conversion
 # --------------------------------------------------------------------------- #
 def hz_to_midi(f):
     f = np.asarray(f, dtype=np.float64)
@@ -35,7 +35,7 @@ def hz_to_midi(f):
 
 
 def _f0_median_in(f0, f0_times, t0, t1, skip_ms=10.0):
-    """事件窗 [t0+skip, t1] 内 PESTO f0 的中位数（Hz），无有效值返回 NaN。"""
+    """Median PESTO f0 (Hz) within the event window [t0+skip, t1]; NaN if no valid value."""
     f0 = np.asarray(f0)
     f0_times = np.asarray(f0_times)
     a = t0 + skip_ms / 1000.0
@@ -44,10 +44,10 @@ def _f0_median_in(f0, f0_times, t0, t1, skip_ms=10.0):
 
 
 # --------------------------------------------------------------------------- #
-# 前端 1：Basic Pitch
+# Front end 1: Basic Pitch
 # --------------------------------------------------------------------------- #
 def basic_pitch_events(y, sr=_SR, onset_thresh=0.5, frame_thresh=0.3, min_note_len_ms=60.0):
-    """Basic Pitch -> [{t_on,t_off,pitch_midi,amp,bend}]（bend 为半音偏移轨迹）。"""
+    """Basic Pitch -> [{t_on,t_off,pitch_midi,amp,bend}] (bend is a semitone offset trajectory)."""
     import soundfile as sf
     from basic_pitch import ICASSP_2022_MODEL_PATH
     from basic_pitch.inference import predict
@@ -89,10 +89,10 @@ def basic_pitch_events(y, sr=_SR, onset_thresh=0.5, frame_thresh=0.3, min_note_l
 
 
 # --------------------------------------------------------------------------- #
-# 前端 2：自建 onset + f0 分段
+# Front end 2: custom onset + f0 segmentation
 # --------------------------------------------------------------------------- #
 def onset_f0_events(y, sr=_SR, f0=None, f0_times=None, hop=512):
-    """librosa onset(backtrack) + PESTO f0 分段 -> [{t_on,t_off,pitch_midi,...}]。"""
+    """librosa onset(backtrack) + PESTO f0 segmentation -> [{t_on,t_off,pitch_midi,...}]."""
     import librosa
 
     y = np.asarray(y, dtype=np.float32)
@@ -102,7 +102,7 @@ def onset_f0_events(y, sr=_SR, f0=None, f0_times=None, hop=512):
     if onsets.size == 0:
         return []
 
-    # RMS 包络用于定 offset（能量回落）
+    # RMS envelope used to set the offset (energy drop)
     rms = librosa.feature.rms(y=y, hop_length=hop)[0]
     rms_t = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=hop)
     floor = 0.15 * float(np.max(rms)) if rms.size else 0.0
@@ -110,7 +110,7 @@ def onset_f0_events(y, sr=_SR, f0=None, f0_times=None, hop=512):
     events = []
     for i, t_on in enumerate(onsets):
         next_on = onsets[i + 1] if i + 1 < len(onsets) else dur
-        # offset = 能量跌破 floor 或下一个 onset，取先到者
+        # offset = energy falls below floor or the next onset, whichever comes first
         seg = (rms_t >= t_on) & (rms_t < next_on)
         t_off = next_on
         if np.any(seg):
@@ -138,14 +138,14 @@ def onset_f0_events(y, sr=_SR, f0=None, f0_times=None, hop=512):
 
 
 # --------------------------------------------------------------------------- #
-# 幽灵八度过滤
+# Ghost-octave filtering
 # --------------------------------------------------------------------------- #
 def ghost_octave_filter(events, f0, f0_times, amp_thresh=0.0, tol_semitone=1.5):
-    """剔除幽灵八度音 + 弱事件。与 PESTO f0 比对：
+    """Remove ghost-octave notes + weak events, compared against PESTO f0:
 
-    事件音高 p 与窗内 PESTO 期望音高 e 比较，若 |p-e|>tol 但 p±12 命中 e
-    （高八度泛音幽灵 或 低八度次谐波幽灵）=> 丢弃；
-    另剔除振幅 < amp_thresh 的弱事件（Basic Pitch 置信度阈值）。
+    the event pitch p is compared with the expected PESTO pitch e in the window; if |p-e|>tol but p±12 matches e
+    (upper-octave harmonic ghost or lower-octave subharmonic ghost) => drop;
+    also drop weak events with amplitude < amp_thresh (Basic Pitch confidence threshold).
     """
     kept, dropped = [], []
     for ev in events:
@@ -158,9 +158,9 @@ def ghost_octave_filter(events, f0, f0_times, amp_thresh=0.0, tol_semitone=1.5):
             p = ev["pitch_midi"]
             far = abs(p - e_midi) > tol_semitone
             octave_ghost = (
-                abs((p - 12) - e_midi) <= tol_semitone  # 高八度泛音
+                abs((p - 12) - e_midi) <= tol_semitone  # upper-octave harmonic
                 or abs((p + 12) - e_midi) <= tol_semitone
-            )  # 低八度次谐波
+            )  # lower-octave subharmonic
             if far and octave_ghost:
                 dropped.append({**ev, "drop_reason": "ghost_octave"})
                 continue
@@ -169,13 +169,13 @@ def ghost_octave_filter(events, f0, f0_times, amp_thresh=0.0, tol_semitone=1.5):
 
 
 # --------------------------------------------------------------------------- #
-# 双前端求并集
+# Union of the two front ends
 # --------------------------------------------------------------------------- #
 def union_events(bp_events, onset_events, onset_tol_s=0.05, pitch_tol=1.0):
-    """并集：两前端都命中（同音高±pitch_tol、起点±onset_tol）标 agree；
-    只一方命中进 disagreements。返回 (events, disagreements)。
+    """Union: hit by both front ends (same pitch ±pitch_tol, onset ±onset_tol) is marked agree;
+    hit by only one goes to disagreements. Returns (events, disagreements).
 
-    以 Basic Pitch 事件为主（带音高/offset/bend），自建前端用于补漏 + 一致性确认。
+    Basic Pitch events are primary (with pitch/offset/bend); the custom front end fills gaps + confirms consistency.
     """
     bp = sorted(bp_events, key=lambda e: e["t_on"])
     on = sorted(onset_events, key=lambda e: e["t_on"])
@@ -197,12 +197,12 @@ def union_events(bp_events, onset_events, onset_tol_s=0.05, pitch_tol=1.0):
         ev["agree"] = match is not None
         if match is not None:
             used_on[match] = True
-            ev["t_on"] = min(ev["t_on"], on[match]["t_on"])  # onset backtrack 更准
+            ev["t_on"] = min(ev["t_on"], on[match]["t_on"])  # onset backtrack is more accurate
         else:
             disagree.append({**e, "only": "bp"})
         merged.append(ev)
 
-    # 自建前端独有的（BP 漏掉的）补进来
+    # add events only found by the custom front end (missed by BP)
     for j, o in enumerate(on):
         if not used_on[j] and np.isfinite(o["pitch_midi"]):
             ev = dict(o)

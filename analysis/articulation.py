@@ -1,14 +1,14 @@
-"""演奏法分类：规则优先级树逐事件打标。
+"""Articulation classification: a rule priority tree labels each event.
 
-规则优先级（阈值全部读 config.yaml）：
-    同窗 onset≥3 且间隔<80ms                 -> strum
-    |f0 净斜率|>阈 且 持续>60ms（且非颤音）   -> slide
-    与前音衔接、无新强起音、幅度连续、音程小   -> legato
-    log_attack<25ms 且 质心>2kHz             -> pluck
-    其余                                      -> sustain；4-8Hz f0 峰显著 -> +vibrato
+Rule priority (all thresholds read from config.yaml):
+    onset≥3 in the same window and gap<80ms             -> strum
+    |net f0 slope|>threshold and duration>60ms (and not vibrato) -> slide
+    joined to previous note, no new strong attack, continuous amplitude, small interval -> legato
+    log_attack<25ms and centroid>2kHz                    -> pluck
+    otherwise                                            -> sustain; significant 4-8Hz f0 peak -> +vibrato
 
-slide 与 vibrato 容易混淆：先抽周期性（vibrato 字段、净斜率≈0），再判单调性（净斜率大）。
-随机森林（sklearn）作为规则树的对照分类器。
+slide and vibrato are easily confused: first extract periodicity (vibrato field, net slope≈0), then judge monotonicity (large net slope).
+A random forest (sklearn) serves as the control classifier for the rule tree.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ _DEF = {
 
 
 def _f0_monotonic_frac(track):
-    """f0 轨迹同向步占比 = max(上行比, 下行比)。真滑音≈1；八度跳变/噪声≈0.5。"""
+    """Fraction of same-direction steps in the f0 track = max(up fraction, down fraction). A true slide≈1; octave jumps/noise≈0.5."""
     if len(track) < 3:
         return 0.0
     hz = np.array([p[1] for p in track], dtype=np.float64)
@@ -57,7 +57,7 @@ def _cfg(key):
 
 
 def _is_vibrato(ev):
-    """事件是否带 4-8Hz 颤音。"""
+    """Whether the event carries 4-8Hz vibrato."""
     v = ev.get("vibrato")
     if not v:
         return False
@@ -66,7 +66,7 @@ def _is_vibrato(ev):
 
 
 def _strum_windows(events):
-    """返回属于 strum 的事件 id 集合：滑窗内 onset 数≥阈、间隔<window。"""
+    """Return the set of event ids belonging to a strum: onset count in a sliding window≥threshold, gap<window."""
     win = _cfg("strum_window_ms") / 1000.0
     need = int(_A.get("strum_min_onsets", _DEF["strum_min_onsets"]))
     ev = sorted(events, key=lambda e: e["t_on"])
@@ -83,11 +83,11 @@ def _strum_windows(events):
 
 
 def classify_events(events, prev_aware=True, valid_labels=None):
-    """规则优先级树逐事件打标，原地写 ev["label"]（并返回 events）。
+    """Label each event with the rule priority tree, writing ev["label"] in place (and returning events).
 
-    valid_labels: 限定输出标签空间。孤立单音数据集（如 IDMT）只有 pluck/slide/sustain，
-    此时关掉 strum/legato 检测、pluck 作为默认，避免对数据集不存在的类做预测。
-    None=完整 5 类。
+    valid_labels: restricts the output label space. Isolated-note datasets (e.g. IDMT) only have pluck/slide/sustain,
+    so strum/legato detection is turned off and pluck is the default, avoiding predictions for classes absent from the dataset.
+    None=all 5 classes.
     """
     if not events:
         return events
@@ -104,7 +104,7 @@ def classify_events(events, prev_aware=True, valid_labels=None):
     atk_thr = np.log10(_cfg("pluck_attack_ms") / 1000.0)
     cen_thr = _cfg("pluck_centroid_hz")
 
-    restricted = not (use_strum or use_legato)  # 孤立单音域：pluck 为默认
+    restricted = not (use_strum or use_legato)  # isolated-note domain: pluck is the default
     prev = None
     for ev in ev_sorted:
         f = ev.get("features", {})
@@ -114,7 +114,7 @@ def classify_events(events, prev_aware=True, valid_labels=None):
         log_atk = f.get("log_attack")
         cen = f.get("centroid_mean")
         mono = _f0_monotonic_frac(ev.get("f0_track", []))
-        # slide：净斜率大 + 持续够 + 单调 + 不是颤音（先抽周期性，再判单调性）
+        # slide: large net slope + long enough + monotonic + not vibrato (extract periodicity first, then judge monotonicity)
         is_slide = (
             (not vib)
             and slope > slope_thr
@@ -126,7 +126,7 @@ def classify_events(events, prev_aware=True, valid_labels=None):
             label = "strum"
         elif is_slide:
             label = "slide"
-        elif vib:  # 颤音 -> sustain
+        elif vib:  # vibrato -> sustain
             label = "sustain"
         elif use_legato and prev is not None and _is_legato(ev, prev, gap_max, jump_max, atk_thr):
             label = "legato"
@@ -137,7 +137,7 @@ def classify_events(events, prev_aware=True, valid_labels=None):
             and cen is not None
             and np.isfinite(cen)
             and cen > cen_thr
-        ):  # 孤立单音：非滑非颤即 pluck
+        ):  # isolated note: neither slide nor vibrato means pluck
             label = "pluck"
         else:
             label = "sustain"
@@ -148,25 +148,25 @@ def classify_events(events, prev_aware=True, valid_labels=None):
 
 
 def _is_legato(ev, prev, gap_max, jump_max, atk_thr):
-    """legato：与前音衔接（gap 小）、音程在范围内、本音无强起音（attack 慢）、幅度连续。"""
+    """legato: joined to the previous note (small gap), interval in range, no strong attack on this note (slow attack), continuous amplitude."""
     gap = ev["t_on"] - prev["t_off"]
     if gap > gap_max:
         return False
     p0, p1 = prev.get("pitch_midi"), ev.get("pitch_midi")
     if p0 is None or p1 is None:
         return False
-    # 同音不算 legato；跨度过大更像独立起音
+    # the same pitch does not count as legato; too large a span is more like an independent attack
     if abs(p1 - p0) > jump_max or abs(p1 - p0) < 0.5:
         return False
     log_atk = ev.get("features", {}).get("log_attack")
     soft = (log_atk is None) or (not np.isfinite(log_atk)) or (log_atk >= atk_thr)
-    # 幅度连续：本音起始力度与前音收尾相近（无重击）
+    # continuous amplitude: this note's starting level is close to the previous note's ending (no hard hit)
     cont = ev.get("velocity_est", 0.0) <= prev.get("velocity_est", 1.0) * 1.3 + 0.1
     return bool(soft and cont)
 
 
 # --------------------------------------------------------------------------- #
-# 随机森林分类器（与规则树对照）
+# Random forest classifier (control for the rule tree)
 # --------------------------------------------------------------------------- #
 _FEATURE_KEYS = (
     "log_attack",
@@ -179,7 +179,7 @@ _FEATURE_KEYS = (
 
 
 def feature_vector(ev):
-    """事件 -> 数值特征向量（森林输入）。"""
+    """Event -> numeric feature vector (forest input)."""
     f = ev.get("features", {})
     vec = []
     for k in _FEATURE_KEYS:
@@ -191,7 +191,7 @@ def feature_vector(ev):
 
 
 def train_forest(events, labels, n_estimators=100, seed=0):
-    """用已标注事件训练随机森林。返回 sklearn 分类器。"""
+    """Train a random forest on labelled events. Returns an sklearn classifier."""
     from sklearn.ensemble import RandomForestClassifier
 
     X = np.array([feature_vector(e) for e in events])

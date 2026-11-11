@@ -1,10 +1,10 @@
-"""逐事件特征化、事件分析编排、events.json 读写。
+"""Per-event featurisation, event analysis orchestration, events.json I/O.
 
-特征是 Peeters (JASA 2011) 描述子的子集：
+The features are a subset of the Peeters (JASA 2011) descriptors:
   log_attack · centroid_mean · centroid_slope · f0_slope_cents_s · polyphony · hnr
-另含 velocity_est（RMS → 0-1）、f0_track（含 bend）、vibrato。
+plus velocity_est (RMS -> 0-1), f0_track (including bend) and vibrato.
 
-`analyze_events(y)` 把双前端切分与逐事件特征串成完整流程，产出 events.json 的事件列表。
+`analyze_events(y)` chains the dual-front-end segmentation and per-event features into the full pipeline, producing the events list of events.json.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ except Exception:  # pragma: no cover
 
 
 # --------------------------------------------------------------------------- #
-# 单事件特征
+# Single-event features
 # --------------------------------------------------------------------------- #
 def _seg(y, sr, t0, t1):
     a = max(0, int(t0 * sr))
@@ -40,7 +40,7 @@ def _seg(y, sr, t0, t1):
 
 
 def log_attack_time(y_ev, sr, max_ms=150.0):
-    """Peeters log-attack-time：log10(到达能量峰的时间秒)。"""
+    """Peeters log-attack-time: log10(time in seconds to reach the energy peak)."""
     import librosa
 
     hop = 128
@@ -53,7 +53,7 @@ def log_attack_time(y_ev, sr, max_ms=150.0):
 
 
 def spectral_centroid_stats(y_ev, sr):
-    """谱质心均值(Hz) 与时间斜率(Hz/s)。"""
+    """Mean spectral centroid (Hz) and its time slope (Hz/s)."""
     import librosa
 
     if len(y_ev) < 512:
@@ -68,7 +68,7 @@ def spectral_centroid_stats(y_ev, sr):
 
 
 def f0_track_for(f0, f0_times, t0, t1, max_points=40):
-    """事件窗内 PESTO f0 轨迹 -> [[t,hz],...]（含 bend；降采样到 max_points）。"""
+    """PESTO f0 track within the event window -> [[t,hz],...] (including bend; downsampled to max_points)."""
     f0 = np.asarray(f0)
     f0_times = np.asarray(f0_times)
     m = (f0_times >= t0) & (f0_times <= t1) & np.isfinite(f0) & (f0 > 0)
@@ -82,7 +82,7 @@ def f0_track_for(f0, f0_times, t0, t1, max_points=40):
 
 
 def f0_slope_cents_s(track):
-    """f0 轨迹的 cents/秒 斜率（slide 的直接证据）。"""
+    """Slope of the f0 track in cents/second (direct evidence of a slide)."""
     if len(track) < 2:
         return 0.0
     t = np.array([p[0] for p in track])
@@ -97,7 +97,7 @@ def f0_slope_cents_s(track):
 
 
 def polyphony_at(ev, all_events):
-    """与本事件时间重叠的事件数（含自身）= 同时发声数。"""
+    """Number of events overlapping this event in time (including itself) = polyphony."""
     a, b = ev["t_on"], ev["t_off"]
     cnt = 0
     for o in all_events:
@@ -107,7 +107,7 @@ def polyphony_at(ev, all_events):
 
 
 def hnr_db(y_ev, sr, f0_hz, n_harm=40, cents=40.0):
-    """谐噪比(dB)：±cents 内谐波能量 vs 其余能量。"""
+    """Harmonic-to-noise ratio (dB): harmonic energy within ±cents vs the rest."""
     if len(y_ev) < 256 or not (np.isfinite(f0_hz) and f0_hz > 0):
         return float("nan")
     w = np.hanning(len(y_ev))
@@ -127,10 +127,10 @@ def hnr_db(y_ev, sr, f0_hz, n_harm=40, cents=40.0):
 
 
 # --------------------------------------------------------------------------- #
-# 事件分析编排
+# Event analysis orchestration
 # --------------------------------------------------------------------------- #
 def analyze_events(y, sr=_SR, use_basic_pitch=True, bp_amp_thresh=0.4, return_diagnostics=False):
-    """音频 -> events 列表。双前端并集 + 幽灵八度过滤 + 逐事件特征。"""
+    """Audio -> events list. Union of two front ends + ghost-octave filtering + per-event features."""
     from analysis.harmonic import track_f0
     from analysis.timbre import detect_vibrato
 
@@ -146,7 +146,7 @@ def analyze_events(y, sr=_SR, use_basic_pitch=True, bp_amp_thresh=0.4, return_di
     else:
         merged, disagree = onset_evs, []
 
-    # 碎片守卫：丢弃短于 min_event_ms 且不在密集簇（strum）里的微事件
+    # fragment guard: drop micro-events shorter than min_event_ms that are not in a dense cluster (strum)
     try:
         from quill_config import CFG as _C
 
@@ -157,7 +157,7 @@ def analyze_events(y, sr=_SR, use_basic_pitch=True, bp_amp_thresh=0.4, return_di
     if min_dur > 0 and merged:
         ts = sorted(e["t_on"] for e in merged)
 
-        # 80ms 窗内 ≥3 onset 视为簇（strum），不丢
+        # ≥3 onsets within an 80ms window count as a cluster (strum), not dropped
         def _in_cluster(t):
             return sum(1 for x in ts if abs(x - t) < win) >= 3
 
@@ -165,7 +165,7 @@ def analyze_events(y, sr=_SR, use_basic_pitch=True, bp_amp_thresh=0.4, return_di
             e for e in merged if (e["t_off"] - e["t_on"]) >= min_dur or _in_cluster(e["t_on"])
         ]
 
-    # velocity 参考：各事件 RMS 的最大值
+    # velocity reference: maximum RMS over events
     rms_list = []
     for ev in merged:
         s = _seg(y, sr, ev["t_on"], ev["t_off"])
@@ -212,7 +212,7 @@ def analyze_events(y, sr=_SR, use_basic_pitch=True, bp_amp_thresh=0.4, return_di
                     k: (round(v, 5) if isinstance(v, float) and np.isfinite(v) else v)
                     for k, v in feats.items()
                 },
-                "label": "",  # 由 articulation.classify_events 写入
+                "label": "",  # written by articulation.classify_events
                 "vibrato": vib,
                 "_agree": bool(ev.get("agree", False)),
             }
@@ -224,10 +224,10 @@ def analyze_events(y, sr=_SR, use_basic_pitch=True, bp_amp_thresh=0.4, return_di
 
 
 def compute_event_features(y, sr, events):
-    """为已知 t_on/t_off/pitch 的事件（如 IDMT 标注）逐事件补特征、f0_track、vibrato。
+    """Add features, f0_track and vibrato per event for events with known t_on/t_off/pitch (e.g. IDMT annotations).
 
-    每文件只算一次 track_f0、STFT 与逐帧质心/RMS，逐事件靠切帧导出，避免 per-event
-    librosa 开销。特征口径与 analyze_events 一致。
+    track_f0, the STFT and per-frame centroid/RMS are computed once per file; per-event values are derived by slicing frames, avoiding per-event
+    librosa overhead. Feature definitions match analyze_events.
     """
     import librosa
 
@@ -235,7 +235,7 @@ def compute_event_features(y, sr, events):
     from analysis.timbre import detect_vibrato
 
     y = np.asarray(y, dtype=np.float32)
-    # f0 用 20ms 步长：slide/vibrato 判定足够，PESTO 耗时减半
+    # f0 with a 20ms hop: enough for slide/vibrato decisions, halves PESTO time
     f0, conf, ftimes = track_f0(y, sr=sr, step_size_ms=20.0, cross_check=False)
 
     n_fft, hop = 1024, 256
@@ -243,12 +243,12 @@ def compute_event_features(y, sr, events):
     freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
     fr_t = librosa.frames_to_time(np.arange(S.shape[1]), sr=sr, hop_length=hop)
     power = S**2
-    cent_f = (freqs[:, None] * power).sum(0) / (power.sum(0) + 1e-12)  # 逐帧质心
+    cent_f = (freqs[:, None] * power).sum(0) / (power.sum(0) + 1e-12)  # per-frame centroid
     rms_f = librosa.feature.rms(S=S, frame_length=n_fft, hop_length=hop)[0]
     nyq = sr / 2.0
     eps = 1e-12
 
-    # velocity 参考：各事件帧 RMS 均值的最大
+    # velocity reference: maximum of the per-event mean frame RMS
     def _frames(t0, t1):
         return np.where((fr_t >= t0) & (fr_t < max(t1, t0 + 1e-3)))[0]
 
@@ -274,7 +274,7 @@ def compute_event_features(y, sr, events):
         else:
             cmean, cslope = float("nan"), 0.0
 
-        # log_attack：起音窗内 RMS 峰帧的时间
+        # log_attack: time of the RMS peak frame within the attack window
         aw = np.where((fr_t >= t0) & (fr_t < t0 + 0.15))[0]
         if aw.size:
             pk = aw[int(np.argmax(rms_f[aw]))]
@@ -282,7 +282,7 @@ def compute_event_features(y, sr, events):
         else:
             log_atk = float("nan")
 
-        # HNR：事件帧平均谱里 ±40cents 谐波能量 vs 其余
+        # HNR: harmonic energy within ±40cents vs the rest in the event's mean frame spectrum
         if idx.size and np.isfinite(f0_med) and f0_med > 0:
             ps = power[:, idx].mean(1)
             hmask = np.zeros_like(freqs, dtype=bool)
@@ -314,7 +314,7 @@ def compute_event_features(y, sr, events):
 
 
 # --------------------------------------------------------------------------- #
-# events.json 序列化
+# events.json serialisation
 # --------------------------------------------------------------------------- #
 _PUBLIC_KEYS = (
     "id",

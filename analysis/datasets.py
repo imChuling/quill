@@ -1,7 +1,7 @@
-"""数据集 loader：IDMT-SMT-Guitar 的 XML 标注 -> 本项目 events 结构（带 label）。
+"""Dataset loader: IDMT-SMT-Guitar XML annotations -> this project's events structure (with label).
 
-数据集需手动下载（多 GB）；数据缺失时返回空列表。IDMT expression/excitation 风格到
-本项目 5 类标签的映射见 `_MAP_EXPRESSION` / `_MAP_EXCITATION`。
+The dataset must be downloaded manually (several GB); returns an empty list if data is missing. The mapping from IDMT expression/excitation
+styles to this project's 5 labels is in `_MAP_EXPRESSION` / `_MAP_EXCITATION`.
 """
 
 from __future__ import annotations
@@ -10,19 +10,19 @@ import glob
 import os
 import xml.etree.ElementTree as ET
 
-# IDMT-SMT-Guitar 的 2 字母码 -> 本项目演奏法标签。
-# IDMT 逐音标注只有拨弦风格 + 表情风格，无 legato/strum；IDMT 评估实为
-# pluck / slide / sustain(+vibrato) 三类，且重度不平衡，以宏 F1 为准。
+# IDMT-SMT-Guitar 2-letter codes -> this project's articulation labels.
+# IDMT per-note annotations only have plucking style + expression style, no legato/strum; IDMT evaluation is effectively
+# three classes pluck / slide / sustain(+vibrato), heavily imbalanced, so macro F1 is the reference.
 _MAP_EXPRESSION = {  # expressionStyle
     "SL": "slide",
-    "BE": "slide",  # slide / bending（音高变化）-> slide
+    "BE": "slide",  # slide / bending (pitch change) -> slide
     "VI": "sustain",  # vibrato -> sustain(+vibrato)
     "NO": None,
-    "I": None,  # normal/不定 -> 由 excitation 定
+    "I": None,  # normal/undetermined -> decided by excitation
     "HA": "pluck",
     "DN": "pluck",  # harmonics / dead-note -> pluck
 }
-_MAP_EXCITATION = {  # excitationStyle（拨弦风格，皆为 pluck 类）
+_MAP_EXCITATION = {  # excitationStyle (plucking style, all in the pluck class)
     "PK": "pluck",
     "FS": "pluck",
     "MU": "pluck",
@@ -34,7 +34,7 @@ def available(root) -> bool:
 
 
 def _parse_annotation_xml(path):
-    """解析单个 IDMT 标注 XML -> events 列表（容错字段名大小写/层级）。"""
+    """Parse a single IDMT annotation XML -> events list (tolerant of field-name case/nesting)."""
     try:
         tree = ET.parse(path)
     except Exception:
@@ -52,11 +52,11 @@ def _parse_annotation_xml(path):
         pitch = _get("pitch")
         if onset is None or pitch is None:
             continue
-        expr = (_get("expressionStyle") or "").strip().upper()  # 码为大写
+        expr = (_get("expressionStyle") or "").strip().upper()  # codes are upper case
         exc = (_get("excitationStyle") or "").strip().upper()
         label = _MAP_EXPRESSION.get(expr)
         if label is None:
-            label = _MAP_EXCITATION.get(exc, "pluck")  # 拨弦类默认 pluck
+            label = _MAP_EXCITATION.get(exc, "pluck")  # plucked styles default to pluck
         t_on = float(onset)
         t_off = float(offset) if offset else t_on + 0.3
         events.append(
@@ -77,7 +77,7 @@ def _parse_annotation_xml(path):
 
 
 def load_idmt_smt_guitar(root, limit_files=None):
-    """遍历 IDMT-SMT-Guitar 标注目录 -> 统一 events 列表（缺失返回 []）。"""
+    """Walk the IDMT-SMT-Guitar annotation directory -> unified events list ([] if missing)."""
     if not available(root):
         return []
     xmls = sorted(glob.glob(os.path.join(root, "**", "*.xml"), recursive=True))

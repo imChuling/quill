@@ -1,10 +1,10 @@
-"""MERT 探针：音乐 SSL 基座（HuggingFace `m-a-p/MERT`）抽 embedding + 轻量分类头做演奏法分类。
+"""MERT probe: extract embeddings from a music SSL backbone (HuggingFace `m-a-p/MERT`) + a lightweight head for articulation classification.
 
-MERTech (ICASSP 2024) 范式，基座冻结、只训轻量头。
-流程：事件音频段 → 24kHz → MERT 13 层 hidden states → 时间均值 + 层聚合 → 轻量头分类。
+MERTech (ICASSP 2024) paradigm: frozen backbone, only a lightweight head is trained.
+Pipeline: event audio segment -> 24kHz -> MERT 13-layer hidden states -> time mean + layer aggregation -> lightweight head classification.
 
-依赖 transformers + torch + nnAudio；权重首次自动下载（~95M 参数）。
-只在 analysis 侧、非实时路径使用。
+Depends on transformers + torch + nnAudio; weights are downloaded automatically on first use (~95M parameters).
+Used only on the analysis side, off the real-time path.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ _proc = None
 
 
 def _load_mert():
-    """惰性单例加载 MERT（重，加载一次）。"""
+    """Lazily load MERT as a singleton (heavy, loaded once)."""
     global _model, _proc
     if _model is None:
         import torch  # noqa
@@ -30,10 +30,10 @@ def _load_mert():
 
 
 def mert_embed(y, sr, layers=None):
-    """音频 -> MERT 嵌入向量。
+    """Audio -> MERT embedding vector.
 
-    layers=None: 13 层时间均值再做层均值 -> 768 维（紧凑，少样本不易过拟合）；
-    layers=list: 仅取指定层（MERTech 发现中层对技巧检测更优，可调）后拼接。
+    layers=None: time mean of 13 layers then layer mean -> 768 dims (compact, less overfitting with few samples);
+    layers=list: take only the given layers (MERTech found middle layers better for technique detection, tunable) and concatenate.
     """
     import librosa
     import torch
@@ -42,22 +42,22 @@ def mert_embed(y, sr, layers=None):
     y = np.asarray(y, dtype=np.float32)
     if sr != _MERT_SR:
         y = librosa.resample(y, orig_sr=sr, target_sr=_MERT_SR)
-    if len(y) < _MERT_SR // 10:  # 太短补够 ~0.1s
+    if len(y) < _MERT_SR // 10:  # pad too-short input to ~0.1s
         y = np.pad(y, (0, _MERT_SR // 10 - len(y)))
     inp = proc(y, sampling_rate=_MERT_SR, return_tensors="pt")
     with torch.no_grad():
         out = model(**inp, output_hidden_states=True)
     hs = torch.stack(out.hidden_states)  # [13, 1, T, 768]
-    tmean = hs.mean(dim=2).squeeze(1)  # [13, 768] 时间均值
+    tmean = hs.mean(dim=2).squeeze(1)  # [13, 768] time mean
     emb = tmean.mean(dim=0) if layers is None else tmean[layers].reshape(-1)
     return emb.cpu().numpy().astype(np.float32)
 
 
 # --------------------------------------------------------------------------- #
-# 轻量分类头（基座冻结，只训头）
+# Lightweight classification head (frozen backbone, only the head is trained)
 # --------------------------------------------------------------------------- #
 def train_probe(X, labels, kind="logreg", seed=0):
-    """X[n,dim] + labels -> 轻量头分类器（标准化 + LogReg/线性 SVM）。"""
+    """X[n,dim] + labels -> lightweight head classifier (standardisation + LogReg/linear SVM)."""
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
 

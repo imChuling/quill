@@ -1,11 +1,11 @@
-"""f0 估计与谐波幅度提取。
+"""f0 estimation and harmonic amplitude extraction.
 
-* track_f0(y)         : PESTO 主力 + librosa.pyin 交叉校验，输出 (f0, conf, times)
-* harmonics(y, f0)    : STFT(4096/512) 上对 k<=60 个谐波做峰值跟踪 -> H[60, T]
+* track_f0(y)         : PESTO primary + librosa.pyin cross-check, outputs (f0, conf, times)
+* harmonics(y, f0)    : peak tracking of k<=60 harmonics on an STFT(4096/512) -> H[60, T]
 
-谐波峰值估计采用抛物线插值（McAulay-Quatieri 1986）：已知 f0，无需完整
-partial tracking，只在 k*f0±search_cents 窗内取局部峰并对 log 幅度做二次插值，
-既校正 Hann 窗扇贝损失（幅度误差 <1dB），又顺带测得准谐波声源的实测部分音频率。
+Harmonic peak estimation uses parabolic interpolation (McAulay-Quatieri 1986): with f0 known, no full
+partial tracking is needed; take the local peak within k*f0±search_cents and quadratically interpolate the log magnitude,
+which corrects the Hann-window scalloping loss (amplitude error <1dB) and also measures the partial frequencies of quasi-harmonic sources.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ _HCFG = CFG["harmonic"]
 
 
 # --------------------------------------------------------------------------- #
-# f0 估计
+# f0 estimation
 # --------------------------------------------------------------------------- #
 def track_f0(
     y: np.ndarray,
@@ -54,16 +54,16 @@ def track_f0(
     conf_threshold: float | None = None,
     cross_check: bool = True,
 ):
-    """估计逐帧基频。
+    """Estimate per-frame f0.
 
-    返回 (f0, conf, times)：
-      f0    float32[T]  Hz，低置信度帧置 NaN（倍频错误常伴随置信度跌落）
-      conf  float32[T]  置信度 0-1
-      times float32[T]  帧中心秒
+    Returns (f0, conf, times):
+      f0    float32[T]  Hz, low-confidence frames set to NaN (octave errors often come with a confidence drop)
+      conf  float32[T]  confidence 0-1
+      times float32[T]  frame centres in seconds
 
-    主力 PESTO（ISMIR'23，<30k 参数实时）；`cross_check=True` 时用
-    librosa.pyin 比对中位数，倍频错误（≈2x / 0.5x）发 warning。
-    PESTO 不可用时回落到 pyin。
+    PESTO is primary (ISMIR'23, <30k parameters, real-time); with `cross_check=True`
+    the median is compared against librosa.pyin and a warning is issued on octave errors (≈2x / 0.5x).
+    Falls back to pyin when PESTO is unavailable.
     """
     step = float(step_size_ms if step_size_ms is not None else _FCFG["step_size_ms"])
     thr = float(conf_threshold if conf_threshold is not None else _FCFG["conf_threshold"])
@@ -72,11 +72,11 @@ def track_f0(
     f0, conf, times, backend = _pesto_f0(y, sr, step)
     if f0 is None:
         f0, conf, times = _pyin_f0(y, sr, step)
-        warnings.warn("PESTO 不可用，已回落到 librosa.pyin", RuntimeWarning, stacklevel=2)
+        warnings.warn("PESTO unavailable, fell back to librosa.pyin", RuntimeWarning, stacklevel=2)
     elif cross_check:
         _octave_cross_check(f0, conf, y, sr, thr)
 
-    # 置信度过滤：低于阈值的帧 f0 置 NaN，交给下游忽略
+    # confidence filter: f0 of frames below the threshold set to NaN, ignored downstream
     f0 = f0.astype(np.float32).copy()
     f0[conf < thr] = np.nan
     return f0, conf.astype(np.float32), times.astype(np.float32)
@@ -98,8 +98,8 @@ def _pesto_f0(y, sr, step):
         conf = conf.detach().cpu().numpy().astype(np.float32)
         times = ts_ms.detach().cpu().numpy().astype(np.float32) / 1000.0
         return f0, conf, times, "pesto"
-    except Exception as exc:  # 权重下载失败/形状异常 -> 让上层兜底
-        warnings.warn(f"PESTO 推断异常：{exc}", RuntimeWarning, stacklevel=2)
+    except Exception as exc:  # weight download failure / shape error -> let the caller handle it
+        warnings.warn(f"PESTO inference error: {exc}", RuntimeWarning, stacklevel=2)
         return None, None, None, None
 
 
@@ -117,7 +117,7 @@ def _pyin_f0(y, sr, step):
 
 
 def _octave_cross_check(f0, conf, y, sr, thr):
-    """用 pyin 中位数比对 PESTO，疑似倍频错误时 warning（不擅自改值）。"""
+    """Compare PESTO against the pyin median and warn on suspected octave errors (values are not changed)."""
     try:
         import librosa
 
@@ -133,8 +133,8 @@ def _octave_cross_check(f0, conf, y, sr, thr):
     cents = 1200.0 * np.log2(m_pesto / m_pyin)
     if abs(cents) > float(_FCFG["octave_tol_cents"]):
         warnings.warn(
-            f"f0 交叉校验失配：PESTO≈{m_pesto:.1f}Hz vs pyin≈{m_pyin:.1f}Hz "
-            f"({cents:+.0f}cents)，疑似倍频错误",
+            f"f0 cross-check mismatch: PESTO≈{m_pesto:.1f}Hz vs pyin≈{m_pyin:.1f}Hz "
+            f"({cents:+.0f}cents), suspected octave error",
             RuntimeWarning,
             stacklevel=2,
         )
@@ -147,12 +147,12 @@ def _voiced_median(f0, mask):
 
 
 def f0_scalar(f0: np.ndarray) -> float:
-    """有声帧 f0 中位数，作为 TimbreSnapshot 的 f0_ref。"""
+    """Median f0 of voiced frames, used as the TimbreSnapshot's f0_ref."""
     return _voiced_median(f0, np.ones_like(f0, dtype=bool))
 
 
 # --------------------------------------------------------------------------- #
-# 谐波幅度提取
+# Harmonic amplitude extraction
 # --------------------------------------------------------------------------- #
 def harmonics(
     y: np.ndarray,
@@ -167,25 +167,25 @@ def harmonics(
     measure_partials: bool = False,
     min_prominence: float = 2.0,
 ):
-    """逐帧提取前 `n_harmonics` 个谐波的幅度包络 H[K, T]。
+    """Extract the amplitude envelope H[K, T] of the first `n_harmonics` harmonics per frame.
 
-    参数
+    Parameters
     ----
-    f0 : 标量 或 数组
-        标量 -> 全程恒定基频；数组 -> 逐帧基频。配 `f0_times` 时按时间插值到
-        STFT 帧中心；否则按帧序号重采样。NaN（无声/低置信）帧用最近有声值填充。
-    partial_freqs : float[K] 或 None
-        准谐波声源（酒杯/碗）的实测部分音频率（@f0_ref）。给定则目标频率=
-        partial_freqs * (f0/f0_ref)，否则严格 k*f0。
+    f0 : scalar or array
+        Scalar -> constant f0 throughout; array -> per-frame f0. With `f0_times` it is interpolated in time to
+        STFT frame centres; otherwise resampled by frame index. NaN (unvoiced/low-confidence) frames are filled with the nearest voiced value.
+    partial_freqs : float[K] or None
+        Measured partial frequencies (@f0_ref) of a quasi-harmonic source (wine glass/bowl). If given, target frequency =
+        partial_freqs * (f0/f0_ref), otherwise strictly k*f0.
     measure_partials : bool
-        True 则放宽搜索窗到 quasi_search_cents 并返回各谐波实测频率均值
-        （写入 TimbreSnapshot.partial_freqs，高次泛音偏离 k*f0 时不致丢失）。
+        If True, widen the search window to quasi_search_cents and return the mean measured frequency of each harmonic
+        (written to TimbreSnapshot.partial_freqs, so high overtones deviating from k*f0 are not lost).
 
-    返回
+    Returns
     ----
-    H : float32[K, T]   谐波幅度（真实正弦幅度，已校正 Hann 窗相干增益）
-    times : float32[T]  帧中心秒
-    info : dict         {"partial_freqs": float32[K] 或 None,
+    H : float32[K, T]   harmonic amplitudes (true sinusoidal amplitude, corrected for the Hann-window coherent gain)
+    times : float32[T]  frame centres in seconds
+    info : dict         {"partial_freqs": float32[K] or None,
                          "f0_per_frame": float32[T], "n_fft": int}
     """
     import librosa
@@ -199,18 +199,18 @@ def harmonics(
         else (_HCFG["quasi_search_cents"] if measure_partials else _HCFG["search_cents"])
     )
 
-    # 逐帧 f0（用于决定低音是否升 n_fft）
+    # per-frame f0 (used to decide whether to raise n_fft for low notes)
     f0_arr = np.atleast_1d(np.asarray(f0, dtype=np.float64))
     f0_med = _voiced_median(f0_arr, np.ones_like(f0_arr, dtype=bool))
 
     if n_fft is None:
         n_fft = int(_HCFG["n_fft"])
         if np.isfinite(f0_med) and f0_med < float(_HCFG["low_f0_nfft_threshold"]):
-            n_fft = int(_HCFG["low_f0_nfft"])  # 低音谐波间距不足，加大窗
+            n_fft = int(_HCFG["low_f0_nfft"])  # harmonics of low notes are too closely spaced, use a larger window
     n_fft = int(n_fft)
 
-    win = np.hanning(n_fft).astype(np.float64)  # 与 librosa 默认 'hann' 一致
-    coherent_gain = win.sum()  # 正弦幅度复原常数：A = 2|X_peak|/cg
+    win = np.hanning(n_fft).astype(np.float64)  # matches librosa's default 'hann'
+    coherent_gain = win.sum()  # sinusoidal amplitude recovery constant: A = 2|X_peak|/cg
 
     D = librosa.stft(y, n_fft=n_fft, hop_length=hop, window="hann", center=True)
     mag = np.abs(D).astype(np.float64)  # [n_fft/2+1, T]
@@ -222,18 +222,18 @@ def harmonics(
 
     f0_frame = _resample_f0(f0_arr, f0_times, times, sr, hop)
 
-    # 准谐波基准频率（相对 f0_ref 的比例），默认严格 k*f0
+    # quasi-harmonic reference frequencies (ratio relative to f0_ref), strict k*f0 by default
     if partial_freqs is not None:
         pf = np.asarray(partial_freqs, dtype=np.float64)[:K]
         f0_ref = f0_med if np.isfinite(f0_med) and f0_med > 0 else f0_frame[0]
-        ratio_k = pf / f0_ref  # 目标 = ratio_k * f0_frame
+        ratio_k = pf / f0_ref  # target = ratio_k * f0_frame
     else:
-        ratio_k = np.arange(1, K + 1, dtype=np.float64)  # 严格谐波 k
+        ratio_k = np.arange(1, K + 1, dtype=np.float64)  # strict harmonic k
 
     H = np.zeros((K, T), dtype=np.float32)
     measured = np.zeros((K, T), dtype=np.float64)
     measured_cnt = np.zeros(K, dtype=np.float64)
-    fac = 2.0 ** (cents / 1200.0)  # 搜索窗半宽比例
+    fac = 2.0 ** (cents / 1200.0)  # half-width ratio of the search window
 
     for ti in range(T):
         f0_t = f0_frame[ti]
@@ -242,7 +242,7 @@ def harmonics(
         col = mag[:, ti]
         for k in range(K):
             target = ratio_k[k] * f0_t
-            if target >= nyquist - nyq_margin:  # k*f0 到达 Nyquist 即截断
+            if target >= nyquist - nyq_margin:  # stop once k*f0 reaches Nyquist
                 break
             lo_bin = int(np.floor((target / fac) / bin_hz))
             hi_bin = int(np.ceil((target * fac) / bin_hz))
@@ -252,10 +252,10 @@ def harmonics(
                 continue
             seg = col[lo_bin : hi_bin + 1]
             j = lo_bin + int(np.argmax(seg))
-            # 突出度门控:真谐波是从邻域噪声地板凸起的尖峰(≥6dB),噪声里采到的"峰"与
-            # 邻域齐平。不检验时,嘈杂录音的噪声地板会被当作高次谐波采收,合成端用稳定正弦
-            # 重放成杂音,Air/Noise 旋钮管不到谐波路径。邻域 = 主瓣外、相邻谐波瓣内的两侧带,
-            # 按谐波间距自适应。
+            # prominence gate: a true harmonic is a spike rising above the local noise floor (≥6dB); a "peak" picked from noise
+            # is level with its neighbourhood. Without this check the noise floor of noisy recordings is harvested as high harmonics, which the synth
+            # side replays as stable sinusoids, i.e. noise that the Air/Noise knobs cannot reach. Neighbourhood = side bands outside the main lobe
+            # and inside the adjacent harmonic lobes, adapted to the harmonic spacing.
             spacing = f0_t / bin_hz
             o_lo = max(3, int(0.15 * spacing))
             o_hi = max(o_lo + 2, int(0.45 * spacing))
@@ -266,7 +266,7 @@ def harmonics(
             nb = np.concatenate([col[a:b], col[c:d]])
             floor = float(np.median(nb)) if nb.size else 0.0
             if min_prominence > 0 and col[j] < min_prominence * floor:
-                continue  # 突出度不足 → 视为噪声地板,该帧该谐波不采
+                continue  # insufficient prominence -> treat as noise floor, skip this harmonic in this frame
             amp, true_bin = _parabolic_peak(col, j, coherent_gain)
             H[k, ti] = amp
             measured[k, ti] += true_bin * bin_hz
@@ -285,10 +285,10 @@ def harmonics(
 
 
 def _parabolic_peak(col: np.ndarray, j: int, coherent_gain: float):
-    """对 log 幅度在峰 bin j 处做二次插值，返回 (正弦幅度, 真实 bin 位置)。
+    """Quadratic interpolation of the log magnitude at peak bin j, returns (sinusoidal amplitude, true bin position).
 
-    标准 McAulay-Quatieri / Smith-Serra 峰值插值，校正 Hann 窗扇贝损失。
-    A = 2 * |X_peak| / coherent_gain（librosa.stft 不归一化窗）。
+    Standard McAulay-Quatieri / Smith-Serra peak interpolation, corrects Hann-window scalloping loss.
+    A = 2 * |X_peak| / coherent_gain (librosa.stft does not normalise the window).
     """
     eps = 1e-12
     if j <= 0 or j >= len(col) - 1:
@@ -306,7 +306,7 @@ def _parabolic_peak(col: np.ndarray, j: int, coherent_gain: float):
 
 
 def _resample_f0(f0_arr, f0_times, frame_times, sr, hop):
-    """把 f0 重采样到 STFT 帧中心；NaN 用最近有声值填充。"""
+    """Resample f0 to STFT frame centres; NaN filled with the nearest voiced value."""
     f0_arr = np.asarray(f0_arr, dtype=np.float64)
     frame_times = np.asarray(frame_times, dtype=np.float64)
     if f0_arr.size == 1:
@@ -316,7 +316,7 @@ def _resample_f0(f0_arr, f0_times, frame_times, sr, hop):
     if f0_times is not None:
         src_t = np.asarray(f0_times, dtype=np.float64)
     else:
-        # 假定 f0 帧率与自身长度均匀分布在信号时长上
+        # assume f0 frames are spread uniformly over the signal duration
         total = frame_times[-1] if frame_times.size else (len(filled) - 1)
         src_t = np.linspace(0.0, total, num=len(filled))
     return np.interp(frame_times, src_t, filled)

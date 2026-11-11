@@ -1,7 +1,7 @@
-"""音色分析：音频 -> TimbreSnapshot。
+"""Timbre analysis: audio -> TimbreSnapshot.
 
-把 track_f0 / harmonics / residual 串成一条线，从孤立单音（或自然录音里自动挑出的稳定
-音段）提取 TimbreSnapshot。只在 analysis 侧用 librosa；产物纯数据。
+Chains track_f0 / harmonics / residual into one pipeline that extracts a TimbreSnapshot from an isolated note (or a stable
+segment picked automatically from a natural recording). librosa is used only on the analysis side; the output is pure data.
 """
 
 from __future__ import annotations
@@ -23,10 +23,10 @@ except Exception:  # pragma: no cover
 
 
 def detect_vibrato(f0, times, fmin=4.0, fmax=8.0, min_depth_cents=8.0, prominence=4.0):
-    """从 f0 轨迹检测颤音 -> {"rate_hz","depth_cents"} | None。
+    """Detect vibrato from the f0 track -> {"rate_hz","depth_cents"} | None.
 
-    f0 转 cents 偏差、去趋势、加窗 FFT，在 4-8Hz 找显著峰。先抽周期性颤音，
-    再由调用方判 slide 单调性。
+    Convert f0 to cents deviation, detrend, windowed FFT, look for a significant peak in 4-8Hz. Periodic vibrato is extracted first,
+    then the caller judges slide monotonicity.
     """
     f0 = np.asarray(f0, dtype=np.float64)
     times = np.asarray(times, dtype=np.float64)
@@ -39,8 +39,8 @@ def detect_vibrato(f0, times, fmin=4.0, fmax=8.0, min_depth_cents=8.0, prominenc
     med = np.median(f0[good])
     idx = np.arange(len(f0))
     cents = np.interp(idx, idx[good], 1200.0 * np.log2(f0[good] / med))
-    # 线性去趋势：去掉单调滑音的线性分量，否则 slide 的 cents 斜坡会在低频留能量
-    # 被误判成颤音。颤音是去趋势后仍存的振荡。
+    # linear detrend: remove the linear component of a monotonic slide, otherwise a slide's cents ramp leaves low-frequency energy
+    # that is misjudged as vibrato. Vibrato is the oscillation that remains after detrending.
     coef = np.polyfit(idx, cents, 1)
     cents = cents - (coef[0] * idx + coef[1])
 
@@ -52,7 +52,7 @@ def detect_vibrato(f0, times, fmin=4.0, fmax=8.0, min_depth_cents=8.0, prominenc
     if band.size == 0:
         return None
     pk = band[int(np.argmax(C[band]))]
-    amp_cents = 2.0 * C[pk] / np.sum(w)  # 单边幅度（峰值偏移）
+    amp_cents = 2.0 * C[pk] / np.sum(w)  # one-sided amplitude (peak deviation)
     bg = np.median(C[(freqs > 1.0) & (freqs < 20.0)]) + 1e-9
     if amp_cents < min_depth_cents or C[pk] < prominence * bg:
         return None
@@ -60,19 +60,19 @@ def detect_vibrato(f0, times, fmin=4.0, fmax=8.0, min_depth_cents=8.0, prominenc
 
 
 def _snap_to_hint(f0, hint, max_dev_cents: float = 50.0):
-    """用已知基频 hint 修正 f0 轨迹的八度/谐波倍频错（factor∈{1/3,1/2,1,2,3}）。
+    """Fix octave/harmonic errors in the f0 track using a known f0 hint (factor∈{1/3,1/2,1,2,3}).
 
-    数据集单音自带真值音高时用：低音(贝斯/大号)PESTO 易锁到 2/3 次谐波，整条快照
-    据此建错谐波；按 median(f0)/hint 选最近简单比值整体校正，保留相对轮廓（颤音）。
-    极低音(<40Hz)PESTO 直接失效、误差非简单比值：校正后仍偏离 >max_dev_cents 则退化为
-    hint 常量（保证谐波定位正确，代价是丢颤音；深贝斯本就近乎无颤音）。
+    Used when dataset notes come with a ground-truth pitch: for low instruments (bass/tuba) PESTO easily locks onto the 2nd/3rd harmonic, and the whole
+    snapshot then builds the wrong harmonics; pick the nearest simple ratio from median(f0)/hint and correct globally, keeping the relative contour (vibrato).
+    For very low notes (<40Hz) PESTO fails outright and errors are not simple ratios: if still off by >max_dev_cents after correction, fall back to
+    a constant hint (guarantees correct harmonic placement at the cost of vibrato; deep bass has almost no vibrato anyway).
     """
     f0 = np.asarray(f0, dtype=np.float64).copy()
     if hint <= 0:
         return f0
     good = np.isfinite(f0) & (f0 > 0)
     if good.sum() == 0:
-        return np.full_like(f0, hint)  # 全无有效 f0 -> 常量 hint
+        return np.full_like(f0, hint)  # no valid f0 at all -> constant hint
     med = float(np.median(f0[good]))
     if med > 0:
         cands = np.array([1 / 3, 1 / 2, 1.0, 2.0, 3.0])
@@ -81,19 +81,19 @@ def _snap_to_hint(f0, hint, max_dev_cents: float = 50.0):
             f0[good] = f0[good] / best
     medc = float(np.median(f0[good])) if good.any() else 0.0
     if medc <= 0 or abs(1200.0 * np.log2(max(medc, 1e-6) / hint)) > max_dev_cents:
-        f0[:] = hint  # 极低音兜底：常量真值
+        f0[:] = hint  # very low note fallback: constant ground truth
     return f0
 
 
 def select_stable_window(y, sr, f0, f0_times, min_s=0.30, max_s=2.0, stable_cents=150.0):
-    """从录音里自动挑最适合取色的稳定音高窗口。
+    """Automatically pick the stable pitch window in a recording best suited for timbre capture.
 
-    自然录音(唱一句/哼一段)里音高随旋律/字词移动,取色只需其中一个延长的音
-    (某个持续元音)。找最长的连续「有音高 + 局部音高稳(含 vibrato)+ 有能量」区间,
-    返回其采样范围 (a, b);找不到(纯噪声/快速说话/无持续音)返回 None,交由守门拒收。
+    In a natural recording (singing a line / humming) the pitch moves with the melody/words, and timbre capture only needs one sustained note
+    (some held vowel). Find the longest contiguous region that is "pitched + locally pitch-stable (vibrato allowed) + has energy",
+    return its sample range (a, b); if none is found (pure noise / fast speech / no sustained note) return None and let the gate reject it.
 
-    stable_cents=150:分析端逐帧跟 f0,表达性演唱(vibrato/起伏)仍可分析;
-    收紧到 70 音分会把有性格的段刷掉,只剩死板的哼鸣。
+    stable_cents=150: the analysis side tracks f0 per frame, so expressive singing (vibrato/inflection) can still be analysed;
+    tightening to 70 cents would discard segments with character and leave only rigid humming.
     """
     T = len(f0)
     if T < 4 or len(f0_times) != T:
@@ -104,7 +104,7 @@ def select_stable_window(y, sr, f0, f0_times, min_s=0.30, max_s=2.0, stable_cent
     med = float(np.median(f0[voiced]))
     cents = np.where(voiced, 1200.0 * np.log2(np.where(voiced, f0, med) / med), np.nan)
     dt = float(np.median(np.diff(f0_times))) if T > 1 else 0.01
-    half = max(1, int(0.12 / max(dt, 1e-4)))  # 局部中位窗 ±120ms(容 vibrato)
+    half = max(1, int(0.12 / max(dt, 1e-4)))  # local median window ±120ms (tolerates vibrato)
     win = max(1, int(dt * sr))
     dev = np.full(T, np.inf)
     energy = np.zeros(T)
@@ -121,8 +121,8 @@ def select_stable_window(y, sr, f0, f0_times, min_s=0.30, max_s=2.0, stable_cent
     emax = float(energy.max()) + 1e-12
     good = voiced & (dev < stable_cents) & (energy > 0.15 * emax)
 
-    # 候选段打分 = 时长^0.3 × 能量 × 音色丰富度(高频带占比)。只按"音高最稳"选会
-    # 系统性偏爱最暗、最没个性的闭口哼鸣段;精华在"稳定且有性格"的段里。
+    # candidate score = duration^0.3 × energy × timbral richness (high-band share). Selecting only by "most stable pitch"
+    # systematically favours the darkest, most characterless closed-mouth humming; the good material is in segments that are "stable and have character".
     def _richness(a_i, b_i):
         c = int((f0_times[a_i] + f0_times[b_i]) / 2 * sr)
         seg = np.asarray(y[max(0, c - sr // 2) : c + sr // 2], np.float64)
@@ -154,7 +154,7 @@ def select_stable_window(y, sr, f0, f0_times, min_s=0.30, max_s=2.0, stable_cent
     _, best_a, best_b = max(runs)
     a_s = int(f0_times[best_a] * sr)
     b_s = int(min(len(y), f0_times[best_b] * sr + win))
-    if (b_s - a_s) / sr > max_s:  # 过长 → 取能量峰附近 max_s
+    if (b_s - a_s) / sr > max_s:  # too long -> take max_s around the energy peak
         pk = best_a + int(np.argmax(energy[best_a : best_b + 1]))
         c = int(f0_times[pk] * sr)
         a_s = max(a_s, c - int(max_s * sr / 2))
@@ -175,19 +175,19 @@ def analyze_timbre(
     window: str | None = None,
     cross_check: bool = True,
 ) -> dict:
-    """孤立单音 -> TimbreSnapshot。
+    """Isolated note -> TimbreSnapshot.
 
-    quasi_harmonic=True 用于酒杯/碗：放宽峰值搜索窗并记录实测 partial_freqs。
-    f0_hint：已知真值基频(Hz)，修正低音区 PESTO 的八度/谐波倍频错（数据集语料构建用）。
-    denoise=True(app 捕捉路径用)：噪声包络逐带减去稳态底噪。房间嗡声/嘶声是恒定的
-    (≈每带时间下分位),减掉;呼吸/弓噪随演奏起伏,保留。默认 False:合成测试信号的
-    稳态噪声是有意成分。
+    quasi_harmonic=True is for wine glasses/bowls: widens the peak search window and records the measured partial_freqs.
+    f0_hint: known ground-truth f0 (Hz), fixes PESTO octave/harmonic errors in the low register (used for dataset corpus building).
+    denoise=True (used by the app capture path): subtract the steady noise floor from the noise envelope per band. Room hum/hiss is constant
+    (≈ per-band low percentile over time) and is removed; breath/bow noise varies with playing and is kept. Default False: the steady noise of
+    synthetic test signals is an intended component.
     """
     y = np.asarray(y, dtype=np.float32)
     f0, conf, ftimes = track_f0(y, sr=sr, cross_check=cross_check)
     if f0_hint is not None and f0_hint > 0:
         f0 = _snap_to_hint(f0, float(f0_hint))
-    # 自动选稳定窗(window="auto",app 取色路径):自然录音里挑出可取色的持续音段。
+    # automatic stable-window selection (window="auto", app capture path): pick a sustained segment usable for timbre capture from a natural recording.
     window_found = None
     window_mid_cut = False
     if window == "auto":
@@ -195,10 +195,10 @@ def analyze_timbre(
         window_found = w is not None
         if w is not None:
             a, b = w
-            # 切口在录音中段(非自然起音处)时该段没有真实起音,残差开头只是谐波模型在
-            # 人工切口的失配瞬态;存成起音颗粒会让每键重放一声"咔",此时跳过起音提取。
-            # 拨弦的稳定窗天然始于起音之后(起音期音高不稳),因此回看 0.45s:若存在
-            # 静默→爆发的真实起音,把窗回退含住它,颗粒照常提取(拨弦味的来源)。
+            # when the cut falls mid-recording (not at a natural attack) the segment has no real attack, and the start of the residual is only the harmonic model's
+            # mismatch transient at the artificial cut; storing it as an attack grain would replay a "click" on every key, so attack extraction is skipped here.
+            # A plucked note's stable window naturally starts after the attack (pitch is unstable during the attack), so look back 0.45s: if there is
+            # a real silence->burst attack, move the window back to include it and extract the grain as usual (the source of the plucked character).
             window_mid_cut = a > int(0.12 * sr)
             if window_mid_cut:
                 lb = np.asarray(y[max(0, a - int(0.45 * sr)) : a], np.float64)
@@ -210,15 +210,15 @@ def analyze_timbre(
                     head_rms = float(np.sqrt((head**2).mean())) + 1e-12
                     if rq.size and float(rq.min()) < 0.15 * head_rms:
                         onset_i = (a - nq * hopq) + int(np.argmin(rq)) * hopq
-                        a = max(0, onset_i)  # 回退到静默点,含住真实起音
+                        a = max(0, onset_i)  # move back to the silence point, including the real attack
                         window_mid_cut = False
             fm = (ftimes >= a / sr) & (ftimes < b / sr)
             if int(fm.sum()) >= 4:
                 y = np.ascontiguousarray(y[a:b])
                 f0, conf, ftimes = f0[fm], conf[fm], ftimes[fm] - a / sr
     f0_ref = f0_scalar(f0)
-    # 乐音守门指标(选窗后计算,唱旋律/句子里的稳定音段 cv 会降到乐音水平)。
-    # 分离度:乐音 cv≤0.008;白噪 0.44 / 伪语音 0.39 / 复音和弦 0.21。
+    # musical-tone gate metric (computed after window selection; the cv of stable segments in sung melodies/sentences drops to musical-tone levels).
+    # separation: musical tone cv≤0.008; white noise 0.44 / pseudo speech 0.39 / polyphonic chord 0.21.
     _good = np.isfinite(f0) & (f0 > 0)
     voiced_ratio = float(_good.mean()) if f0.size else 0.0
     f0_cv = float(np.std(f0[_good]) / np.mean(f0[_good])) if _good.sum() > 3 else 9.9
@@ -244,12 +244,12 @@ def analyze_timbre(
         sr=sr,
         n_mels=n_mels,
         f0_ref=f0_ref,
-        # 基频 0.6 倍以下的隆隆声不是音色
+        # rumble below 0.6× f0 is not timbre
         hp_hz=min(500.0, max(60.0, 0.6 * float(f0_ref))),
     )
     if denoise and N_env.ndim == 2 and N_env.shape[1] >= 8:
-        floor = np.percentile(N_env, 20, axis=1, keepdims=True)  # 每带稳态底噪(时间下分位)
-        N_env = np.sqrt(np.maximum(N_env**2 - (1.1 * floor) ** 2, 0.0))  # 功率域谱减
+        floor = np.percentile(N_env, 20, axis=1, keepdims=True)  # per-band steady noise floor (low percentile over time)
+        N_env = np.sqrt(np.maximum(N_env**2 - (1.1 * floor) ** 2, 0.0))  # spectral subtraction in the power domain
     attack = np.zeros(0, dtype=np.float32) if window_mid_cut else attack_residual(res, sr=sr)
     vibrato = detect_vibrato(f0, ftimes)
 
