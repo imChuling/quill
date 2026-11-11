@@ -1,4 +1,4 @@
-"""synth/voice.py 单测 —— ADSR 状态机、glide 插值、共振峰保持、渲染正确性。"""
+"""synth/voice.py unit tests: ADSR state machine, glide interpolation, formant preservation, render correctness."""
 
 import numpy as np
 import pytest
@@ -35,7 +35,7 @@ def _disable_humanize():
     set_liveness(0.85, 0.0, 0.8)
 
 
-# ===== ADSR 状态机 =====
+# ===== ADSR state machine =====
 
 
 class TestADSR:
@@ -97,7 +97,7 @@ class TestADSR:
         assert pytest.approx(10 ** (-120 / 20.0)) == _SILENCE
 
 
-# ===== glide 插值 =====
+# ===== glide interpolation =====
 
 
 class TestGlide:
@@ -136,7 +136,7 @@ class TestGlide:
         assert early < late
 
 
-# ===== 共振峰保持 =====
+# ===== formant preservation =====
 
 
 class TestFormantPreservation:
@@ -250,7 +250,7 @@ class TestVibrato:
         assert v._vib_age == 5000
 
 
-# ===== render_into 集成 =====
+# ===== render_into integration =====
 
 
 class TestRenderInto:
@@ -313,7 +313,7 @@ class TestRenderInto:
         assert np.max(diffs) < 1.0
 
 
-# ===== glide_to 演奏法 =====
+# ===== glide_to articulation =====
 
 
 class TestGlideTo:
@@ -338,11 +338,11 @@ class TestGlideTo:
         assert v._gain_to is not None
 
 
-# ===== D2: ADSR 采样级精确时刻 =====
+# ===== D2: sample-accurate ADSR transition times =====
 
 
 class TestADSRSamplePrecision:
-    """D2: 四段转换时刻与电平精确到采样级。"""
+    """D2: the four stage-transition times and levels are exact to the sample."""
 
     def test_attack_exact_sample_count(self):
         v = Voice(K, SR)
@@ -389,7 +389,7 @@ class TestADSRSamplePrecision:
 
 
 class TestStealTiming:
-    """D2: 偷音在 steal_ms 内衰减到 0。"""
+    """D2: voice stealing decays to 0 within steal_ms."""
 
     def test_steal_3ms(self):
         v = Voice(K, SR)
@@ -412,11 +412,11 @@ class TestStealTiming:
         assert v.stage == _DONE
 
 
-# ===== D2: glide 精确 log 域 =====
+# ===== D2: exact glide in the log domain =====
 
 
 class TestGlidePrecision:
-    """D2: glide log 域曲线端点与中点精确。"""
+    """D2: end points and midpoint of the log-domain glide curve are exact."""
 
     def test_glide_geometric_midpoint(self):
         v = Voice(K, SR)
@@ -448,11 +448,11 @@ class TestGlidePrecision:
         assert v._glide_f0(1000) == pytest.approx(880.0)
 
 
-# ===== D2: legato/slide 相位连续性 =====
+# ===== D2: legato/slide phase continuity =====
 
 
 class TestLegatoPhaseContinuity:
-    """D2: legato/slide 不重置相位。"""
+    """D2: legato/slide do not reset the phase."""
 
     def test_legato_preserves_phase(self):
         v = Voice(K, SR)
@@ -485,11 +485,11 @@ class TestLegatoPhaseContinuity:
         assert v.env == pytest.approx(env_before)
 
 
-# ===== D2: gain_k 沿 glide 无跳变 =====
+# ===== D2: gain_k without jumps along the glide =====
 
 
 class TestGainCrossfade:
-    """D2: gain_k 沿 glide 渐变无跳变。"""
+    """D2: gain_k interpolates along the glide without jumps."""
 
     def test_gain_transitions_smoothly(self):
         v = Voice(K, SR)

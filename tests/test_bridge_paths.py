@@ -1,4 +1,4 @@
-"""音色 / 行为库名字不能逃出各自目录:load_tone / delete_tone / rename_tone / delete_style。"""
+"""Timbre / behaviour library names must not escape their directories: load_tone / delete_tone / rename_tone / delete_style."""
 
 import sys
 from pathlib import Path

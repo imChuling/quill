@@ -1,13 +1,13 @@
-"""延迟回归门:16 复音满载 process_block 的计算耗时(@256/44.1k,块预算 5.8 ms)。
+"""Latency regression gate: compute time of process_block at 16-voice full load (@256/44.1k, block budget 5.8 ms).
 
-两条断言,各管一件事:
-  * 中位数 < 3.0 ms:抓代码变慢。中位数对系统负载不敏感,安静机器实测 ~2.65 ms
-    (2026-10-29,M2),半年前 1.68 ms。
-  * p95 < 5.8 ms(块预算):抓 xrun 风险。p95 受操作系统调度抖动影响大,
-    高负载下会从 2.7 ms 飘到 13 ms,所以只按预算兜底,不卡更紧。
-三次独立测量各取中位,降低单次抖动。
+Two assertions, each covering one thing:
+  * median < 3.0 ms: catches code slowdowns. The median is insensitive to system load; measured ~2.65 ms on a quiet machine
+    (2026-10-29, M2), 1.68 ms half a year earlier.
+  * p95 < 5.8 ms (block budget): catches xrun risk. p95 is strongly affected by OS scheduling jitter,
+    and under heavy load drifts from 2.7 ms to 13 ms, so it only guards the budget and is not held tighter.
+Three independent measurements, the median of each, reduce single-run jitter.
 
-标记 slow,CI 不跑(云端无声卡、机器性能不代表本机);本地 `pytest tests/test_latency.py`。
+Marked slow, not run in CI (no sound card in the cloud, and machine performance is not representative of this machine); locally `pytest tests/test_latency.py`.
 """
 
 import statistics
@@ -22,8 +22,8 @@ from tests.helpers import make_test_snapshot
 pytestmark = pytest.mark.slow
 
 BLOCK_BUDGET_MS = 256 / 44100 * 1000  # 5.80 ms
-MEDIAN_GATE_MS = 3.0  # 代码退化门:安静机器实测 ~2.65 ms,留 13% 余量
-P95_GATE_MS = BLOCK_BUDGET_MS  # xrun 门:p95 不得超过一个块的预算
+MEDIAN_GATE_MS = 3.0  # code regression gate: ~2.65 ms measured on a quiet machine, 13% headroom
+P95_GATE_MS = BLOCK_BUDGET_MS  # xrun gate: p95 must not exceed one block's budget
 
 
 def _measure(n_runs=3, n_blocks=200):

@@ -1,5 +1,5 @@
-"""桌面桥 10.14 新路径回归:旋钮全部接引擎、strum 错峰、自动噪声底、烘焙守门、
-实时行为模式(需要 checkpoint 的用例在缺失时跳过)。QuillBridge() 不开流,安全。"""
+"""Regression for the desktop bridge's 10.14 new paths: all knobs wired to the engine, strum staggering, automatic noise floor, bake guard,
+real-time behaviour mode (cases needing a checkpoint are skipped when it is missing). QuillBridge() opens no stream, so it is safe."""
 
 import queue
 import sys
@@ -36,7 +36,7 @@ def _drain(b):
             return out
 
 
-# ---------- 旋钮:每个都必须真的作用于引擎 ---------- #
+# ---------- Knobs: every one must really act on the engine ---------- #
 def test_knobs_reach_engine(b):
     eng = b.engine
     b.set_param("master", 0.5)
@@ -100,18 +100,18 @@ def test_bake_guards(b, tmp_path, monkeypatch):
     assert b._bake_auto_base() in ("violin", "trumpet", "guitar", "glass")
 
 
-# ---------- 实时行为模式 ---------- #
+# ---------- Real-time behaviour mode ---------- #
 @needs_ckpt
 def test_live_behavior_control_stream(b):
     r = b.set_live_behavior("nope", wait=True)
     assert not r["ok"] and b.live_behavior_status()["name"] is None
     r = b.set_live_behavior("violin", wait=True)
     assert r["ok"] and r["ready"] and b._live_behavior == "violin"
-    # 实时检索对象是离线那份的零拷贝副本:共享数组,各自 last_idx
+    # the real-time retrieval object is a zero-copy clone of the offline one: shared arrays, separate last_idx
     live_nn = b._live_src[0]
     offline_nn = b._neural().voice("violin").nn
     assert live_nn is not offline_nn and live_nn.trajectories is offline_nn.trajectories
-    # vibrato 标签:旋钮或 CC1 的最近深度 >0.15
+    # vibrato label: latest depth of the knob or CC1 >0.15
     b.set_param("vibdepth", 0.3)
     assert b._live_art_label("pluck", -1) == 1
     b.vibrato(0.0)
@@ -123,7 +123,7 @@ def test_live_behavior_control_stream(b):
     assert fps == 250.0 and len(f0) == len(amp) == int(max(0.8, b._live_dur) * 250)
     assert amp.max() == pytest.approx(1.0) and amp.min() > 0.0
     nom = 440.0 * 2 ** ((62 - 69) / 12)
-    assert abs(1200 * np.log2(f0[-1] / nom)) < 1.0  # 末帧收回标称值
+    assert abs(1200 * np.log2(f0[-1] / nom)) < 1.0  # last frame back at nominal
     assert np.abs(1200 * np.log2(f0 / nom)).max() < 60.0
     f0s, amps, _ = b._live_ctl(64, 100, "legato", 62)
     assert len(f0s) == len(f0)
@@ -138,7 +138,7 @@ def test_live_behavior_event_kinds(b):
     assert b.note_on(62, 100, "auto") == "pluck"
     kinds = [e.kind for e in _drain(b)]
     assert kinds == ["ctl"]
-    time.sleep(0.1)  # 避开 strum 窗口
+    time.sleep(0.1)  # stay clear of the strum window
     assert b.note_on(64, 100, "auto") == "legato"
     ev = _drain(b)
     assert [e.kind for e in ev] == ["ctl_legato"] and ev[0].note2 == 62
@@ -155,7 +155,7 @@ def test_live_behavior_event_kinds(b):
 
 @needs_ckpt
 def test_live_phrase_renders_without_bursts(b):
-    """同一事件流离线复现:换音与松键处无高频突发(10.14 两轮耳测修的两个 bug)。"""
+    """Offline reproduction of the same event stream: no high-frequency bursts at note changes and key release (the two bugs fixed in two rounds of 10.14 ear tests)."""
     b.set_live_behavior("violin", wait=True)
     b._held, b._onsets = [], []
     _drain(b)
@@ -188,14 +188,14 @@ def test_live_phrase_renders_without_bursts(b):
             hr.append(S[f > 4000].sum() / S.sum())
     hr = np.array(hr)
     assert hr.max() / np.median(hr) < 6.0
-    assert np.sqrt(np.mean(y[int(1.9 * sr) :] ** 2)) < 1e-3  # 释放走完真静音
+    assert np.sqrt(np.mean(y[int(1.9 * sr) :] ** 2)) < 1e-3  # true silence once release finishes
     b.set_live_behavior(None)
     b._held, b._onsets = [], []
 
 
 @needs_ckpt
 def test_rapid_behavior_switch_no_crash(b):
-    """压力测试:预热中连续切换行为库 20 次,不崩不挂。"""
+    """Stress test: switch behaviour libraries 20 times in a row during warm-up, without crashing or hanging."""
     for i in range(20):
         name = "violin" if i % 2 == 0 else "trumpet"
         b.set_live_behavior(name, wait=False)

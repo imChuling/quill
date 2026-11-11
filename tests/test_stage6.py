@@ -1,4 +1,4 @@
-"""阶段6 单测：手势解释器（pluck/legato/slide/strum/vibrato）+ glide 渲染。"""
+"""Stage 6 unit tests: gesture interpreter (pluck/legato/slide/strum/vibrato) + glide rendering."""
 
 import numpy as np
 
@@ -31,7 +31,7 @@ def _kinds(cooked):
 
 
 # --------------------------------------------------------------------------- #
-# 手势决策
+# gesture decisions
 # --------------------------------------------------------------------------- #
 def test_single_note_is_pluck():
     gi = GestureInterpreter()
@@ -43,7 +43,7 @@ def test_close_interval_is_legato():
     gi = GestureInterpreter()
     raw = [
         (0.1, "on", 60, 100),
-        (0.3, "on", 62, 90),  # 间隔2半音 -> legato
+        (0.3, "on", 62, 90),  # interval 2 semitones -> legato
         (0.6, "off", 62, 0),
         (0.6, "off", 60, 0),
     ]
@@ -56,7 +56,7 @@ def test_far_interval_is_slide():
     gi = GestureInterpreter()
     raw = [
         (0.1, "on", 60, 100),
-        (0.3, "on", 67, 90),  # 间隔7半音 -> slide
+        (0.3, "on", 67, 90),  # interval 7 semitones -> slide
         (0.6, "off", 67, 0),
         (0.6, "off", 60, 0),
     ]
@@ -77,15 +77,15 @@ def test_chord_burst_is_strum():
     ]
     cooked = gi.process(raw)
     ons = [c for c in cooked if c[1] == "on"]
-    assert len(ons) == 3, "和弦突发应展开为 3 个错峰起音"
-    # 错峰：起音时间各不相同
+    assert len(ons) == 3, "a chord burst should expand into 3 staggered attacks"
+    # staggered: the attack times all differ
     ts = sorted(c[0] for c in ons)
-    assert ts[1] > ts[0] and ts[2] > ts[1], "strum 应有弦序时差"
+    assert ts[1] > ts[0] and ts[2] > ts[1], "strum should have string-order offsets"
 
 
 def test_two_notes_not_strum():
     gi = GestureInterpreter()
-    raw = [(1.0, "on", 48, 100), (1.02, "on", 55, 100)]  # 只 2 音 -> 非 strum
+    raw = [(1.0, "on", 48, 100), (1.02, "on", 55, 100)]  # only 2 notes -> not a strum
     cooked = gi.process(raw)
     assert "slide" in _kinds(cooked) or "legato" in _kinds(cooked)
     assert _kinds(cooked).count("on") == 1
@@ -97,11 +97,11 @@ def test_velocity_affects_slide_speed():
     hard = gi.process([(0.0, "on", 60, 120), (0.2, "on", 67, 120)])
     ds = next(c[4] for c in soft if c[1] == "slide")
     dh = next(c[4] for c in hard if c[1] == "slide")
-    assert dh < ds, "力度大滑得快（时长短）"
+    assert dh < ds, "higher velocity slides faster (shorter duration)"
 
 
 # --------------------------------------------------------------------------- #
-# 渲染：glide / vibrato 真实发生
+# rendering: glide / vibrato really happen
 # --------------------------------------------------------------------------- #
 def test_slide_renders_f0_glide():
     gi = GestureInterpreter()
@@ -111,8 +111,8 @@ def test_slide_renders_f0_glide():
     y = eng.render_offline(cooked, 1.4)
     f_before = _dom(y[int(0.25 * SR) : int(0.45 * SR)])
     f_after = _dom(y[int(0.9 * SR) : int(1.1 * SR)])
-    assert abs(f_before - 261.6) < 8, f"滑前应 ~262Hz，实 {f_before:.0f}"
-    assert abs(f_after - 523.3) < 12, f"滑后应 ~523Hz(note72)，实 {f_after:.0f}"
+    assert abs(f_before - 261.6) < 8, f"before the slide should be ~262Hz, got {f_before:.0f}"
+    assert abs(f_after - 523.3) < 12, f"after the slide should be ~523Hz (note72), got {f_after:.0f}"
 
 
 def test_cc_renders_vibrato():
@@ -125,7 +125,7 @@ def test_cc_renders_vibrato():
     y = eng.render_offline(cooked, 2.2)
     f0, _, _ = track_f0(y[int(0.5 * SR) : int(1.8 * SR)])
     m = np.isfinite(f0) & (f0 > 0)
-    assert np.std(f0[m]) > 2.0, f"CC1 应触发颤音(f0 std>2Hz)，实 {np.std(f0[m]):.2f}"
+    assert np.std(f0[m]) > 2.0, f"CC1 should trigger vibrato (f0 std>2Hz), got {np.std(f0[m]):.2f}"
 
 
 def test_full_phrase_renders_clean():
@@ -150,10 +150,10 @@ def test_full_phrase_renders_clean():
 
 
 # --------------------------------------------------------------------------- #
-# 库 slide 曲线
+# library slide curve
 # --------------------------------------------------------------------------- #
 def test_fr9_recombination_decoupled():
-    """FR-9：同演奏法库 + 两个不同音色 -> 弹法(f0轨迹)相同、音色(谐波结构)不同。"""
+    """FR-9: same articulation library + two different timbres -> same technique (f0 track), different timbre (harmonic structure)."""
     lib = {
         "slide": [
             {
@@ -168,7 +168,7 @@ def test_fr9_recombination_decoupled():
         "meta": {},
     }
     K = 8
-    # 两把音色：基频都强（FFT 峰=基频），但谐波滚降不同
+    # two timbres: both have a strong fundamental (FFT peak = f0), but different harmonic rolloff
     Hx = np.array([1, 0.5, 0.3, 0.2, 0.12, 0.08, 0.05, 0.03])
     Hy = np.array([1, 0.85, 0.7, 0.55, 0.4, 0.3, 0.2, 0.12])
     instX = Instrument(
@@ -187,13 +187,13 @@ def test_fr9_recombination_decoupled():
 
     yx, yy = _render(instX), _render(instY)
 
-    # 弹法解耦：两音色滑音 f0 终点一致（都 ~523Hz = note67）
+    # technique decoupling: the slide f0 end point is the same for both timbres (both ~523Hz = note67)
     fx = _dom(yx[int(0.9 * SR) : int(1.1 * SR)])
     fy = _dom(yy[int(0.9 * SR) : int(1.1 * SR)])
-    assert abs(fx - fy) < 6, f"同演奏法不同音色应共享 f0 轨迹：{fx:.0f} vs {fy:.0f}"
-    assert abs(fx - 392.0) < 12, f"滑到 note67(~392Hz=G4)，实 {fx:.0f}"
+    assert abs(fx - fy) < 6, f"same articulation, different timbres should share the f0 track: {fx:.0f} vs {fy:.0f}"
+    assert abs(fx - 392.0) < 12, f"slide to note67 (~392Hz=G4), got {fx:.0f}"
 
-    # 音色不同：稳态谐波2/谐波1 能量比不同
+    # different timbres: different steady harmonic 2/harmonic 1 energy ratio
     def _h2h1(y):
         seg = y[int(0.25 * SR) : int(0.45 * SR)]
         S = np.abs(np.fft.rfft(seg * np.hanning(len(seg))))
@@ -202,13 +202,13 @@ def test_fr9_recombination_decoupled():
         b2 = S[(f > 500) & (f < 545)].max()
         return b2 / (b1 + 1e-9)
 
-    assert _h2h1(yx) != _h2h1(yy), "不同音色谐波结构应不同"
+    assert _h2h1(yx) != _h2h1(yy), "different timbres should have different harmonic structures"
 
 
 def test_sustain_pedal_defers_release():
-    """CC64 延音踏板：踏板按下时 note-off 延音，抬起才释放。"""
+    """CC64 sustain pedal: note-off is sustained while the pedal is down, released only when it comes up."""
     eng = Engine(_inst(), eval_mode=True)
-    # on@0.1, pedal down@0.3, off@0.5(延音), pedal up@1.2
+    # on@0.1, pedal down@0.3, off@0.5 (sustained), pedal up@1.2
     y = eng.render_offline(
         [
             (0.1, "on", 60, 100, 0.0),
@@ -222,12 +222,12 @@ def test_sustain_pedal_defers_release():
     def rms(t0, t1):
         return float(np.sqrt(np.mean(y[int(t0 * SR) : int(t1 * SR)] ** 2)))
 
-    assert rms(0.7, 0.9) > 0.05, "踏板按下时 off 后仍应发声"
-    assert rms(1.5, 1.7) < 0.02, "踏板抬起后应释放"
+    assert rms(0.7, 0.9) > 0.05, "should still sound after off while the pedal is down"
+    assert rms(1.5, 1.7) < 0.02, "should release after the pedal comes up"
 
 
 def test_vibrato_rate_from_snapshot():
-    """CC1 颤音速率取自源片段实测值（snapshot.vibrato.rate_hz）。"""
+    """CC1 vibrato rate taken from the source clip measurement (snapshot.vibrato.rate_hz)."""
     from snapshot import make_snapshot
     from synth.instrument import build_instrument
 
@@ -253,10 +253,10 @@ def test_canonical_slide_curve_monotonic():
             {
                 "interval_st": 17.0,
                 "curve_ctrl": np.array([0, 1, 0, 1, 0, 1, 0, 1.0]),
-            },  # 噪声大音程，应被滤
+            },  # large noisy interval, should be filtered
         ]
     }
     g = canonical_slide_curve(lib)
     assert g is not None
-    assert np.all(np.diff(g) >= -1e-9), "规范 slide 曲线应单调"
+    assert np.all(np.diff(g) >= -1e-9), "the canonical slide curve should be monotonic"
     assert abs(g[0]) < 1e-6 and abs(g[-1] - 1.0) < 1e-6

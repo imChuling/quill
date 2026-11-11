@@ -1,7 +1,7 @@
-"""C3 验收测试：behavior_player 与 control_from_behavior 逐帧一致。
+"""C3 acceptance test: behavior_player and control_from_behavior agree frame by frame.
 
-同一个库、同一条乐谱（含 plain / vibrato / slide），两边产出的
-f0_hz、loudness_z、bright、noise 最大偏差 < 0.01 cent / 0.001。
+With the same library and the same score (including plain / vibrato / slide), the maximum deviation of
+f0_hz, loudness_z, bright and noise between the two is < 0.01 cent / 0.001.
 """
 
 import sys

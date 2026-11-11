@@ -1,4 +1,4 @@
-"""synth/oscillator.py 单测 —— voice_block_add 加法合成内核正确性。"""
+"""synth/oscillator.py unit tests: correctness of the voice_block_add additive synthesis kernel."""
 
 import math
 
@@ -196,7 +196,7 @@ class TestGainInterpolation:
 
 
 class TestPhaseAccumulationPrecision:
-    """D1: 恒频 1s 后相位累计误差 < 1e-6 弧度。"""
+    """D1: accumulated phase error < 1e-6 rad after 1s at constant frequency."""
 
     def test_1s_phase_error_fundamental(self):
         K = 1
@@ -240,7 +240,7 @@ class TestPhaseAccumulationPrecision:
 
 
 class TestVariableFrequencyPrecision:
-    """D1: 变频块内线性斜坡瞬时频率与期望一致。"""
+    """D1: instantaneous frequency of the linear ramp within a variable-frequency block matches expectation."""
 
     def test_linear_ramp_instantaneous_freq(self):
         K = 1
@@ -285,7 +285,7 @@ class TestVariableFrequencyPrecision:
 
 
 class TestNyquistRampPrecision:
-    """D1: Nyquist 淡出精确衰减量。"""
+    """D1: exact attenuation of the Nyquist fade-out."""
 
     def test_ramp_factor_matches_formula(self):
         f0 = NYQ - RAMP_HZ * 0.5

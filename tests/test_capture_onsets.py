@@ -1,4 +1,4 @@
-"""取色结果里的 n_onsets:合成三音乐句 → ≈3;单音 → ≤1;太短 → 0。驱动取色页的"行为库需要 2+ 音"提示。"""
+"""n_onsets in the capture result: synthetic three-note phrase -> ≈3; single note -> ≤1; too short -> 0. Drives the "behaviour library needs 2+ notes" hint on the capture page."""
 
 import sys
 from pathlib import Path

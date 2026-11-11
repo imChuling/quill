@@ -1,5 +1,5 @@
-"""云端渲染服务契约快测(10.15 回归账):/status 能力字段、内置行为库互换、
-captured tone × behavior、拒收未知音色/行为。TestClient 内存跑,目录指向 tmp。"""
+"""Fast contract tests for the cloud render service (10.15 regression): /status capability fields, swapping built-in behaviour libraries,
+captured tone × behavior, rejecting unknown timbres/behaviours. TestClient runs in memory, directories point to tmp."""
 
 import importlib
 import sys
@@ -34,7 +34,7 @@ def client(tmp_path_factory):
     import ui.render_service as rs
 
     rs = importlib.reload(rs)
-    # 放一个 captured tone 进资产目录
+    # put a captured tone into the asset directory
     from snapshot import save_snapshot
     from tests.helpers import make_test_snapshot
 
@@ -65,8 +65,8 @@ def test_builtin_cross_behavior_renders(client):
 
 
 def test_tone_with_and_without_behavior(client):
-    r1 = _render(client, timbre="tone:t1", behavior="violin")  # L0 控制驱动
-    r2 = _render(client, timbre="tone:t1")  # 旧事件路径
+    r1 = _render(client, timbre="tone:t1", behavior="violin")  # L0 control-driven
+    r2 = _render(client, timbre="tone:t1")  # old event path
     assert r1.status_code == 200 and r2.status_code == 200
     assert r1.json()["take_id"] != r2.json()["take_id"]
 
@@ -81,7 +81,7 @@ def test_synth_params_change_take_identity(client):
     a = _render(client, timbre="violin", synth_params={"vibmodel": 0}).json()["take_id"]
     b = _render(client, timbre="violin", synth_params={"vibmodel": 1, "randomness": 0.5}).json()["take_id"]
     assert a != b
-    # 同参数再渲染:幂等命中
+    # render again with the same parameters: idempotent hit
     assert _render(client, timbre="violin", synth_params={"vibmodel": 0}).json()["take_id"] == a
 
 

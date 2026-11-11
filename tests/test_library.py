@@ -1,4 +1,4 @@
-"""冲刺新代码回归：f0 兜底修正 + 语料 build/retrieve + flatten/reconstruct 表示。"""
+"""Regression for new sprint code: f0 fallback correction + corpus build/retrieve + flatten/reconstruct representation."""
 
 import numpy as np
 import pytest
@@ -12,16 +12,16 @@ from synth.render import render
 SR = 44100
 
 
-# ---- f0 hint 修正（审核 #2）----
+# ---- f0 hint correction (review #2) ----
 def test_snap_harmonic_error():
     hint = 46.0
-    out = _snap_to_hint(np.full(50, 3 * hint), hint)  # 锁 3 次谐波
+    out = _snap_to_hint(np.full(50, 3 * hint), hint)  # locked to the 3rd harmonic
     assert abs(np.median(out) - hint) < hint * 0.03
 
 
 def test_snap_subharmonic():
     hint = 200.0
-    out = _snap_to_hint(np.full(50, hint / 2), hint)  # 锁 1/2 次
+    out = _snap_to_hint(np.full(50, hint / 2), hint)  # locked to 1/2
     assert abs(np.median(out) - hint) < hint * 0.03
 
 
@@ -32,7 +32,7 @@ def test_snap_keeps_correct():
 
 
 def test_snap_deepbass_fallback():
-    """极低音：抖动大、非简单比值 -> 退化常量 hint。"""
+    """Very low note: large jitter, not a simple ratio -> falls back to the constant hint."""
     hint = 20.0
     rng = np.random.default_rng(0)
     f0 = 40 + rng.standard_normal(50) * 18
@@ -45,12 +45,12 @@ def test_snap_all_invalid():
     assert np.allclose(out, 100.0)
 
 
-# ---- flatten / reconstruct 表示（审核 #1）----
+# ---- flatten / reconstruct representation (review #1) ----
 def _synthetic_snapshot(f0=200.0, T=24, formant_hz=700.0):
     K, M = 60, 40
     k = np.arange(1, K + 1)
     steady = np.exp(-(((k * f0 - formant_hz) / 500) ** 2)) + 0.05
-    H = np.outer(steady, np.linspace(0.2, 1.0, T)).astype(np.float32)  # 时间涌动
+    H = np.outer(steady, np.linspace(0.2, 1.0, T)).astype(np.float32)  # swelling over time
     N = (0.01 * np.ones((M, T))).astype(np.float32)
     _, centers = mel_filterbank(SR, _NOISE_NFFT, M)
     return make_snapshot(f0, H, N, np.zeros(2646, np.float32), noise_centers_hz=centers, sr=SR)
@@ -68,12 +68,12 @@ def test_reconstruct_self_identity():
 
 def test_reconstruct_takes_target_spectrum():
     A = _synthetic_snapshot(formant_hz=700.0)
-    B = _synthetic_snapshot(formant_hz=1800.0)  # 不同谱形
-    r = reconstruct_snapshot(_flatten_snapshot(A), B)  # A 谱 × B 动态
+    B = _synthetic_snapshot(formant_hz=1800.0)  # different spectral shape
+    r = reconstruct_snapshot(_flatten_snapshot(A), B)  # A spectrum × B dynamics
     rec = np.log(np.maximum(np.asarray(r["H_env"]).mean(1), 1e-6))[:60]
     tgt = np.log(np.maximum(np.asarray(A["H_env"]).mean(1), 1e-6))[:60]
-    assert np.allclose(rec, tgt, atol=0.1)  # 稳态截面取自 A
-    assert np.asarray(r["H_env"]).shape == np.asarray(B["H_env"]).shape  # 动态来自 B
+    assert np.allclose(rec, tgt, atol=0.1)  # steady cross-section taken from A
+    assert np.asarray(r["H_env"]).shape == np.asarray(B["H_env"]).shape  # dynamics from B
 
 
 def test_reconstruct_renders():
@@ -83,7 +83,7 @@ def test_reconstruct_renders():
     assert np.isfinite(y).all() and np.max(np.abs(y)) > 1e-4
 
 
-# ---- 语料 build -> retrieve（审核 #4）----
+# ---- corpus build -> retrieve (review #4) ----
 def _tone(midi, sr=SR, dur=0.6):
     f0 = 440 * 2 ** ((midi - 69) / 12)
     t = np.arange(int(sr * dur)) / sr

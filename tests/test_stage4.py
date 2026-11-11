@@ -1,4 +1,4 @@
-"""阶段4 单测：FR-1 截断 / events.json / 幽灵八度过滤 / 召回 / 特征。"""
+"""Stage 4 unit tests: FR-1 truncation / events.json / ghost-octave filtering / recall / features."""
 
 from pathlib import Path
 
@@ -20,7 +20,7 @@ SR = 44100
 
 
 # --------------------------------------------------------------------------- #
-# FR-1：导入 60s 截断
+# FR-1: 60s truncation on import
 # --------------------------------------------------------------------------- #
 def test_fr1_load_length_cap(tmp_path):
     from analysis.io import load
@@ -30,13 +30,13 @@ def test_fr1_load_length_cap(tmp_path):
     sf.write(p, y, SR)
     y2, sr2 = load(str(p), max_seconds=1.0)
     assert sr2 == SR
-    assert abs(len(y2) - SR) < SR * 0.05, f"应截到 ~1s，实得 {len(y2) / SR:.2f}s"
-    # 峰值归一化生效
+    assert abs(len(y2) - SR) < SR * 0.05, f"should be truncated to ~1s, got {len(y2) / SR:.2f}s"
+    # peak normalisation takes effect
     assert abs(np.max(np.abs(y2)) - 0.97) < 0.02
 
 
 # --------------------------------------------------------------------------- #
-# events.json 序列化（Part B 契约 schema）
+# events.json serialisation (Part B contract schema)
 # --------------------------------------------------------------------------- #
 def test_events_json_roundtrip(tmp_path):
     events = [
@@ -64,24 +64,24 @@ def test_events_json_roundtrip(tmp_path):
     loaded = load_events(p)
     assert len(loaded) == 1
     for k in _PUBLIC_KEYS:
-        assert k in loaded[0], f"缺字段 {k}"
-    assert "_agree" not in loaded[0], "内部诊断字段不应写入 events.json"
+        assert k in loaded[0], f"missing field {k}"
+    assert "_agree" not in loaded[0], "internal diagnostic fields should not be written to events.json"
     assert loaded[0]["pitch_midi"] == 60.0
     assert loaded[0]["features"]["polyphony"] == 1
 
 
 # --------------------------------------------------------------------------- #
-# 幽灵八度过滤（坑位）
+# ghost-octave filtering (pitfall)
 # --------------------------------------------------------------------------- #
 def test_ghost_octave_filter_high_and_low():
-    # PESTO f0 恒为 440Hz（midi 69 = A4）
+    # PESTO f0 constant at 440Hz (midi 69 = A4)
     f0 = np.full(200, 440.0)
     ftimes = np.linspace(0, 2.0, 200)
     events = [
-        {"t_on": 0.1, "t_off": 0.5, "pitch_midi": 69.0, "amp": 0.8},  # 真音
-        {"t_on": 0.1, "t_off": 0.5, "pitch_midi": 81.0, "amp": 0.3},  # 高八度幽灵
-        {"t_on": 0.1, "t_off": 0.5, "pitch_midi": 57.0, "amp": 0.3},  # 低八度幽灵
-        {"t_on": 0.1, "t_off": 0.5, "pitch_midi": 69.0, "amp": 0.05},  # 弱事件
+        {"t_on": 0.1, "t_off": 0.5, "pitch_midi": 69.0, "amp": 0.8},  # real note
+        {"t_on": 0.1, "t_off": 0.5, "pitch_midi": 81.0, "amp": 0.3},  # upper-octave ghost
+        {"t_on": 0.1, "t_off": 0.5, "pitch_midi": 57.0, "amp": 0.3},  # lower-octave ghost
+        {"t_on": 0.1, "t_off": 0.5, "pitch_midi": 69.0, "amp": 0.05},  # weak event
     ]
     kept, dropped = ghost_octave_filter(events, f0, ftimes, amp_thresh=0.1)
     kept_pitches = [e["pitch_midi"] for e in kept]
@@ -100,7 +100,7 @@ def test_union_marks_agreement():
 
 
 # --------------------------------------------------------------------------- #
-# 特征健全性
+# feature sanity
 # --------------------------------------------------------------------------- #
 def test_polyphony_counts_overlap():
     evs = [
@@ -121,7 +121,7 @@ def test_hnr_harmonic_vs_noise():
 
 
 # --------------------------------------------------------------------------- #
-# 召回闭环（用引擎渲染已知曲 -> 分析 -> 召回 ≥90%）—— 需 Basic Pitch，较慢
+# closed-loop recall (render a known piece with the engine -> analyse -> recall ≥90%): needs Basic Pitch, slow
 # --------------------------------------------------------------------------- #
 @pytest.mark.slow
 def test_recall_on_rendered_phrase():
@@ -132,7 +132,7 @@ def test_recall_on_rendered_phrase():
 
     snap_path = Path(__file__).resolve().parents[1] / "assets" / "snapshots" / "guitar.npz"
     if not snap_path.exists():
-        pytest.skip("需要 assets/snapshots/guitar.npz（先跑 stage2 验收）")
+        pytest.skip("needs assets/snapshots/guitar.npz (run the stage2 acceptance first)")
     inst = build_instrument(load_snapshot(snap_path), noise_level=0.0)
     eng = Engine(inst, eval_mode=True)
     notes = [(0.2, 60), (0.7, 62), (1.2, 64), (1.7, 65), (2.2, 67), (2.7, 69)]
@@ -143,11 +143,11 @@ def test_recall_on_rendered_phrase():
     y = eng.render_offline(evs, 3.4)
     det = analyze_events(y)
     r = compute_recall(det, gt, onset_tol_s=0.06, pitch_tol=1.0)
-    assert r["recall"] >= 0.90, f"召回 {r['recall'] * 100:.1f}% < 90%"
+    assert r["recall"] >= 0.90, f"recall {r['recall'] * 100:.1f}% < 90%"
 
 
 def test_analyze_events_onset_only_no_basic_pitch():
-    """不依赖 Basic Pitch 也能出事件（自建前端单独可用）。"""
+    """Events are produced even without Basic Pitch (the custom front end works on its own)."""
     from runtime.engine import Engine
     from synth.instrument import Instrument
 

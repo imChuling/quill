@@ -1,4 +1,4 @@
-"""TakeStore 单测:幂等 stage、attach/fail 生命周期(ui/take_store.py,render_service 用)。"""
+"""TakeStore unit tests: idempotent stage, attach/fail lifecycle (ui/take_store.py, used by render_service)."""
 
 import sys
 from pathlib import Path
@@ -42,7 +42,7 @@ def test_stage_is_idempotent(store):
         sr=44100,
         provenance={},
     )
-    assert t1["take_id"] == t2["take_id"]  # 重复点击保护
+    assert t1["take_id"] == t2["take_id"]  # repeated-click protection
     t3 = store.stage(
         title="t2",
         notes=NOTES,
@@ -52,7 +52,7 @@ def test_stage_is_idempotent(store):
         sr=44100,
         provenance={},
     )
-    assert t3["take_id"] != t1["take_id"]  # 内容不同 → 新 take
+    assert t3["take_id"] != t1["take_id"]  # different content -> new take
 
 
 def test_attach_and_fail_lifecycle(store):

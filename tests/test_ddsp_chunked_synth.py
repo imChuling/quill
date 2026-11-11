@@ -1,4 +1,4 @@
-"""HarmonicSynth 分块合成 = 整段合成(数值一致),且峰值内存与乐句长度无关。"""
+"""HarmonicSynth chunked synthesis = whole-segment synthesis (numerically identical), and peak memory is independent of phrase length."""
 
 import sys
 from pathlib import Path
@@ -31,7 +31,7 @@ def test_upsample_slice_matches_interpolate():
         torch.testing.assert_close(_upsample_slice(x, n, s0, s1), full[:, s0:s1], atol=1e-5, rtol=1e-5)
 
 
-@pytest.mark.parametrize("T", (3, 100, 700))  # 700 帧 × hop 64 = 44800 样本 > CHUNK,跨两块
+@pytest.mark.parametrize("T", (3, 100, 700))  # 700 frames × hop 64 = 44800 samples > CHUNK, spans two chunks
 def test_chunked_forward_equals_reference(T):
     torch.manual_seed(1)
     h = HarmonicSynth(n_harm=12, sr=16000, hop=64)
@@ -45,9 +45,9 @@ def test_chunked_forward_equals_reference(T):
 
 
 def test_chunk_boundary_is_seamless():
-    """块边界处不得出现台阶:相邻样本差分与块内同量级。"""
+    """No steps at chunk boundaries: adjacent-sample differences are of the same order as within a chunk."""
     h = HarmonicSynth(n_harm=8, sr=16000, hop=64)
-    T = 1024  # 65536 样本 = 两整块
+    T = 1024  # 65536 samples = two full chunks
     f0 = torch.full((1, T, 1), 220.0)
     amp = torch.full((1, T, 1), 0.5)
     dist = torch.ones(1, T, 8)

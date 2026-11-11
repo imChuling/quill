@@ -1,4 +1,4 @@
-"""_render_neural 静音守门:有音符却渲染出静音 → 丢缓存 voice 重载一次再渲(只重试一次)。"""
+"""_render_neural silence guard: notes present but the render is silent -> drop the cached voice, reload once and render again (retry only once)."""
 
 import sys
 from pathlib import Path

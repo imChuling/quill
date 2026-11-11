@@ -1,1 +1,1 @@
-"""Quill 单元测试。"""
+"""Quill unit tests."""

@@ -1,4 +1,4 @@
-"""MIDI 方言适配层测试:六种方言合成文件 → 检测 + 转换正确性。"""
+"""MIDI dialect adapter tests: synthetic files for six dialects -> correct detection + conversion."""
 
 import sys
 from pathlib import Path
@@ -25,7 +25,7 @@ def _save(pm, tmp_path, name):
     return p
 
 
-# ---- piano 式:直通 ---- #
+# ---- piano style: pass-through ---- #
 
 
 def test_piano_passthrough(tmp_path):
@@ -42,42 +42,42 @@ def test_piano_passthrough(tmp_path):
     assert score[1]["onset"] == pytest.approx(0.5, abs=1e-3)
 
 
-# ---- keyswitch 式:剔除 + latching 映射 ---- #
+# ---- keyswitch style: stripping + latching mapping ---- #
 
 
 def test_keyswitch_strip_and_latch(tmp_path):
     pm = pretty_midi.PrettyMIDI()
     ins = pretty_midi.Instrument(program=40)  # violin
-    # keyswitch 簇:C1=24(plain) C#1=25(vibrato) D1=26(slide),短促
-    ins.notes.append(_note(25, 0.00, 0.05))  # → vibrato 生效
+    # keyswitch cluster: C1=24(plain) C#1=25(vibrato) D1=26(slide), short
+    ins.notes.append(_note(25, 0.00, 0.05))  # -> vibrato takes effect
     ins.notes.append(_note(60, 0.10, 0.60))
     ins.notes.append(_note(62, 0.70, 1.20))
-    ins.notes.append(_note(24, 1.25, 1.30))  # → plain 生效
+    ins.notes.append(_note(24, 1.25, 1.30))  # -> plain takes effect
     ins.notes.append(_note(64, 1.40, 1.90))
-    ins.notes.append(_note(26, 1.95, 2.00))  # → slide 生效
+    ins.notes.append(_note(26, 1.95, 2.00))  # -> slide takes effect
     ins.notes.append(_note(65, 2.10, 2.60))
     pm.instruments.append(ins)
     score, rep = import_midi(_save(pm, tmp_path, "ks.mid"))
     assert rep.dialect == "keyswitch"
     assert rep.n_keyswitches_stripped == 3
-    assert rep.n_notes_out == 4  # 假音符全部剔除
+    assert rep.n_notes_out == 4  # all fake notes stripped
     assert [n["midi"] for n in score] == [60, 62, 64, 65]
     assert [n["art"] for n in score] == [1, 1, 0, 2]  # latching
 
 
-# ---- 吉他/多通道式:合并 + bend → slide ---- #
+# ---- guitar/multichannel style: merge + bend -> slide ---- #
 
 
 def test_multichannel_merge_and_bend_slide(tmp_path):
     pm = pretty_midi.PrettyMIDI()
     onset = 0.0
-    for s in range(3):  # 三根"弦"
+    for s in range(3):  # three "strings"
         ins = pretty_midi.Instrument(program=25)
         for k in range(2):
             ins.notes.append(_note(52 + s * 5 + k, onset, onset + 0.4))
             onset += 0.5
         pm.instruments.append(ins)
-    # 最后一根弦的末音加单调 bend +2 半音 → slide
+    # the last note of the last string gets a monotonic bend of +2 semitones -> slide
     tgt = pm.instruments[-1]
     n = tgt.notes[-1]
     for i, t in enumerate(np.linspace(n.start, n.end - 0.01, 12)):
@@ -91,7 +91,7 @@ def test_multichannel_merge_and_bend_slide(tmp_path):
     assert [n["onset"] for n in score] == sorted(n["onset"] for n in score)
 
 
-# ---- 单声部 lead:周期性 bend → vibrato ---- #
+# ---- monophonic lead: periodic bend -> vibrato ---- #
 
 
 def test_mono_lead_bend_vibrato(tmp_path):
@@ -108,7 +108,7 @@ def test_mono_lead_bend_vibrato(tmp_path):
     assert score[0]["art"] == 1
 
 
-# ---- 吹奏式:CC2 → 逐音符能量提示 ---- #
+# ---- wind style: CC2 -> per-note energy hints ---- #
 
 
 def test_breath_cc2_energy(tmp_path):
@@ -116,7 +116,7 @@ def test_breath_cc2_energy(tmp_path):
     ins = pretty_midi.Instrument(program=66)
     ins.notes.append(_note(70, 0.0, 1.0))
     ins.notes.append(_note(72, 1.1, 2.1))
-    for t in np.arange(0.0, 2.2, 0.05):  # 20/s 的连续气息曲线
+    for t in np.arange(0.0, 2.2, 0.05):  # continuous breath curve at 20/s
         val = 40 if t < 1.05 else 110
         ins.control_changes.append(pretty_midi.ControlChange(number=2, value=val, time=float(t)))
     pm.instruments.append(ins)
@@ -126,7 +126,7 @@ def test_breath_cc2_energy(tmp_path):
     assert score[0]["cc_energy"] < score[1]["cc_energy"]
 
 
-# ---- 鼓:明确拒绝 ---- #
+# ---- drums: explicitly rejected ---- #
 
 
 def test_drums_rejected(tmp_path):
@@ -139,7 +139,7 @@ def test_drums_rejected(tmp_path):
         import_midi(_save(pm, tmp_path, "drums.mid"))
 
 
-# ---- 混合文件:鼓轨被丢弃,旋律轨保留 ---- #
+# ---- mixed file: drum track dropped, melody track kept ---- #
 
 
 def test_mixed_drops_drum_track(tmp_path):
@@ -155,15 +155,15 @@ def test_mixed_drops_drum_track(tmp_path):
     assert rep.n_notes_out == 3
 
 
-# ---- 单声部化:和弦保最高音,重叠截断 ---- #
+# ---- monophonisation: chords keep the highest note, overlaps truncated ---- #
 
 
 def test_monophonize_chord_and_overlap(tmp_path):
     pm = pretty_midi.PrettyMIDI()
     ins = pretty_midi.Instrument(program=0)
-    ins.notes.append(_note(60, 0.0, 1.0))  # 和弦:与 64 同 onset
-    ins.notes.append(_note(64, 0.0, 1.0))  # → 保 64
-    ins.notes.append(_note(67, 0.6, 1.4))  # 与前音重叠 → 前音截断
+    ins.notes.append(_note(60, 0.0, 1.0))  # chord: same onset as 64
+    ins.notes.append(_note(64, 0.0, 1.0))  # -> keep 64
+    ins.notes.append(_note(67, 0.6, 1.4))  # overlaps the previous note -> previous note truncated
     pm.instruments.append(ins)
     score, rep = import_midi(_save(pm, tmp_path, "poly.mid"))
     assert rep.n_chord_notes_dropped == 1
@@ -172,7 +172,7 @@ def test_monophonize_chord_and_overlap(tmp_path):
     assert score[0]["dur"] == pytest.approx(0.6, abs=1e-3)
 
 
-# ---- score 与引擎 IR 兼容:键集合正确 ---- #
+# ---- score compatible with the engine IR: correct key set ---- #
 
 
 def test_score_ir_contract(tmp_path):
@@ -187,7 +187,7 @@ def test_score_ir_contract(tmp_path):
     assert n["art"] in (0, 1, 2)
 
 
-# ---- 音源式:CC11 曲线也能给出能量提示(不限 CC2) ---- #
+# ---- sound-module style: a CC11 curve also yields energy hints (not limited to CC2) ---- #
 
 
 def test_cc11_energy_on_keyswitch_dialect(tmp_path):
@@ -196,7 +196,7 @@ def test_cc11_energy_on_keyswitch_dialect(tmp_path):
     ins.notes.append(_note(24, 0.0, 0.05))  # keyswitch → plain
     ins.notes.append(_note(60, 0.1, 1.0))
     ins.notes.append(_note(62, 1.1, 2.0))
-    ins.notes.append(_note(64, 2.05, 2.08))  # 凑满检测门槛(≥4 音)
+    ins.notes.append(_note(64, 2.05, 2.08))  # reach the detection threshold (≥4 notes)
     for t in np.arange(0.0, 2.1, 0.05):
         val = 30 if t < 1.05 else 100
         ins.control_changes.append(pretty_midi.ControlChange(number=11, value=val, time=float(t)))

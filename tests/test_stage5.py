@@ -1,4 +1,4 @@
-"""阶段5 单测：规则树分类 / vibrato-vs-slide / .tplib 往返 / 森林 / strum 窗 / IDMT。"""
+"""Stage 5 unit tests: rule-tree classification / vibrato-vs-slide / .tplib round trip / forest / strum window / IDMT."""
 
 import numpy as np
 import pytest
@@ -52,34 +52,34 @@ def _ev(
 
 
 def _mono_track(t0, hz0, hz1, n=10):
-    """单调 f0 轨迹（slide 需单调性判据）。"""
+    """Monotonic f0 track (slide needs the monotonicity criterion)."""
     return [[t0 + i * 0.04, hz0 + (hz1 - hz0) * i / (n - 1)] for i in range(n)]
 
 
 # --------------------------------------------------------------------------- #
-# 规则树各类（构造特征，直接测规则逻辑）
+# each class of the rule tree (constructed features, testing the rule logic directly)
 # --------------------------------------------------------------------------- #
 def test_rule_pluck():
-    e = _ev(0, 0.0, 0.4, log_attack=-2.0, centroid=2500)  # 快起音+亮
+    e = _ev(0, 0.0, 0.4, log_attack=-2.0, centroid=2500)  # fast attack + bright
     classify_events([e])
     assert e["label"] == "pluck"
 
 
 def test_rule_sustain():
-    e = _ev(0, 0.0, 1.0, log_attack=-1.2, centroid=900, slope=50)  # 慢起音+暗+无斜率
+    e = _ev(0, 0.0, 1.0, log_attack=-1.2, centroid=900, slope=50)  # slow attack + dark + no slope
     classify_events([e])
     assert e["label"] == "sustain"
 
 
 def test_rule_slide():
-    # 净斜率>500、持续>60ms、f0 单调上行
+    # net slope>500, duration>60ms, f0 monotonically rising
     e = _ev(0, 0.0, 0.4, slope=900, log_attack=-1.2, f0_track=_mono_track(0.0, 196, 247))
     classify_events([e])
     assert e["label"] == "slide"
 
 
 def test_slide_needs_monotonic_track():
-    """大斜率但 f0 非单调（八度跳变型）不应判 slide（坑位：判单调性）。"""
+    """A large slope with a non-monotonic f0 (octave-jump type) should not be judged a slide (pitfall: monotonicity check)."""
     jumpy = [[0.0, 196], [0.04, 392], [0.08, 196], [0.12, 392], [0.16, 196]]
     e = _ev(0, 0.0, 0.4, slope=900, log_attack=-1.2, f0_track=jumpy)
     classify_events([e])
@@ -91,47 +91,47 @@ def test_rule_strum():
         _ev(0, 1.00, 1.5, pitch=48),
         _ev(1, 1.02, 1.5, pitch=52),
         _ev(2, 1.04, 1.5, pitch=55),
-    ]  # 同窗 3 onset <80ms
+    ]  # 3 onsets in the same window <80ms
     classify_events(evs)
     assert all(e["label"] == "strum" for e in evs)
 
 
 def test_rule_legato():
     a = _ev(0, 0.0, 0.5, pitch=60, log_attack=-1.2)
-    b = _ev(1, 0.51, 1.0, pitch=62, log_attack=-1.2, vel=0.7)  # 衔接+小音程+软起音
+    b = _ev(1, 0.51, 1.0, pitch=62, log_attack=-1.2, vel=0.7)  # joined + small interval + soft attack
     classify_events([a, b])
     assert b["label"] == "legato"
 
 
 def test_strum_window_needs_three():
-    evs = [_ev(0, 1.0, 1.5), _ev(1, 1.03, 1.5)]  # 只 2 个 -> 非 strum
+    evs = [_ev(0, 1.0, 1.5), _ev(1, 1.03, 1.5)]  # only 2 -> not a strum
     assert len(_strum_windows(evs)) == 0
     evs3 = [_ev(0, 1.0, 1.5), _ev(1, 1.03, 1.5), _ev(2, 1.06, 1.5)]
     assert len(_strum_windows(evs3)) == 3
 
 
 # --------------------------------------------------------------------------- #
-# 坑位：slide 不被误判为 vibrato（线性去趋势后）
+# pitfall: a slide must not be misjudged as vibrato (after linear detrending)
 # --------------------------------------------------------------------------- #
 def test_slide_not_flagged_vibrato():
-    # 单调滑音的 f0 轨迹（线性 cents 斜坡）
+    # f0 track of a monotonic slide (linear cents ramp)
     t = np.arange(0, 0.45, 0.01)
     hz = 165 * 2 ** (4 * (t / 0.45) / 12.0)
-    assert detect_vibrato(hz, t) is None, "单调滑音不应被判为颤音"
-    # 真颤音（去趋势后仍存周期）应检出
+    assert detect_vibrato(hz, t) is None, "a monotonic slide should not be judged as vibrato"
+    # real vibrato (periodicity remains after detrending) should be detected
     hz_vib = 220 * 2 ** ((30 / 1200.0) * np.sin(2 * np.pi * 5.5 * t))
     assert detect_vibrato(hz_vib, t) is not None
 
 
 def test_vibrato_then_slide_priority():
-    """同时有净斜率与颤音字段：颤音守卫 -> 不判 slide（先抽周期性）。"""
+    """Both a net slope and a vibrato field: the vibrato guard -> not a slide (periodicity extracted first)."""
     e = _ev(0, 0.0, 0.4, slope=900, vib={"rate_hz": 5.5, "depth_cents": 30})
     classify_events([e])
-    assert e["label"] != "slide"  # 颤音存在时不归 slide
+    assert e["label"] != "slide"  # not slide when vibrato is present
 
 
 # --------------------------------------------------------------------------- #
-# .tplib 往返无损（FR-7 硬出口）
+# lossless .tplib round trip (FR-7 hard exit)
 # --------------------------------------------------------------------------- #
 def test_tplib_roundtrip(tmp_path):
     rng = np.random.default_rng(0)
@@ -172,7 +172,7 @@ def test_tplib_roundtrip(tmp_path):
 
 
 def test_tplib_pluck_rms_buckets():
-    """pluck 颗粒按 velocity_est 分 RMS 桶（0/1/2）。"""
+    """pluck grains are bucketed by velocity_est into RMS buckets (0/1/2)."""
     y = np.zeros(SR, np.float32)
     events = [
         _ev(0, 0.1, 0.3, vel=0.1, label="pluck"),
@@ -185,7 +185,7 @@ def test_tplib_pluck_rms_buckets():
 
 
 # --------------------------------------------------------------------------- #
-# 森林兜底 + IDMT loader 优雅缺失
+# forest fallback + graceful handling of a missing IDMT loader
 # --------------------------------------------------------------------------- #
 def test_forest_trains_and_predicts():
     events, labels = [], []
@@ -204,7 +204,7 @@ def test_idmt_loader_graceful_missing():
 
 
 # --------------------------------------------------------------------------- #
-# 端到端分类准确率（慢：每片段跑 PESTO）
+# end-to-end classification accuracy (slow: runs PESTO per clip)
 # --------------------------------------------------------------------------- #
 @pytest.mark.slow
 def test_classification_accuracy_on_synth_set():
@@ -214,4 +214,4 @@ def test_classification_accuracy_on_synth_set():
     classify_events(events)
     pred = [e["label"] for e in events]
     acc = float(np.mean([t == p for t, p in zip(true, pred)]))
-    assert acc >= 0.80, f"规则树准确率 {acc * 100:.1f}% < 80%"
+    assert acc >= 0.80, f"rule tree accuracy {acc * 100:.1f}% < 80%"

@@ -1,6 +1,6 @@
-"""神经层快测(10.15 回归账):连续检索、额外维度、后处理、单声部化、L0 控制驱动接口。
+"""Fast tests for the neural layer (10.15 regression): continuous retrieval, extra dimensions, post-processing, monophonisation, L0 control-driven interface.
 
-不训练、不开声卡。需要 checkpoint 的用例在文件缺失时跳过。
+No training, no sound card. Cases needing a checkpoint are skipped when the file is missing.
 """
 
 import sys
@@ -26,17 +26,17 @@ needs_ckpt = pytest.mark.skipif(not HAVE_CKPT, reason="DDSP checkpoints / trajec
 
 
 def _synthetic_bank(n_tracks=3, notes_per_track=6, seed=0):
-    """合成库:features [midi, dur, prev_gap, next_gap, first, last, art],meta 带 track/note_idx。
-    轨迹设计成同一 track 相邻音端点连续(pitch 末=下一音首),不同 track 之间不连续。"""
+    """Synthetic library: features [midi, dur, prev_gap, next_gap, first, last, art], meta carries track/note_idx.
+    Trajectories are designed so adjacent notes in the same track have continuous endpoints (pitch end = next note's start), and different tracks are discontinuous."""
     rng = np.random.default_rng(seed)
     feats, trajs, meta = [], [], []
     for t in range(n_tracks):
-        level = 40.0 * t  # 每个 track 自己的 pitch 偏移平台
+        level = 40.0 * t  # each track's own pitch offset plateau
         for i in range(notes_per_track):
             feats.append([60 + i, 0.5, 0.0 if i else 1.0, 0.0 if i < notes_per_track - 1 else 1.0,
                           1.0 if i == 0 else 0.0, 1.0 if i == notes_per_track - 1 else 0.0, 0.0])
             tr = np.zeros((4, 48), np.float32)
-            tr[0] = level + rng.normal(0, 0.5, 48)  # pitch 平台(cents)
+            tr[0] = level + rng.normal(0, 0.5, 48)  # pitch plateau (cents)
             tr[1] = 0.1 * t
             tr[2] = 0.05 * t
             tr[3] = 0.02 * t
@@ -48,16 +48,16 @@ def _synthetic_bank(n_tracks=3, notes_per_track=6, seed=0):
 def test_contiguity_prefers_next_note_of_same_track():
     f, tr, meta = _synthetic_bank()
     nn = ConditionedNN(f, tr, meta=meta)
-    q0 = np.array([60, 0.5, 1.0, 0.0, 1.0, 0.0, 0.0], np.float32)  # 句首 midi 60:三个 track 都有,距离相同
+    q0 = np.array([60, 0.5, 1.0, 0.0, 1.0, 0.0, 0.0], np.float32)  # phrase-start midi 60: present in all three tracks, equal distance
     nn.last_idx = None
     nn.predict(q0)
     first = nn.last_idx
     t_first = meta[first]["track"]
     q1 = np.array([61, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0], np.float32)
-    # 无连续奖励:只看上下文距离,三个 track 的 61 平手,argmin 取最早的
+    # without the continuity bonus: only context distance counts, the 61s of the three tracks tie, argmin takes the earliest
     prev = nn.trajectories[first]
     nn.predict(q1, prev_traj=prev, concat_lambda=0.0, contiguity=0.0)
-    # 有连续奖励:必须选同一 track 的 note_idx+1
+    # with the continuity bonus: must choose note_idx+1 of the same track
     nn.last_idx = first
     nn.predict(q1, prev_traj=prev, concat_lambda=0.0, contiguity=1.0)
     chosen = meta[nn.last_idx]
@@ -73,13 +73,13 @@ def test_clone_shares_arrays_but_not_memory():
     assert nn.last_idx is not None and c.last_idx is None
     before = nn.last_idx
     c.predict(np.array([65, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0], np.float32))
-    assert c.last_idx is not None and nn.last_idx == before  # 副本检索不改原件的记忆
+    assert c.last_idx is not None and nn.last_idx == before  # retrieval on the clone does not change the original's memory
 
 
 def test_concat_lambda_reduces_boundary_cost():
     f, tr, meta = _synthetic_bank()
     nn = ConditionedNN(f, tr, meta=meta)
-    # 上一音来自 trk2(pitch 平台 80c);候选 61 三个 track 平手;λ>0 应选端点最接近的 trk2
+    # the previous note comes from trk2 (pitch plateau 80c); candidate 61 ties across three tracks; λ>0 should pick trk2, whose endpoint is closest
     prev = nn.trajectories[[i for i, m in enumerate(meta) if m["track"] == "trk2" and m["note_idx"] == 0][0]]
     q1 = np.array([61, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0], np.float32)
     nn.last_idx = None
@@ -88,13 +88,13 @@ def test_concat_lambda_reduces_boundary_cost():
 
 
 class _StubBehavior:
-    """最小行为模型:predict → 固定 (4,48) 轨迹,供 control_from_behavior 接口测试。"""
+    """Minimal behaviour model: predict -> fixed (4,48) trajectory, for testing the control_from_behavior interface."""
 
     use_art = False
 
     def predict(self, feat, **kw):
         tr = np.zeros((4, 48), np.float32)
-        tr[0] = 10.0 * np.sin(np.linspace(0, 6 * np.pi, 48))  # 3 周期 ±10c
+        tr[0] = 10.0 * np.sin(np.linspace(0, 6 * np.pi, 48))  # 3 periods ±10c
         tr[1] = 0.0
         tr[2] = 0.3  # brightness residual (oct)
         tr[3] = -0.2  # noise residual (log10)
@@ -125,7 +125,7 @@ def test_monophonize_keeps_highest_of_chord():
     notes = [
         {"midi": 60, "start": 0.0, "len": 0.5, "vel": 100, "art": "plain"},
         {"midi": 64, "start": 0.5, "len": 0.5, "vel": 100, "art": "plain"},
-        {"midi": 55, "start": 0.5, "len": 0.5, "vel": 100, "art": "plain"},  # 同 onset 低音
+        {"midi": 55, "start": 0.5, "len": 0.5, "vel": 100, "art": "plain"},  # lower note at the same onset
         {"midi": 67, "start": 1.0, "len": 1.0, "vel": 100, "art": "plain"},
     ]
     out = NeuralTake._monophonize(notes)
@@ -139,7 +139,7 @@ def test_available_instruments_are_the_paper_four():
 
 @needs_ckpt
 def test_render_l0_engine_with_behavior_library():
-    """取色 L0 音色 × 行为库:走 NeuralTake.render 同一路径,sr 取引擎的,长度随音符。"""
+    """L0 capture timbre × behaviour library: goes through the same NeuralTake.render path, sr from the engine, length follows the notes."""
     from runtime.engine import Engine
     from synth.instrument import build_instrument
     from tests.helpers import make_test_snapshot
@@ -152,7 +152,7 @@ def test_render_l0_engine_with_behavior_library():
     ]
     y, sr = nt.render(notes, instrument=eng, behavior="violin", tail_s=0.1)
     assert sr == eng.sr
-    assert abs(len(y) / sr - (0.9 + 0.1 + 0.1)) < 0.15  # 音符 + 乐句尾 0.1 + tail
+    assert abs(len(y) / sr - (0.9 + 0.1 + 0.1)) < 0.15  # notes + phrase tail 0.1 + tail
     assert np.max(np.abs(y)) > 0.5 and np.isfinite(y).all()
     with pytest.raises(ValueError):
-        nt.render(notes, instrument=eng, behavior=None)  # L0 音色必须显式给行为库
+        nt.render(notes, instrument=eng, behavior=None)  # an L0 timbre must be given a behaviour library explicitly

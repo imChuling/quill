@@ -1,4 +1,4 @@
-"""tplib v2 行为轨迹单测:受控合成信号 → 提取值必须匹配已知真值。"""
+"""tplib v2 behaviour trajectory unit tests: controlled synthetic signals -> extracted values must match the known ground truth."""
 
 import sys
 from pathlib import Path
@@ -22,7 +22,7 @@ SR = 44100
 
 
 def _tone(f0_curve, amp_curve, dur=1.0, sr=SR):
-    """f0(t)/amp(t) 曲线 → 合成正弦(相位积分,无跳变)。"""
+    """f0(t)/amp(t) curves -> synthesised sine (phase integration, no jumps)."""
     n = int(dur * sr)
     t = np.arange(n) / sr
     f0 = np.interp(t, np.linspace(0, dur, len(f0_curve)), f0_curve)
@@ -32,17 +32,17 @@ def _tone(f0_curve, amp_curve, dur=1.0, sr=SR):
 
 
 def test_pitch_trajectory_matches_ground_truth():
-    """+200 cents 线性上滑 → pitch 轨迹应从约 -100c 到 +100c(残差=减中位)。"""
+    """+200 cents linear upward slide -> the pitch trajectory should go from about -100c to +100c (residual = minus the median)."""
     y = _tone([220.0, 220.0 * 2 ** (200 / 1200)], [0.5, 0.5], dur=1.0)
     tr = event_trajectories(y, SR, 0.0, 1.0)
     p = tr["pitch"]
     assert p["provenance"] == "extracted" and p["confidence"] > 0.8
-    assert p["pts"][2] < -50 and p["pts"][-3] > 50  # 上升斜线
-    assert abs(p["pts"][-3] - p["pts"][2] - 200) < 60  # 总幅≈200c
+    assert p["pts"][2] < -50 and p["pts"][-3] > 50  # rising line
+    assert abs(p["pts"][-3] - p["pts"][2] - 200) < 60  # total span ≈200c
 
 
 def test_energy_trajectory_swell():
-    """幅度从 0.1 渐强到 0.8 → energy 轨迹单调升,总幅≈ln(8)。"""
+    """Amplitude crescendo from 0.1 to 0.8 -> the energy trajectory rises monotonically, total span ≈ln(8)."""
     y = _tone([330.0, 330.0], [0.1, 0.8], dur=1.0)
     tr = event_trajectories(y, SR, 0.0, 1.0)
     e = tr["energy"]["pts"]
@@ -52,11 +52,11 @@ def test_energy_trajectory_swell():
 
 
 def test_flat_note_trajectories_near_zero():
-    """恒定音 → 四条轨迹都应接近零(残差表示)。"""
+    """Constant note -> all four trajectories should be close to zero (residual representation)."""
     y = _tone([440.0, 440.0], [0.5, 0.5], dur=0.8)
     tr = event_trajectories(y, SR, 0.0, 0.8)
     for k in _TRAJ_KEYS:
-        assert np.abs(tr[k]["pts"]).max() < 25, k  # cents/低单位下的静线
+        assert np.abs(tr[k]["pts"]).max() < 25, k  # flat line in cents/low units
 
 
 def test_short_segment_falls_back_inferred():
@@ -77,12 +77,12 @@ def test_roundtrip_and_v1_compat(tmp_path):
 
     p = save_tplib(tmp_path / "t.tplib", lib)
     back = load_tplib(p)
-    for k in _TRAJ_KEYS:  # 往返无损
+    for k in _TRAJ_KEYS:  # lossless round trip
         a, b = lib["pluck"][0]["traj"][k], back["pluck"][0]["traj"][k]
         assert np.allclose(a["pts"], b["pts"]) and a["provenance"] == b["provenance"]
         assert b["confidence"] == pytest.approx(a["confidence"], abs=1e-3)
 
-    # v1 兼容:manifest 无 traj 字段 → 加载 traj=None,不炸
+    # v1 compatibility: manifest without a traj field -> loads with traj=None, does not crash
     import json
     import zipfile
 

@@ -1,7 +1,7 @@
-"""True Envelope（analysis/envelope.py）回归测试。
+"""True Envelope (analysis/envelope.py) regression tests.
 
-注意：True Envelope 实测**不优于**直接谐波幅度插值（见 docs/design_notes.md 负结果），
-故不接入合成路径；这里只验证实现本身正确——包络压住谱、过共振峰、谷低于峰。
+Note: measured True Envelope is **not better** than direct harmonic amplitude interpolation (see the negative result in docs/design_notes.md),
+so it is not used in the synthesis path; this only verifies that the implementation itself is correct: the envelope covers the spectrum, passes through formants, valleys are below peaks.
 """
 
 import numpy as np
@@ -19,34 +19,34 @@ def _formant_tone(f0=174.6, dur=1.0, sr=SR):
         fk = k * f0
         if fk >= sr / 2:
             break
-        # 双共振峰 700 / 1800 Hz + 本底
+        # two formants 700 / 1800 Hz + floor
         a = np.exp(-(((fk - 700) / 350) ** 2)) + 0.6 * np.exp(-(((fk - 1800) / 600) ** 2)) + 0.03
         y += a * np.cos(2 * np.pi * fk * t)
     return (y / np.max(np.abs(y))).astype(np.float32)
 
 
 def test_envelope_covers_spectrum():
-    """True Envelope 应（近似）处处压在 log 幅度谱之上。"""
+    """The True Envelope should lie (approximately) above the log magnitude spectrum everywhere."""
     rng = np.random.default_rng(0)
     logmag = -3 + 2 * np.sin(np.linspace(0, 8 * np.pi, 1025)) + 0.5 * rng.standard_normal(1025)
     env = true_envelope(logmag, order=40)
-    # 允许收敛阈内的少量越界
+    # a small amount of overshoot within the convergence threshold is allowed
     over = np.mean(logmag - env > 0.3)
-    assert over < 0.05, f"包络未压住谱：{over:.2%} 处越界"
+    assert over < 0.05, f"envelope does not cover the spectrum: {over:.2%} overshoot"
 
 
 def test_envelope_tracks_formants():
-    """共振峰处包络高于相邻谷。"""
+    """The envelope is higher at a formant than at the adjacent valley."""
     y = _formant_tone()
     freqs, env = envelope_from_audio(y, SR, 174.6)
-    f1 = sample_envelope_db(freqs, env, [700])[0]  # 主共振峰
-    valley = sample_envelope_db(freqs, env, [1200])[0]  # 谷
-    high = sample_envelope_db(freqs, env, [3500])[0]  # 高频滚降
-    assert f1 > valley > high, f"包络形状错: F1={f1:.2f} valley={valley:.2f} high={high:.2f}"
+    f1 = sample_envelope_db(freqs, env, [700])[0]  # main formant
+    valley = sample_envelope_db(freqs, env, [1200])[0]  # valley
+    high = sample_envelope_db(freqs, env, [3500])[0]  # high-frequency rolloff
+    assert f1 > valley > high, f"wrong envelope shape: F1={f1:.2f} valley={valley:.2f} high={high:.2f}"
 
 
 def test_sample_extrapolation_decays():
-    """支撑外（超过 Nyquist 采样上限）应单调衰减，不爆。"""
+    """Outside support (beyond the Nyquist sampling limit) it should decay monotonically and not blow up."""
     freqs = np.linspace(0, 8000, 200)
     env = np.linspace(0, -5, 200)
     a = sample_envelope_db(freqs, env, [7000, 12000, 20000])

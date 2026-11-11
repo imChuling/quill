@@ -1,4 +1,4 @@
-"""拨片厚度 / 起音整形（synth/attack_shape.py）测试。"""
+"""Tests for pick thickness / attack shaping (synth/attack_shape.py)."""
 
 import numpy as np
 import pytest
@@ -11,7 +11,7 @@ SR = 44100
 def _grain(n=2646):
     rng = np.random.default_rng(0)
     g = rng.standard_normal(n).astype(np.float32)
-    g *= np.exp(-np.linspace(0, 6, n))  # 衰减瞬态
+    g *= np.exp(-np.linspace(0, 6, n))  # decaying transient
     return g
 
 
@@ -31,17 +31,17 @@ def _hf_energy(x, sr=SR, fmin=4000.0):
 
 
 def test_harder_pick_brighter():
-    """pick 越大，高频能量越多（更亮/更尖）。"""
+    """Larger pick gives more high-frequency energy (brighter/sharper)."""
     g = _grain()
     e = [_hf_energy(shape_attack(g, p)) for p in (0.2, 0.5, 1.0)]
     assert e[0] < e[1] < e[2]
 
 
 def test_onset_fade_length():
-    assert onset_fade(1000, 1.0, SR) is None  # 硬拨片无 fade
+    assert onset_fade(1000, 1.0, SR) is None  # hard pick has no fade
     f_soft = onset_fade(1000, 0.1, SR)
     f_med = onset_fade(1000, 0.6, SR)
-    assert f_soft is not None and len(f_soft) > len(f_med)  # 越软 fade 越长
+    assert f_soft is not None and len(f_soft) > len(f_med)  # softer means a longer fade
 
 
 def test_apply_pick_finite_and_shaped():
@@ -49,7 +49,7 @@ def test_apply_pick_finite_and_shaped():
     y_soft = apply_pick(body, _grain(), 0.15, SR)
     y_hard = apply_pick(body, _grain(), 1.0, SR)
     assert np.isfinite(y_soft).all() and len(y_soft) == len(body)
-    # 硬拨片起音瞬时能量应高于软拨片
+    # the instantaneous attack energy of a hard pick should exceed that of a soft pick
     assert np.max(np.abs(y_hard[:1000])) > np.max(np.abs(y_soft[:1000]))
 
 

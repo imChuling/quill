@@ -1,7 +1,7 @@
-"""L0 控制驱动模式(10.14c/g)回归:Voice.drive / Engine.render_control / ctl_legato /
-释放无咔哒 / note_on 清残留 / 近正弦源的共振峰混合 / 旋钮 setter。
+"""Regression for the L0 control-driven mode (10.14c/g): Voice.drive / Engine.render_control / ctl_legato /
+click-free release / note_on clears leftovers / formant blending for near-sinusoidal sources / knob setters.
 
-全部离线、轻量快照,不依赖 checkpoint 与声卡。
+All offline with lightweight snapshots, no checkpoint or sound card needed.
 """
 
 import sys
@@ -27,8 +27,8 @@ def eng():
 
 
 def _comb_f0(y, sr, a, b, candidates=(330.0, 440.0, 294.0)):
-    """测试快照的谱形峰在 700Hz 附近(第 2 泛音比基频响),不能取最大谱峰当基频;
-    改成谐波梳匹配:候选基频中各次谐波能量总和最大者。"""
+    """The test snapshot's spectral peak is near 700Hz (the 2nd harmonic is louder than the fundamental), so the largest spectral peak cannot be taken as f0;
+    use harmonic comb matching instead: the candidate f0 with the largest summed harmonic energy."""
     seg = y[int(a * sr) : int(b * sr)] * np.hanning(int(b * sr) - int(a * sr))
     S = np.abs(np.fft.rfft(seg))
     f = np.fft.rfftfreq(len(seg), 1 / sr)
@@ -41,7 +41,7 @@ def _comb_f0(y, sr, a, b, candidates=(330.0, 440.0, 294.0)):
 
 
 def _hf_burst_max(y, sr, a, b, w=0.005):
-    """5ms 窗 >4kHz 能量占比 / 中位:咔哒探测(10.14 教训:样本差指标只量响度起伏)。"""
+    """Fraction of energy >4kHz in 5ms windows / median: click detector (10.14 lesson: a sample-difference metric only measures loudness fluctuation)."""
     n = int(w * sr)
     hr = []
     for s in range(int(a * sr), int(b * sr) - n, n):
@@ -65,8 +65,8 @@ def test_render_control_follows_f0(eng):
 
 def test_render_control_loud_gain_sets_dynamic_range(eng):
     T = int(0.6 * FPS)
-    loud = np.concatenate([np.zeros(T // 2), np.full(T - T // 2, -3.0)])  # 后半 z=-3
-    # 低力度:避开母线 tanh 软限幅(满幅时响度比会被压缩)
+    loud = np.concatenate([np.zeros(T // 2), np.full(T - T // 2, -3.0)])  # second half z=-3
+    # low velocity: stay clear of the bus tanh soft limiter (at full scale the loudness ratio would be compressed)
     y = eng.render_control(np.full(T, 220.0), loud, vel=40, loud_gain=0.4, tail_s=0.0)
     r1 = np.sqrt(np.mean(y[int(0.1 * eng.sr) : int(0.25 * eng.sr)] ** 2))
     r2 = np.sqrt(np.mean(y[int(0.4 * eng.sr) : int(0.55 * eng.sr)] ** 2))
@@ -74,7 +74,7 @@ def test_render_control_loud_gain_sets_dynamic_range(eng):
 
 
 def test_release_after_note_off_is_smooth(eng):
-    """松键后:幅度单调衰减到 0,没有满幅末块(10.14 实测 15× 高频突发)。"""
+    """After key release: amplitude decays monotonically to 0, with no full-scale last block (10.14 measured a 15× high-frequency burst)."""
     sr = eng.sr
     T = int(0.8 * FPS)
     y = eng.render_control(np.full(T, 294.0), np.zeros(T), tail_s=0.4)
@@ -89,7 +89,7 @@ def test_release_after_note_off_is_smooth(eng):
 
 
 def test_ctl_legato_continuity(eng):
-    """连音换轨迹:沿用声部,20ms 过渡,边界无幅度坑、无高频突发。"""
+    """Legato trajectory switch: reuse the voice, 20ms transition, no amplitude pit or high-frequency burst at the boundary."""
     sr = eng.sr
     T = int(0.6 * FPS)
     a = (np.full(T, 294.0), np.ones(T), FPS)
@@ -102,24 +102,24 @@ def test_ctl_legato_continuity(eng):
     assert mid > 0.5 * min(pre, post), (pre, mid, post)
     assert _comb_f0(y, sr, 0.6, 0.95) == 440.0
     assert _hf_burst_max(y, sr, 0.2, 0.9) < 5.0
-    assert eng.pool[1].age == 0  # 连音沿用第一声部,从未分配第二声部
+    assert eng.pool[1].age == 0  # legato reuses the first voice, a second voice is never allocated
 
 
 def test_note_on_clears_stale_control_stream(eng):
-    """复用的声部不能带着上一个控制流:普通起音必须是事件驱动。"""
+    """A reused voice must not carry the previous control stream: a normal attack must be event-driven."""
     T = int(0.3 * FPS)
     eng.render_control(np.full(T, 300.0), np.zeros(T), tail_s=0.1)
     v = eng.pool[0]
-    assert v._ctl_f0 is not None  # 上一次控制驱动的残留
+    assert v._ctl_f0 is not None  # leftover of the previous control-driven run
     eng.render_offline([(0.0, "on", 60, 100, 0.0, -1), (0.2, "off", 60, 0, 0.0, -1)], 0.4)
     assert eng.pool[0]._ctl_f0 is None
 
 
 def test_formant_blend_for_near_sine_source():
-    """近正弦源(质心 ≈1)弹到基频以下时,第 2 泛音不能被采到源基频峰上(10.14 "泛音不自然")。"""
+    """When a near-sinusoidal source (centroid ≈1) is played below its f0, the 2nd harmonic must not be sampled onto the source f0 peak (10.14 "unnatural harmonics")."""
     snap = make_test_snapshot(f0=990.0)
     H = np.asarray(snap["H_env"], np.float32).copy()
-    H[1:, :] *= 1e-3  # 近似纯正弦:只有基频
+    H[1:, :] *= 1e-3  # near pure sine: only the fundamental
     snap["H_env"] = H
     inst = build_instrument(snap, noise_level=0.0)
     eng = Engine(inst, eval_mode=True)

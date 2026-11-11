@@ -1,4 +1,4 @@
-"""Quill 测试统一 fixture。"""
+"""Shared Quill test fixtures."""
 
 import numpy as np
 import pytest
@@ -21,7 +21,7 @@ def rng():
 
 
 def make_test_instrument(K=8, f0_ref=220.0, noise_level=0.0, sr=SR):
-    """轻量 Instrument，适用于 voice/oscillator/engine 单测。"""
+    """Lightweight Instrument for voice/oscillator/engine unit tests."""
     from synth.instrument import Instrument
 
     H = np.exp(-np.arange(K, dtype=np.float64) * 0.3)
@@ -32,7 +32,7 @@ def make_test_instrument(K=8, f0_ref=220.0, noise_level=0.0, sr=SR):
 
 
 def make_test_snapshot(K=60, M=40, f0=220.0, T=200, decay=False, sr=SR):
-    """轻量 snapshot dict，适用于 instrument/engine/library 测试。"""
+    """Lightweight snapshot dict for instrument/engine/library tests."""
     from snapshot import make_snapshot
     from synth.dsp import NOISE_NFFT, mel_filterbank
 

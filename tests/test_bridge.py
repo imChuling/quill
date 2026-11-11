@@ -1,7 +1,7 @@
-"""ui/bridge 纯函数单测(7.4 工程审计:补 ui 层零测试的账)。
+"""Unit tests for ui/bridge pure functions (7.4 engineering audit: covering the ui layer, which had zero tests).
 
-只测不依赖声卡/PESTO 的确定性逻辑:演奏法判定语义、录制配对(art 保留)、
-导出(MIDI 往返/事件编译)、音量平衡。QuillBridge() 构造不开流,安全。
+Only tests deterministic logic that needs no sound card/PESTO: articulation decision semantics, recording pairing (art kept),
+export (MIDI round trip/event compilation), volume balancing. Constructing QuillBridge() opens no stream, so it is safe.
 """
 
 import sys
@@ -24,18 +24,18 @@ def bridge():
     return QuillBridge()
 
 
-# ---------- 演奏法实时判定:语义必须与 runtime/gesture.py 一致 ---------- #
+# ---------- Real-time articulation decision: semantics must match runtime/gesture.py ---------- #
 def test_classify_pluck_legato_slide(bridge):
     b = bridge
     b._held, b._onsets = [], []
     art, frm = b._classify(60)
     assert art == "pluck" and frm == -1
-    b._held = [60]  # 按住 60
+    b._held = [60]  # holding 60
     b._onsets = []
-    art, frm = b._classify(62)  # +2 半音 ≤ legato_max_st
+    art, frm = b._classify(62)  # +2 semitones ≤ legato_max_st
     assert art == "legato" and frm == 60
     b._onsets = []
-    art, frm = b._classify(67)  # +7 半音 > legato_max_st
+    art, frm = b._classify(67)  # +7 semitones > legato_max_st
     assert art == "slide" and frm == 60
     b._held, b._onsets = [], []
 
@@ -43,18 +43,18 @@ def test_classify_pluck_legato_slide(bridge):
 def test_classify_strum_window(bridge):
     b = bridge
     b._held, b._onsets = [], []
-    arts = [b._classify(60 + i)[0] for i in range(3)]  # 紧凑三连(远快于 80ms)
+    arts = [b._classify(60 + i)[0] for i in range(3)]  # tight triplet (far faster than 80ms)
     assert arts[2] == "strum"
     b._held, b._onsets = [], []
 
 
 def test_velocity_to_slide_speed(bridge):
-    """力度→滑速:力度大滑得快(时长短)。参数唯一来源=GestureInterpreter。"""
+    """Velocity -> slide speed: higher velocity slides faster (shorter duration). Single source of parameters = GestureInterpreter."""
     gi = bridge._gi
     assert gi._slide_dur(120) < gi._slide_dur(30)
 
 
-# ---------- 录制配对:演奏法必须穿过录制 ---------- #
+# ---------- Recording pairing: articulation must survive recording ---------- #
 def test_pair_keeps_articulation():
     log = [
         (0.00, Event("on", 60, 95, 0.0, -1)),
@@ -75,10 +75,10 @@ def test_recqueue_disarm_clears_log():
     q.arm()
     q.put(Event("on", 60, 100, 0.0, -1))
     out = q.disarm()
-    assert len(out) == 1 and len(q.log) == 0  # 数据带走,内部清空(审计修复)
+    assert len(out) == 1 and len(q.log) == 0  # data carried away, internal state cleared (audit fix)
 
 
-# ---------- 导出:MIDI 往返 / 事件编译语义 ---------- #
+# ---------- Export: MIDI round trip / event compilation semantics ---------- #
 NOTES = [
     {"midi": 60, "start": 0.0, "len": 0.5, "vel": 100, "art": "pluck"},
     {"midi": 62, "start": 0.45, "len": 0.5, "vel": 90, "art": "legato"},
@@ -91,7 +91,7 @@ def test_take_events_articulation(bridge):
     kinds = [e[1] for e in evs if e[1] != "off"]
     assert kinds == ["on", "legato", "slide"]
     slide = [e for e in evs if e[1] == "slide"][0]
-    assert slide[5] == 62  # prev = 时间序前一音
+    assert slide[5] == 62  # prev = the previous note in time order
 
 
 def test_export_midi_roundtrip(bridge, tmp_path):
@@ -112,12 +112,12 @@ def test_export_empty_rejected(bridge, tmp_path):
     assert not r["ok"]
 
 
-# ---------- 音量平衡:取色响度拉齐到基准 ---------- #
+# ---------- Volume balancing: captured loudness brought to the reference ---------- #
 def test_balance_normalizes_energy(bridge):
     import copy
 
     inst = copy.copy(bridge.engine.instrument)
-    inst.H_steady = (np.asarray(inst.H_steady, np.float64) * 3.7).astype(np.float32)  # 假装录得很响
+    inst.H_steady = (np.asarray(inst.H_steady, np.float64) * 3.7).astype(np.float32)  # pretend it was recorded very loud
     bridge._balance(inst)
     e = float(np.sqrt((np.asarray(inst.H_steady, np.float64) ** 2).sum()))
     assert abs(e - bridge._ref_energy) / bridge._ref_energy < 1e-3
