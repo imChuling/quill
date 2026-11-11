@@ -122,7 +122,7 @@ def main():
     names_js = ",".join(f'"{t[0]}"' for t in TRIALS)
 
     html = f"""<!DOCTYPE html>
-<html lang="zh">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Quill Listening Test II — Playing Style Identification (about 10 minutes)</title>

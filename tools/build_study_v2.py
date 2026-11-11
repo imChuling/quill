@@ -94,7 +94,7 @@ def main():
     abx_js = json.dumps(ABX)
     abx_q = ABX_QUESTION
 
-    html = f"""<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">
+    html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <title>Quill Listening Test v2</title>
 <style>
 body{{font-family:sans-serif;max-width:760px;margin:2em auto;padding:0 1em;line-height:1.6}}
