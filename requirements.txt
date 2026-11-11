@@ -1,48 +1,48 @@
-# Quill 依赖（版本对齐 conda 环境 `mt`，2026-06 实测）
-# 阶段1 实际用到：numpy scipy librosa matplotlib pyyaml soundfile + pesto-pitch(torch) + pytest
-# 其余为后续阶段（实时/MIDI/分类）预装，附录 B 技术栈。
+# Quill dependencies (versions aligned with the conda environment `mt`, tested 2026-06)
+# Actually used in stage 1: numpy scipy librosa matplotlib pyyaml soundfile + pesto-pitch(torch) + pytest
+# The rest are preinstalled for later stages (real-time/MIDI/classification), Appendix B tech stack.
 
-# --- 核心 DSP ---
+# --- Core DSP ---
 numpy==2.2.6
 scipy==1.15.3
 librosa==0.11.0
 numba==0.63.1
 soundfile==0.13.1
 
-# --- 实时 / MIDI（阶段3 起） ---
+# --- Real-time / MIDI (from stage 3) ---
 sounddevice==0.5.5
 mido==1.3.3
 python-rtmidi==1.5.8
 
-# --- f0（PESTO 主力，torch 为其依赖） ---
+# --- f0 (PESTO primary, torch is its dependency) ---
 pesto-pitch==2.0.1
 torch==2.10.0
 
-# --- 可视化 / 配置 / 测试 ---
+# --- Visualisation / config / testing ---
 matplotlib==3.10.8
 PyYAML==6.0.3
 pytest==9.0.3
 
-# --- FR-5 转录（阶段4 已安装） ---
-basic-pitch==0.4.0    # Spotify ICASSP 2022，带 pitch-bend；macOS 走 coremltools 后端
-mir-eval==0.8.2       # 音符匹配/召回（随 basic-pitch 装）
+# --- FR-5 transcription (installed in stage 4) ---
+basic-pitch==0.4.0    # Spotify ICASSP 2022, with pitch-bend; on macOS it uses the coremltools backend
+mir-eval==0.8.2       # note matching/recall (installed with basic-pitch)
 
-# --- FR-6 兜底（阶段5）---
-scikit-learn==1.4.2   # 随机森林兜底 + 规则 vs 森林 ablation（mt 环境已自带）
+# --- FR-6 fallback (stage 5) ---
+scikit-learn==1.4.2   # random forest fallback + rules vs forest ablation (already in the mt environment)
 
-# --- FR-6 前沿升级 MERT 探针（阶段8 提前；M8）---
-transformers==5.14.1  # HuggingFace；m-a-p/MERT-v1-95M 权重首次自动下载
-nnAudio==0.3.4        # MERT 的 CQT 前端依赖
+# --- FR-6 advanced upgrade, MERT probe (stage 8, brought forward; M8) ---
+transformers==5.14.1  # HuggingFace; m-a-p/MERT-v1-95M weights download automatically on first use
+nnAudio==0.3.4        # CQT front-end dependency of MERT
 
-# --- 桌面 App（FR-12,实际实现 = pywebview 而非 PyQt） ---
+# --- Desktop app (FR-12, actually implemented with pywebview instead of PyQt) ---
 pywebview==6.2.1
 
-# --- web 版渲染服务（ui/render_service.py,README「web_demo」一节） ---
+# --- Web render service (ui/render_service.py, see the "web_demo" section of the README) ---
 fastapi==0.141.1
 uvicorn==0.52.4
 
-# --- Mode 3 从编曲提取（Demucs 6-stem 分离） ---
+# --- Mode 3 extraction from arrangements (Demucs 6-stem separation) ---
 demucs==4.0.1
 
-# --- 后续阶段（按需） ---
-# 数据集（手动下载，多 GB）：IDMT-SMT-Guitar（阶段5 loader）/ GuitarSet（阶段8）
+# --- Later stages (as needed) ---
+# Datasets (manual download, several GB): IDMT-SMT-Guitar (stage 5 loader) / GuitarSet (stage 8)

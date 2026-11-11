@@ -1,17 +1,17 @@
-"""TimbreSnapshot 数据契约与序列化。
+"""TimbreSnapshot data contract and serialisation.
 
-存为 `assets/snapshots/*.npz`。只依赖 numpy 和 json，analysis / synth / runtime 均可导入。
+Stored as `assets/snapshots/*.npz`. Depends only on numpy and json, importable from analysis / synth / runtime.
 
-字段：
+Fields:
   f0_ref       float
-  H_env        float32[60, Th]   谐波幅度包络
-  N_env        float32[40, Tn]   mel 带噪声包络
-  attack_res   float32[2646]     60 ms @ 44.1 kHz 起音残差
-  partial_freqs float32[60] | None  准谐波声源实测部分音频率；None 为严格 k·f0_ref
+  H_env        float32[60, Th]   harmonic amplitude envelope
+  N_env        float32[40, Tn]   mel-band noise envelope
+  attack_res   float32[2646]     60 ms @ 44.1 kHz attack residual
+  partial_freqs float32[60] | None  measured partial frequencies of a quasi-harmonic source; None means strictly k·f0_ref
   vibrato      {"rate_hz","depth_cents"} | None
   meta         {name, source_file, created, sr, format_version, ...}
 
-加载器宽容：缺失字段给默认值、未知键原样保留，前向/后向兼容。
+Tolerant loader: missing fields get defaults, unknown keys are kept as is, forward/backward compatible.
 """
 
 from __future__ import annotations
@@ -24,15 +24,15 @@ import numpy as np
 
 FORMAT_VERSION = 1
 
-# 渲染所需的框架参数，统一进 meta，render 据此还原
+# framework parameters needed for rendering, all kept in meta; render restores from them
 _META_DEFAULTS = {
     "name": "untitled",
     "source_file": "",
     "created": "",
     "sr": 44100,
     "format_version": FORMAT_VERSION,
-    "harm_hop": 512,  # H_env 的 STFT hop
-    "noise_nfft": 1024,  # N_env 的 STFT 规格
+    "harm_hop": 512,  # STFT hop of H_env
+    "noise_nfft": 1024,  # STFT settings of N_env
     "noise_hop": 256,
 }
 
@@ -51,7 +51,7 @@ def make_snapshot(
     sr=44100,
     **meta_extra,
 ) -> dict:
-    """组装 TimbreSnapshot（dict）。"""
+    """Assemble a TimbreSnapshot (dict)."""
     meta = dict(_META_DEFAULTS)
     meta.update(
         {
@@ -80,7 +80,7 @@ def make_snapshot(
 
 
 def save_snapshot(path, snap: dict) -> Path:
-    """序列化到 .npz（往返无损）。"""
+    """Serialise to .npz (lossless round trip)."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     has_partials = snap.get("partial_freqs") is not None
@@ -105,13 +105,13 @@ def save_snapshot(path, snap: dict) -> Path:
         "vibrato_json": np.array(json.dumps(snap.get("vibrato"))),
     }
     np.savez(path, **arrays)
-    if path.suffix != ".npz":  # np.savez 会自动补 .npz
+    if path.suffix != ".npz":  # np.savez appends .npz automatically
         path = path.with_suffix(".npz")
     return path
 
 
 def load_snapshot(path) -> dict:
-    """从 .npz 反序列化为 dict，缺失字段给默认值（宽容加载）。"""
+    """Deserialise from .npz into a dict; missing fields get defaults (tolerant loading)."""
     data = np.load(path, allow_pickle=False)
     keys = set(data.files)
 

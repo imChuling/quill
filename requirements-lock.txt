@@ -1,8 +1,8 @@
-# Quill 完整环境锁（2026-10-29 · conda env mt · pip freeze）
-# 复现: conda create -n quill python=3.10 && pip install -r requirements.txt
-# CI 用 requirements-ci.txt（子集 + CPU torch）
+# Quill full environment lock (2026-10-29 · conda env mt · pip freeze)
+# Reproduce: conda create -n quill python=3.10 && pip install -r requirements.txt
+# CI uses requirements-ci.txt (a subset + CPU torch)
 #
-# 包含直接依赖及全部传递依赖。如需精简环境，以 requirements.txt 为准。
+# Includes direct dependencies and all transitive dependencies. For a slimmer environment, requirements.txt is authoritative.
 
 
 Deprecated==1.3.1

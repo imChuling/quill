@@ -62,7 +62,7 @@ include = ["analysis*", "synth*", "runtime*", "neural*", "eval*", "ui*"]
 pythonpath = ["."]
 testpaths = ["tests"]
 markers = [
-    "slow: 慢测（加载 Basic Pitch 模型等），默认仍运行",
+    "slow: slow tests (loading the Basic Pitch model, etc.), still run by default",
 ]
 filterwarnings = [
     "ignore::RuntimeWarning",

@@ -32,7 +32,7 @@ def main(argv=None):
     ap.add_argument(
         "--descriptors",
         nargs="*",
-        default=["warm 温暖", "plucked 拨弦", "brass 铜管", "vocal 人声"],
+        default=["warm", "plucked", "brass", "vocal"],
     )
     ap.add_argument("--pitch", type=int, default=60)
     args = ap.parse_args(argv)
