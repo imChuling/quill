@@ -36,17 +36,17 @@
   .qshine::after { content: ""; position: absolute; top: 0; left: 0; height: 100%; width: 55%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.4), transparent); transform: translateX(-200%) skewX(-18deg); pointer-events: none; z-index: -1; }
   .qshine:hover::after { animation: qsweep .8s ease; }
   @keyframes qsweep { from { transform: translateX(-200%) skewX(-18deg); } to { transform: translateX(260%) skewX(-18deg); } }
-  /* CAPTURE 列动效:统一缓动 --qe,呼吸 4.5s,入场 .4s,换色 .5s */
+  /* CAPTURE column animation: shared easing --qe, breathing 4.5s, entrance .4s, colour change .5s */
   :root { --qe: cubic-bezier(.22,.61,.36,1); }
   @keyframes quillBreath { 0%,100% { box-shadow: 0 8px 20px rgba(0,0,0,.5), 0 0 0 0 rgba(224,192,137,0), inset 0 2px 4px rgba(255,240,200,.4), inset 0 -5px 9px rgba(60,40,15,.55); }
                            50%     { box-shadow: 0 9px 26px rgba(0,0,0,.46), 0 0 24px 5px rgba(224,192,137,.22), inset 0 2px 4px rgba(255,240,200,.45), inset 0 -5px 9px rgba(60,40,15,.5); } }
   .quillBreathe { animation: quillBreath 4.5s ease-in-out infinite; }
   .sealbtn::before { content: ""; position: absolute; inset: -8px; border-radius: 50%;
                      border: 1.5px solid rgba(201,168,106,.38);
-                     transition: border-color .2s, box-shadow .2s; }         /* 印章边缘环=可按暗示 */
+                     transition: border-color .2s, box-shadow .2s; }         /* seal edge ring = hint that it is pressable */
   .sealbtn:hover::before { border-color: #e0c089; box-shadow: 0 0 14px rgba(201,168,106,.28); }
   .sealbtn.capturing::before { border-color: #e0c089;
-                               animation: sealBreath 2.8s ease-in-out infinite; }   /* 录音中=光环呼吸 */
+                               animation: sealBreath 2.8s ease-in-out infinite; }   /* recording = halo breathing */
   @keyframes sealBreath {
     0%,100% { box-shadow: 0 0 8px rgba(224,192,137,.28); border-color: rgba(224,192,137,.55); transform: scale(1); }
     50%     { box-shadow: 0 0 20px rgba(224,192,137,.6); border-color: rgba(224,192,137,.95); transform: scale(1.045); } }
@@ -174,7 +174,7 @@
 
         <div style="flex:1;"></div>
 
-        <!-- saved tones library (音色库:默认 + 保存的取色音色) -->
+        <!-- saved tones library (timbre library: default + saved capture timbres) -->
         <div style="padding:12px 20px 16px;border-top:1px solid rgba(176,141,79,.14);">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;">
             <span title="Pick the instrument. Captured tones (live) play the keys and render; built-in and baked DDSP timbres render in the piano roll. ⟷ marks a tone that also has a behavior library from the same recording." style="font-family:'Spline Sans Mono',monospace;font-size:9px;letter-spacing:.1em;color:#7d7259;cursor:help;">TIMBRE <span style="color:#5a5446;">· live / render · ⟷ same recording</span></span>
@@ -245,7 +245,7 @@
           </div>
         </div>
 
-        <!-- PIANO ROLL (可编辑 MIDI 卷帘;逻辑见 ./pianoroll.js) -->
+        <!-- PIANO ROLL (editable MIDI piano roll; logic in ./pianoroll.js) -->
         <div style="flex:none;height:212px;border-radius:8px;background:linear-gradient(170deg,#1a1810,#222016);position:relative;overflow:hidden;box-shadow:inset 0 2px 14px rgba(0,0,0,.5);border:1px solid rgba(176,141,79,.2);display:flex;flex-direction:column;">
           <div style="flex:none;display:flex;align-items:center;gap:8px;padding:6px 12px 3px;">
             <span style="font-family:'Cormorant SC',serif;letter-spacing:.24em;font-size:12px;color:#c9a86a;">PIANO ROLL</span>
@@ -488,7 +488,7 @@
     <sc-if value="{{ anyOverlay }}" hint-placeholder-val="{{ false }}">
     <div onClick="{{ closeOv }}" style="position:absolute;inset:0;background:rgba(12,10,7,.62);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:50;">
 
-      <!-- SETTINGS · 设备面板 -->
+      <!-- SETTINGS · device panel -->
       <sc-if value="{{ ovSettings }}" hint-placeholder-val="{{ false }}">
       <div onClick="{{ stop }}" style="width:560px;max-height:80vh;display:flex;flex-direction:column;background:#15130e;border:1px solid rgba(201,168,106,.22);border-radius:14px;box-shadow:0 30px 80px rgba(0,0,0,.6);overflow:hidden;">
         <div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:15px 20px;">
@@ -500,7 +500,7 @@
         </div>
         <div style="flex:1;min-height:0;overflow-y:auto;padding:2px 16px 16px;display:flex;flex-direction:column;gap:11px;">
 
-          <!-- AUDIO INPUT(录音源;默认设备可能是虚拟声卡而录到静音,所以要能选) -->
+          <!-- AUDIO INPUT (recording source; the default device may be a virtual sound card that records silence, so it must be selectable) -->
           <div style="background:linear-gradient(165deg,#232019,#171410);border:1px solid rgba(201,168,106,.14);border-radius:13px;box-shadow:0 8px 20px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.04);padding:12px 14px;">
             <div style="display:flex;align-items:center;margin-bottom:9px;">
               <span style="font-family:'Cormorant SC',serif;letter-spacing:.2em;font-size:11px;color:#b08d4f;text-shadow:0 -1px 0 rgba(0,0,0,.6);">AUDIO INPUT</span>
@@ -623,7 +623,7 @@ class Component extends DCLogic {
     r.toneNameRef = (el)=>{ if(el) this.refsMap.toneNameRef=el; };
     r.delTone = (e)=>{ if(e&&e.preventDefault) e.preventDefault(); if(e&&e.stopPropagation) e.stopPropagation();
       const el=e.currentTarget, nm=el.dataset.tname; if(!nm||nm==='__default__') return;
-      if(!el.dataset.armed){ el.dataset.armed='1'; el.classList.add('armed');   // 两击确认:第一下只变红
+      if(!el.dataset.armed){ el.dataset.armed='1'; el.classList.add('armed');   // two-click confirm: the first click only turns it red
         setTimeout(()=>{ el.dataset.armed=''; el.classList.remove('armed'); }, 1600); return; }
       if(window.pywebview&&window.pywebview.api&&window.pywebview.api.delete_tone)
         window.pywebview.api.delete_tone(nm).then(()=>{ if(this.state.curTone===nm||this.state.pairTimbre==='tone:'+nm) this.pickTimbre('tone:__default__'); this.refreshTones(); if(window.quillBehaviorsChanged) window.quillBehaviorsChanged(); if(window.quillRefreshInstruments) window.quillRefreshInstruments(); }); };
@@ -662,13 +662,13 @@ class Component extends DCLogic {
     r.recCol = s.takeRec?'#cf6b63':'#cdc3a8';
     r.tempoStr = s.tempo.toFixed(1);
     r.tsigStr = (s.tsig||4) + '/4';
-    // take 徽标来自卷帘的实际内容
+    // the take badge comes from the actual piano-roll content
     const prNotes = (window.quillPiano&&window.quillPiano.getNotes) ? window.quillPiano.getNotes() : [];
     const prLen = prNotes.length ? Math.max.apply(null, prNotes.map(n=>n.start+n.len)) : 0;
     r.takeStatus = s.takeRec ? '● RECORDING…' : (prNotes.length ? (prNotes.length+' NOTES · '+prLen.toFixed(1)+' s') : 'no take');
     r.takeStatusCol = s.takeRec ? '#cf6b63' : (prNotes.length ? '#6fae7a' : '#6a6353');
     r.goCapture = ()=>{ if(window.pywebview&&window.pywebview.api&&window.pywebview.api.open_capture) window.pywebview.api.open_capture(); };
-    r.goRefine = r.goCapture;                                              // 精修在同一取色窗完成
+    r.goRefine = r.goCapture;                                              // refinement happens in the same capture window
     r.goSong = ()=>{ if(window.pywebview&&window.pywebview.api&&window.pywebview.api.open_capture) window.pywebview.api.open_capture('song'); };
     r.openSettings = ()=>{ this.setState({overlay:'settings', probe:null}); this.fetchDevices(); };
     r.closeOv = ()=>this.setState({overlay:null});
@@ -681,7 +681,7 @@ class Component extends DCLogic {
     r.tempoDown = ()=>this.setState(st=>{ const t=Math.max(40,(st.tempo|0)-1); if(window.quillPiano) window.quillPiano.setBPM(t); this.saveSessionSoon(); return {tempo:t}; });
     r.tempoUp = ()=>this.setState(st=>{ const t=Math.min(240,(st.tempo|0)+1); if(window.quillPiano) window.quillPiano.setBPM(t); this.saveSessionSoon(); return {tempo:t}; });
     r.cycleSig = ()=>this.setState(st=>{ const seq=[4,3,2,6], n=seq[(seq.indexOf(st.tsig)+1)%seq.length]; if(window.quillPiano) window.quillPiano.setTimeSig(n); return {tsig:n}; });
-    // ---- devices:list_devices;点击即切换后端 ----
+    // ---- devices: list_devices; clicking switches the backend immediately ----
     const dv = this.state.devices||{input:[],output:[],midi:[],engine:{}};
     const radio = (sel)=>({ ring: sel?'#c9a86a':'rgba(176,141,79,.4)', fill: sel?'#c9a86a':'transparent',
       bg: sel?'rgba(201,168,106,.09)':'rgba(232,224,205,.03)',
@@ -749,7 +749,7 @@ class Component extends DCLogic {
     return r;
   }
 
-  // ---- 设备面板:拉取与切换 ----
+  // ---- Device panel: fetch and switch ----
   fetchDevices(){
     const api=window.pywebview&&window.pywebview.api;
     if(api&&api.list_devices) api.list_devices().then(d=>this.setState({devices:d||{input:[],output:[],midi:[],engine:{}}})).catch(()=>{});
@@ -779,12 +779,12 @@ class Component extends DCLogic {
     this.applyAllKnobs();
     this.applyAdsr();
     this.fit();
-    // pywebview 的 api 注入晚于页面挂载:监听 pywebviewready 并轮询兜底,就绪即拉取资产与会话
+    // pywebview injects the api after the page mounts: listen for pywebviewready with a polling fallback, fetch assets and session once ready
     window.quillRefreshTones=()=>{ this.refreshTones(); this.refreshInstruments(); };
     window.quillBehaviorsChanged=()=>this.refreshBehaviors();
     window.quillCaptured=(disp)=>{ this.setState({pairTimbre:'tone:_last_capture', captureDisp:disp}); if(window.quillPiano&&window.quillPiano.setNeural) window.quillPiano.setNeural('tone:_last_capture'); this.guide(''); };
     window.quillTimbreSaved=(name, extracting)=>{ this.refreshTones(); this.refreshInstruments(); this.pickTimbre('tone:'+name); this.guide(extracting?('Saved “'+name+'” — extracting its behavior library from the same take…'):('Saved “'+name+'”. One held note gives a tone; a phrase of 2+ notes also gives a behavior library.'), extracting?0:9000); };
-    // 取色保存与行为提取完成:两份资产同名并列,提示一键交叉
+    // capture save and behaviour extraction finished: two assets with the same name side by side, offer a one-click cross
     window.quillAssetsNew=(name, nNotes)=>{
       this.refreshTones(); this.refreshInstruments(); this.refreshBehaviors();
       const alt = ((this.state.behaviors||[]).find(b=>b.name==='violin')||{}).name || ((this.state.behaviors||[]).find(b=>b.name!==name)||{}).name;
@@ -792,20 +792,20 @@ class Component extends DCLogic {
       if(nNotes>=2) this.toastAction(`New from one recording: timbre “${name}” + behavior “${name}” (${nNotes} notes).`, alt?`Play “${name}” with ${alt}'s behavior`:null, ()=>{ this.setPair('tone:'+name, alt); this.guide(`${name} × ${alt}: the keys now play your tone with ${alt}'s vibrato and slides. Record into the piano roll to render it.`, 12000); });
       else this.toastAction(`New timbre “${name}”. One note gives a tone; a phrase of 2+ notes also gives a behavior library.`, `Play “${name}” with violin's behavior`, ()=>{ this.setPair('tone:'+name, 'violin'); });
     };
-    // 卷帘编辑:刷新 take 徽标并去抖落盘(旋钮拖动不走这里,避免每次 pointermove 重渲)
+    // piano-roll edit: refresh the take badge and persist with debounce (knob drags do not come through here, avoiding a rerender on every pointermove)
     window.quillSessionDirty=()=>{ this.setState({}); this.saveSessionSoon(); };
     window.quillToast=(m,k)=>this.toast(m,k);
-    // 行为库预热就绪/失败/超时,由后端推回;面板与 VOICE 开关共用
+    // behaviour library warm-up ready/failed/timed out, pushed back by the backend; shared by the panel and the VOICE switch
     window.quillLiveBehavior=(name, ready, err)=>{
       const cur=this.state.activeBehavior||'';
-      if(name&&name!==cur) return;                                // 已切到别的库,忽略过期回调
+      if(name&&name!==cur) return;                                // already switched to another library, ignore the stale callback
       if(err){ this.setState({activeBehavior:'', behReady:true}); this._live=''; if(window.quillPiano&&window.quillPiano.setBehavior) window.quillPiano.setBehavior(null); this.paintLive('', true); this.toast(err,'err'); return; }
       if(!name){ this.paintLive('', true); return; }
       this.setState({behReady:!!ready}); this.paintLive(name, !!ready); if(ready) this.toast('♪ '+name+' ready — play the keys');
     };
     window.addEventListener('beforeunload', this._bu=()=>this.saveSessionNow());
-    window.quillShowArt=(a)=>this.showArt(a);          // 后端推送外接 MIDI 的演奏法判定
-    // 后端设定的旋钮值(取色时的自动噪声底)
+    window.quillShowArt=(a)=>this.showArt(a);          // backend pushes articulation decisions for external MIDI
+    // knob values set by the backend (automatic noise floor at capture)
     window.quillSetKnob=(k,v)=>{ if(k in this.params){ this.params[k]=Math.max(0,Math.min(1,+v)); this.applyKnob(k); } };
     window.addEventListener('pywebviewready', ()=>{ this.refreshTones(); this.refreshInstruments(); this.refreshBehaviors(); this.restoreSession(); });
     this._toneTry=0;
@@ -815,13 +815,13 @@ class Component extends DCLogic {
     window.addEventListener('resize', this._fit=()=>this.fit());
     window.addEventListener('keydown', this._kd=(e)=>this.onKeyDown(e));
     window.addEventListener('keyup', this._ku=(e)=>this.onKeyUp(e));
-    // SOURCE 实时波形:轮询取色窗的录音电平,录音时主窗同步滚动显示输入
+    // SOURCE live waveform: poll the capture window's recording level; while recording, the main window scrolls the input in sync
     this._capHist=[]; this._capActive=false;
     const capTick=()=>{ const api=window.pywebview&&window.pywebview.api;
       if(api&&api.capture_meter){ api.capture_meter().then(m=>{
         this._capActive=!!(m&&m.active);
         if(this._capActive){ this._capHist.push(Math.max(0,(m&&m.lvl)||0)); if(this._capHist.length>150) this._capHist.shift(); }
-        else if(this._capHist.length){ this._capHist.length=0; }   // 停录后清空,回到包络或静息
+        else if(this._capHist.length){ this._capHist.length=0; }   // cleared after recording stops, back to the envelope or idle
       }).catch(()=>{}); }
       this._capTimer=setTimeout(capTick, 80); };
     capTick();
@@ -839,7 +839,7 @@ class Component extends DCLogic {
     if(window.pywebview&&window.pywebview.api&&window.pywebview.api.list_tones)
       window.pywebview.api.list_tones().then(tones=>this.setState({tones:tones||[]}));
   }
-  // 烘焙的 ddsp:* 与内置 DDSP 列表,卷帘可渲染的音色
+  // baked ddsp:* and built-in DDSP list, the timbres the piano roll can render
   refreshInstruments(){
     const api=window.pywebview&&window.pywebview.api;
     if(api&&api.list_instruments) api.list_instruments().then(l=>this.setState({instruments:l||[]})).catch(()=>{});
@@ -855,8 +855,8 @@ class Component extends DCLogic {
   }
   guide(msg, ms){ this.setState({guide:msg||''}); clearTimeout(this._guideT); if(msg&&ms) this._guideT=setTimeout(()=>this.setState({guide:''}), ms); }
   pairLabel(){ const b=this.state.activeBehavior||''; return this.timbreDisp(this.state.pairTimbre)+' × '+(b?b:'rules'); }
-  // 选音色的唯一入口:音色卡、TRY IT、会话恢复、新资产提示。
-  // tone:* 同时装进实时引擎;DDSP 只给卷帘渲染,键盘继续用当前音色
+  // the single entry point for choosing a timbre: timbre cards, TRY IT, session restore, new-asset prompt.
+  // tone:* is also loaded into the real-time engine; DDSP is only for piano-roll rendering, the keyboard keeps the current timbre
   pickTimbre(id){
     const api=window.pywebview&&window.pywebview.api; id=id||'tone:__default__';
     this.setState({pairTimbre:id});
@@ -873,16 +873,16 @@ class Component extends DCLogic {
     const api=window.pywebview&&window.pywebview.api;
     if(api&&api.list_behavior_sources) api.list_behavior_sources().then(b=>this.setState({behaviors:b||[]})).catch(()=>{});
   }
-  // VOICE 面板的 rules / ♪ 标签
+  // rules / ♪ labels in the VOICE panel
   paintLive(name, ready){
     const el=this.refsMap.liveBehRef; if(!el) return;
     el.textContent=name?('♪ '+name+(ready?'':' ⏳')):'rules';
     el.style.color=name?(ready?'#7a5e26':'#b09a6a'):'#9a7c40';
   }
-  // 选行为库的唯一入口:面板点选、VOICE 开关循环、卷帘 ♪ 循环;同时驱动实时演奏与卷帘渲染
+  // the single entry point for choosing a behaviour library: panel click, VOICE switch cycling, piano-roll ♪ cycling; drives both live playing and piano-roll rendering
   pickBehavior(name, fromRoll){
     const api=window.pywebview&&window.pywebview.api;
-    const target=name||'';   // '' = rules(手势判定);再点当前项不再取消
+    const target=name||'';   // '' = rules (gesture decisions); clicking the current item again does not deselect
     this.setState({activeBehavior:target, behReady:!target});
     this._live=target;
     this.paintLive(target, !target);
@@ -895,7 +895,7 @@ class Component extends DCLogic {
     }
     this.saveSessionSoon();
   }
-  // 带一个按钮的提示,10 s 后自动消失
+  // a toast with one button, disappears automatically after 10 s
   toastAction(msg, btnLabel, fn){
     let host=document.getElementById('quillToasts');
     if(!host){ host=document.createElement('div'); host.id='quillToasts'; host.style.cssText='position:fixed;left:50%;bottom:48px;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;z-index:999;pointer-events:none;'; document.body.appendChild(host); }
@@ -905,7 +905,7 @@ class Component extends DCLogic {
     const x=document.createElement('span'); x.textContent='✕'; x.style.cssText='cursor:pointer;color:#9a8a63;'; x.onclick=()=>t.remove(); t.appendChild(x);
     host.appendChild(t); setTimeout(()=>t.remove(), 10000);
   }
-  // 统一提示条:错误 / 就绪 / 会话恢复
+  // unified toast: error / ready / session restored
   toast(msg, kind){
     let host=document.getElementById('quillToasts');
     if(!host){ host=document.createElement('div'); host.id='quillToasts'; host.style.cssText='position:fixed;left:50%;bottom:48px;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;z-index:999;pointer-events:none;'; document.body.appendChild(host); }
@@ -914,7 +914,7 @@ class Component extends DCLogic {
     host.appendChild(t); requestAnimationFrame(()=>{ t.style.opacity='1'; });
     setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=>t.remove(),250); }, err?5000:2600);
   }
-  // ---------- session: 旋钮 / ADSR / 模式 / 行为库 / 音色 / 卷帘 → assets/session.json ----------
+  // ---------- session: knobs / ADSR / mode / behaviour library / timbre / piano roll -> assets/session.json ----------
   collectSession(){
     const pr=window.quillPiano;
     return { params:Object.assign({},this.params), adsr:Object.assign({},this.adsrVals), poly:!!this.poly,
@@ -946,12 +946,12 @@ class Component extends DCLogic {
       if(s.params||s.piano) this.toast('Session restored');
     } finally { this._restoring=false; }
   }
-  // 一键示范:folk 乐句进卷帘,音色 glass,行为 violin,用卷帘渲染播放
+  // one-click demo: folk phrase into the piano roll, timbre glass, behaviour violin, played through piano-roll rendering
   tryDemo(){
     const api=window.pywebview&&window.pywebview.api;
     if(!api) return;
     const pr=window.quillPiano;
-    const FOLK=[[69,0.4,0],[71,0.2,0],[72,0.4,0],[69,0.4,0],[67,0.8,1],[64,0.4,0],[67,0.4,2],[69,1.2,1],[67,0.4,0],[64,0.4,0],[62,1.6,1]];   // 同 tools/eval_quill.py 的 folk 乐句
+    const FOLK=[[69,0.4,0],[71,0.2,0],[72,0.4,0],[69,0.4,0],[67,0.8,1],[64,0.4,0],[67,0.4,2],[69,1.2,1],[67,0.4,0],[64,0.4,0],[62,1.6,1]];   // same folk phrase as tools/eval_quill.py
     const ART=['pluck','vibrato','slide']; let t=0; const notes=FOLK.map(([m,d,a])=>{ const n={midi:m,start:+t.toFixed(3),len:d,vel:100,art:ART[a]}; t+=d; return n; });
     if(pr&&pr.setNotes&&api.list_instruments){
       api.list_instruments().then(list=>{
@@ -965,7 +965,7 @@ class Component extends DCLogic {
       return;
     }
     if(api.try_demo){ api.try_demo(); return; }
-    if(api.play_notes_neural) api.play_notes_neural(notes, 120.0, 'glass', 'violin');   // 无卷帘时的兜底:同一乐句直接渲染
+    if(api.play_notes_neural) api.play_notes_neural(notes, 120.0, 'glass', 'violin');   // fallback without a piano roll: render the same phrase directly
   }
 
   fit(){
@@ -980,10 +980,10 @@ class Component extends DCLogic {
   noteOn(midi){
     if(this.activeMidi.has(midi)) return;
     this.everPlayed=true;
-    if(window.pywebview&&window.pywebview.api&&window.pywebview.api.note_on){   // 真实引擎
+    if(window.pywebview&&window.pywebview.api&&window.pywebview.api.note_on){   // real engine
       this.activeMidi.add(midi);
-      const r=window.pywebview.api.note_on(midi,110,'auto',-1);    // 演奏法判定在引擎侧(gesture.py)
-      if(r&&r.then) r.then(a=>this.showArt(a));                    // 判定结果点亮标签
+      const r=window.pywebview.api.note_on(midi,110,'auto',-1);    // articulation decision happens on the engine side (gesture.py)
+      if(r&&r.then) r.then(a=>this.showArt(a));                    // the decision lights the label
       this.prevMidi=midi; this.setKeyVisual(midi,true);
       return;
     }
@@ -1028,7 +1028,7 @@ class Component extends DCLogic {
     this.setKeyVisual(midi,true);
   }
   noteOff(midi){
-    if(window.pywebview&&window.pywebview.api&&window.pywebview.api.note_off){   // 真实引擎
+    if(window.pywebview&&window.pywebview.api&&window.pywebview.api.note_off){   // real engine
       window.pywebview.api.note_off(midi);
       this.activeMidi.delete(midi); this.setKeyVisual(midi,false);
       if(this.activeMidi.size===0) this.prevMidi=null;
@@ -1045,17 +1045,17 @@ class Component extends DCLogic {
     if(this.activeMidi.size===0) this.prevMidi=null;
   }
 
-  // 纯显示:点亮演奏法标签与 chips,判定在引擎侧
+  // display only: light the articulation label and chips, the decision happens on the engine side
   showArt(art){
     if(!art) return;
     this.curArt=art;
     if(this.refsMap.artLabelRef) this.refsMap.artLabelRef.textContent=art;
-    var _al=document.getElementById('quillArtLabel'); if(_al) _al.textContent=art;   // 按 id 直连兜底,refs 可能尚未就绪
+    var _al=document.getElementById('quillArtLabel'); if(_al) _al.textContent=art;   // direct fallback by id, refs may not be ready yet
     if(this._chips) this._chips.forEach(c=>{ const on=c.dataset.a===art; c.style.background=on?'#9a7c40':'transparent'; c.style.color=on?'#fff7e6':'#7d7259'; c.style.borderColor=on?'#9a7c40':'rgba(40,34,24,.22)'; });
     this.glideAnim=performance.now();
   }
-  // 仅浏览器降级路径(无引擎)用,语义对齐 runtime/gesture.py:
-  // 80 ms 内 ≥3 音=strum;有按住音时 ≤2 半音=legato,否则 slide
+  // only used by the browser fallback path (no engine), semantics aligned with runtime/gesture.py:
+  // ≥3 notes within 80 ms = strum; with a held note ≤2 semitones = legato, otherwise slide
   updateArticulation(midi){
     const now=performance.now();
     this._onsets=(this._onsets||[]).filter(t=>now-t<80); this._onsets.push(now);
@@ -1069,14 +1069,14 @@ class Component extends DCLogic {
   // ---------- knobs / faders ----------
   knobDown(e){
     const key=e.currentTarget.dataset.knob; e.preventDefault();
-    document.body.style.cursor='default'; document.body.style.userSelect='none';   // 拖动时锁光标、禁选中
+    document.body.style.cursor='default'; document.body.style.userSelect='none';   // lock the cursor and disable selection while dragging
     const y0=e.clientY, v0=this.params[key];
     const mv=(ev)=>{ let v=v0-(ev.clientY-y0)/180; v=Math.max(0,Math.min(1,v)); this.params[key]=v; this.applyKnob(key); if(key==='master'&&this._bus) this._bus.gain.value=v; };
     const up=()=>{ document.body.style.cursor=''; document.body.style.userSelect=''; window.removeEventListener('pointermove',mv); window.removeEventListener('pointerup',up); };
     window.addEventListener('pointermove',mv); window.addEventListener('pointerup',up);
   }
   applyKnob(key){
-    if(window.pywebview&&window.pywebview.api&&window.pywebview.api.set_param) window.pywebview.api.set_param(key, this.params[key]);  // 同步到引擎
+    if(window.pywebview&&window.pywebview.api&&window.pywebview.api.set_param) window.pywebview.api.set_param(key, this.params[key]);  // sync to the engine
     const v=this.params[key]; const needle=this.refsMap['n_'+key];
     if(needle) needle.style.transform='translateX(-50%) rotate('+(-135+v*270)+'deg)';
     const valEl=this.refsMap['v_'+key];
@@ -1096,7 +1096,7 @@ class Component extends DCLogic {
 
   faderDown(e){
     const key=e.currentTarget.dataset.fader; e.preventDefault();
-    document.body.style.cursor='default'; document.body.style.userSelect='none';   // 拖动时锁光标、禁选中
+    document.body.style.cursor='default'; document.body.style.userSelect='none';   // lock the cursor and disable selection while dragging
     const rect=e.currentTarget.getBoundingClientRect();
     const set=(ev)=>{ let v=1-(ev.clientY-rect.top)/rect.height; v=Math.max(0,Math.min(1,v)); this.adsrVals[key]=v; this.applyAdsr(); };
     set(e);
@@ -1104,7 +1104,7 @@ class Component extends DCLogic {
     window.addEventListener('pointermove',set); window.addEventListener('pointerup',up);
   }
   applyAdsr(){
-    if(window.pywebview&&window.pywebview.api&&window.pywebview.api.set_adsr) window.pywebview.api.set_adsr(this.adsrVals.a,this.adsrVals.d,this.adsrVals.s,this.adsrVals.r);  // 同步到引擎
+    if(window.pywebview&&window.pywebview.api&&window.pywebview.api.set_adsr) window.pywebview.api.set_adsr(this.adsrVals.a,this.adsrVals.d,this.adsrVals.s,this.adsrVals.r);  // sync to the engine
     ['a','d','s','r'].forEach(k=>{
       const v=this.adsrVals[k]; const bar=this.refsMap['bar_'+k], h=this.refsMap['h_'+k];
       if(bar) bar.style.height=(v*100)+'%';
@@ -1122,7 +1122,7 @@ class Component extends DCLogic {
   }
   flashTone(){ this._toneFlash=performance.now(); }
 
-  // SOLO:重叠键连音/滑音(默认);POLY:重叠键成和弦
+  // SOLO: overlapping keys give legato/slide (default); POLY: overlapping keys form chords
   setMode(){
     this.poly=!this.poly;
     if(window.pywebview&&window.pywebview.api&&window.pywebview.api.set_voice_mode)
@@ -1131,7 +1131,7 @@ class Component extends DCLogic {
     this.saveSessionSoon();
   }
 
-  // 现场弹奏:在 rules(手势判定)与各行为库之间循环切换
+  // live playing: cycle between rules (gesture decisions) and each behaviour library
   async toggleLive(){
     const api=window.pywebview&&window.pywebview.api; if(!api||!api.set_live_behavior) return;
     if(!this._liveList){ try{ this._liveList=(await api.list_behavior_sources()).map(s=>s.name); }catch(e){ this._liveList=['violin','guitar']; } }
@@ -1222,7 +1222,7 @@ class Component extends DCLogic {
   }
 
   // ---------- computer keyboard ----------
-  // 焦点在输入框时放行给打字,不当 MIDI
+  // when focus is in an input box, let typing through instead of treating it as MIDI
   _typing(e){ const t=e.target, tn=t&&t.tagName; return tn==='INPUT'||tn==='TEXTAREA'||tn==='SELECT'||(t&&t.isContentEditable); }
   onKeyDown(e){ if(this._typing(e)) return;
     if(e.key===' '||e.code==='Space'){ e.preventDefault(); if(e.repeat) return; const pr=window.quillPiano; if(!pr) return; if(this.state.playing){ pr.stop(); this.setState({playing:false}); } else { pr.play(); this.setState({playing:true}); } return; }
@@ -1233,7 +1233,7 @@ class Component extends DCLogic {
 
   // ---------- draw loop ----------
   loop(){
-    // 卷帘就绪后把 BPM、节拍器、预备拍、拍号推过去一次
+    // once the piano roll is ready, push BPM, metronome, count-in and time signature to it once
     if(window.quillPiano && !this._pSync){ this._pSync=true;
       window.quillPiano.setBPM(this.state.tempo); window.quillPiano.setMetro(this.state.metro); window.quillPiano.setCountin(this.state.countin); window.quillPiano.setTimeSig(this.state.tsig); }
     this.t+=1; const now=performance.now();
@@ -1249,7 +1249,7 @@ class Component extends DCLogic {
     if(this.refsMap.meterRRef) this.refsMap.meterRRef.style.width=(8+lvl*0.9*88)+'%';
     // recording timer
     if(this.recording && this.refsMap.recLabelRef){ const s=((now-this.recT0)/1000); this.refsMap.recLabelRef.textContent='● CAPTURING  '+s.toFixed(1)+' s'; }
-    // 取色窗在录时:印章环呼吸,标签同步
+    // while the capture window records: the seal ring breathes and the label syncs
     const _sb=this.refsMap.recBtnRef, _sl=this.refsMap.recLabelRef;
     if(_sb) _sb.classList.toggle('capturing', !!this._capActive);
     if(_sl && !this.recording){
@@ -1269,7 +1269,7 @@ class Component extends DCLogic {
 
   drawSource(now){
     const x=this.cctx('srcCanvasRef'); if(!x) return; const W=x._w,H=x._h; x.clearRect(0,0,W,H);
-    // 1) 取色窗在录时:滚动显示输入电平,最新在右
+    // 1) while the capture window records: scroll the input level, newest on the right
     if(this._capActive && this._capHist && this._capHist.length){
       const hist=this._capHist, n=hist.length, bw=W/150;
       for(let i=0;i<n;i++){
@@ -1278,24 +1278,24 @@ class Component extends DCLogic {
         x.fillStyle='rgba(201,168,106,'+(0.35+0.5*lv).toFixed(3)+')';
         x.fillRect(xp, H/2-h/2, Math.max(1.6,bw*0.7), h);
       }
-      x.fillStyle='rgba(224,192,137,.9)'; x.fillRect(W-1.5, 0, 1.5, H);   // 录音游标
+      x.fillStyle='rgba(224,192,137,.9)'; x.fillRect(W-1.5, 0, 1.5, H);   // recording cursor
       return;
     }
-    // 2) 已取色:包络落笔式展开(900 ms),静息微呼吸
+    // 2) after capture: the envelope unfolds like a pen stroke (900 ms), then breathes gently at rest
     const wv=window._quillWave;
     if(wv && wv.length){
       const prog=Math.min(1,(now-(window._quillWaveT0||0))/900);
       const n=wv.length, bw=W/n, breath=1+0.025*Math.sin(now/800);
       for(let i=0;i<n;i++){
         const p=i/n; if(p>prog) break;
-        const edge=Math.min(1,(prog-p)*n/6);          // 展开前沿淡入
+        const edge=Math.min(1,(prog-p)*n/6);          // fade in the unfolding front edge
         const h=Math.max(2, H*0.92*wv[i]*breath);
         x.fillStyle='rgba(201,168,106,'+(0.25+0.45*edge).toFixed(3)+')';
         x.fillRect(i*bw, H/2-h/2, Math.max(1.6,bw*0.62), h);
       }
       return;
     }
-    // 3) 静息:平缓呼吸基线
+    // 3) at rest: gently breathing baseline
     x.strokeStyle='rgba(201,168,106,.30)'; x.lineWidth=1.5; x.lineCap='round';
     x.beginPath();
     for(let i=0;i<=W;i+=3){ const y=H/2+Math.sin(i*0.05+now/1400)*H*0.05*(0.55+0.45*Math.sin(i*0.012)); i?x.lineTo(i,y):x.moveTo(0,y); }
@@ -1304,8 +1304,8 @@ class Component extends DCLogic {
 
   drawTone(now){
     const x=this.cctx('toneCanvasRef'); if(!x) return; const W=x._w,H=x._h; x.clearRect(0,0,W,H);
-    // 金属漆,与音色库色卡同一公式:暗→冷银钢,中→香槟金,亮→玫瑰金;
-    // 噪声越大越往中性银褪;叠玻璃高光
+    // metallic paint, same formula as the timbre library colour cards: dark -> cool silver steel, mid -> champagne gold, bright -> rose gold;
+    // more noise fades toward neutral silver; glass highlight on top
     const mix=(a,b,u)=>a.map((v,i)=>v+(b[i]-v)*u);
     const S_T=[190,206,220],G_T=[226,192,110],R_T=[234,168,146];
     const S_B=[116,150,184],G_B=[196,148,40], R_B=[212,106,82], SILV=[198,202,206];
@@ -1317,10 +1317,10 @@ class Component extends DCLogic {
     const g=x.createLinearGradient(0,0,W*0.3,H);
     g.addColorStop(0,rgb(top)); g.addColorStop(1,rgb(bot));
     x.fillStyle=g; x.fillRect(0,0,W,H);
-    const spec=x.createLinearGradient(0,0,0,H);        // 顶部镜面高光带
+    const spec=x.createLinearGradient(0,0,0,H);        // specular highlight band at the top
     spec.addColorStop(0,'rgba(255,255,255,.42)'); spec.addColorStop(0.15,'rgba(255,255,255,.07)'); spec.addColorStop(0.34,'rgba(255,255,255,0)');
     x.fillStyle=spec; x.fillRect(0,0,W,H);
-    const sh=x.createLinearGradient(0,H,0,H*0.55);     // 底部压暗=弧面阴影
+    const sh=x.createLinearGradient(0,H,0,H*0.55);     // darker bottom = curved-surface shadow
     sh.addColorStop(0,'rgba(40,30,14,.23)'); sh.addColorStop(1,'rgba(40,30,14,0)');
     x.fillStyle=sh; x.fillRect(0,0,W,H);
     // ink texture: noise specks
@@ -1381,7 +1381,7 @@ class Component extends DCLogic {
 </script>
 <script src="./pianoroll.js?v=14"></script>
 <script>
-// 拖文件到主窗任意处即取色
+// drag a file anywhere onto the main window to capture
 (function(){
   function api(){ return window.pywebview && window.pywebview.api; }
   var veil=null;
@@ -1413,7 +1413,7 @@ class Component extends DCLogic {
 })();
 </script>
 <script>
-// 状态栏轮询:MIDI 设备名与实测输出延迟
+// status bar polling: MIDI device name and measured output latency
 (function(){
   function tick(){
     if(window.pywebview&&window.pywebview.api&&window.pywebview.api.get_status){

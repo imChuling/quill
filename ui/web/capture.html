@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link href="./vendor/fonts.css" rel="stylesheet">
 <style>
-  /* Capture 窗:DAW 工具窗语言。持久布局,内容原地更新,不整幕切换;
-     深色框架与主窗同比重;技术化短文案;常驻电平、波形、读数。 */
+  /* Capture window: DAW tool-window language. Persistent layout, content updates in place, no full-screen switches;
+     dark frame weighted like the main window; short technical copy; level, waveform and readouts always visible. */
   :root { --qe: cubic-bezier(.22,.61,.36,1);
           --chrome:#15130e; --line:rgba(201,168,106,.16);
           --ink:#e8e0cd; --ink2:#9a8a63; --gold:#b08d4f; --gold2:#c9a86a;
-          --rose:#b06a72; --rose2:#edafb8; --teal:#8aadae; --teal2:#a9c2c4; }   /* 与主窗同源:粉金=TIMBRE,蓝金=ARTICULATION */
+          --rose:#b06a72; --rose2:#edafb8; --teal:#8aadae; --teal2:#a9c2c4; }   /* same source as the main window: rose gold=TIMBRE, blue gold=ARTICULATION */
   * { box-sizing: border-box; margin: 0; }
   html, body { height: 100%; }
   body { background: var(--chrome); display: flex; flex-direction: column;
@@ -18,7 +18,7 @@
          -webkit-user-select: none; user-select: none; }
   .mono { font-family: 'Spline Sans Mono', ui-monospace, monospace; }
 
-  /* 头部窄条(深色 chrome 只留这里和 FILES 条) */
+  /* header strip (the dark chrome is kept only here and in the FILES strip) */
   .hdr { display: flex; align-items: baseline; gap: 10px; padding: 2px 4px; }
   .hdr .ttl { font-family: 'Cormorant SC', serif; letter-spacing: .22em; font-size: 14px; color: var(--gold2); }
   .hdr .sp { flex: 1; }
@@ -26,18 +26,18 @@
   .hdr .led { color: #5a5342; margin-left: 5px; transition: color .15s; }
   .hdr .led.hot { color: #6fae7a; text-shadow: 0 0 6px rgba(111,174,122,.8); }
 
-  /* 工作面板 */
+  /* work panel */
   .panel { background: linear-gradient(165deg,#232019,#171410); border: 1px solid rgba(201,168,106,.14);
            border-radius: 15px; padding: 12px 14px;
            box-shadow: 0 10px 26px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05); }
   .cap { font-family: 'Cormorant SC', serif; letter-spacing: .2em; font-size: 11.5px; color: var(--gold);
          margin-bottom: 7px; display: flex; align-items: baseline;
-         text-shadow: 0 -1px 0 rgba(0,0,0,.6); }   /* 深底凸版:阴影上翻 */
+         text-shadow: 0 -1px 0 rgba(0,0,0,.6); }   /* letterpress on dark: shadow flipped up */
   .cap .sp { flex: 1; }
   .cap .hint { font-size: 11.5px; letter-spacing: 0; font-style: italic; color: var(--ink2);
                font-family: 'Cormorant Garamond', serif; }
 
-  /* SOURCE:走带行 + 波形 + 读数 */
+  /* SOURCE: transport row + waveform + readouts */
   .row { display: flex; align-items: center; gap: 9px; }
   #rec { width: 76px; height: 30px; border-radius: 9px; border: 1px solid rgba(201,168,106,.32); cursor: pointer;
          font-family: 'Spline Sans Mono', monospace; font-size: 11px; letter-spacing: .05em; white-space: nowrap;
@@ -55,7 +55,7 @@
   #playTk:hover { transform: translateY(-1px); }
   #playTk:active { transform: scale(.95); }
   #playTk.playing { background: linear-gradient(180deg,#3a4a4b,#283334); border-color: var(--teal);
-                    color: #bcd2d3; }                      /* 播放中=蓝金 */
+                    color: #bcd2d3; }                      /* playing = blue gold */
   #meter { flex: 1; min-width: 0; height: 30px; background: #0c0a07; border-radius: 9px;
            border: 1px solid rgba(201,168,106,.18); display: block; }
   #clock { font-size: 12px; color: var(--ink); width: 52px; text-align: right; }
@@ -67,7 +67,7 @@
   .ti::placeholder { color: #6a6353; font-style: italic; }
   .ti:focus { border-color: rgba(201,168,106,.55); }
   #wave { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-  #wave.reveal { animation: inkReveal .8s var(--qe); }                  /* 墨线从左到右写出 */
+  #wave.reveal { animation: inkReveal .8s var(--qe); }                  /* ink line written left to right */
   @keyframes inkReveal { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
   .stats { display: flex; gap: 8px; margin-top: 10px; }
   .stat { flex: 1; background: rgba(232,224,205,.06); border-radius: 11px; padding: 6px 9px 7px;
@@ -77,42 +77,42 @@
   .stat b { font-family: 'Spline Sans Mono', monospace; font-size: 11.5px; color: var(--ink);
             font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .stat.hot { background: radial-gradient(130% 150% at 50% 15%, rgba(176,106,114,.34), rgba(232,224,205,.05));
-              animation: chipBreath 3.2s ease-in-out infinite; }        /* 粉金=主窗 TIMBRE */
+              animation: chipBreath 3.2s ease-in-out infinite; }        /* rose gold = main window TIMBRE */
   @keyframes chipBreath { 0%,100% { box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 1px 3px rgba(0,0,0,.25); }
                           50%    { box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 2px 10px rgba(237,175,184,.28); } }
-  .stat b.pop { animation: valPop .4s var(--qe) both; }                 /* 读数落纸 */
-  .stat.flash { animation: chipFlash .9s var(--qe); }                   /* ♪TONE 试听时音高胶囊点亮 */
+  .stat b.pop { animation: valPop .4s var(--qe) both; }                 /* readout lands on paper */
+  .stat.flash { animation: chipFlash .9s var(--qe); }                   /* pitch chip lights up during the ♪TONE preview */
   @keyframes chipFlash { 0% { box-shadow: 0 0 0 0 rgba(237,175,184,0); }
     25% { box-shadow: 0 0 14px 2px rgba(237,175,184,.55); transform: translateY(-2px); }
     100% { box-shadow: 0 0 0 0 rgba(237,175,184,0); transform: none; } }
   @keyframes valPop { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
-  /* ANALYSIS:部分音谱 + 精修 */
+  /* ANALYSIS: partial spectrum + refine */
   .ctlrow { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
   .lab { font-size: 10px; letter-spacing: .1em; color: var(--ink2); width: 44px; }
   .b { border: 1px solid rgba(201,168,106,.3); background: linear-gradient(180deg,#332d22,#211c14); color: #cdc3a8;
        font-family: 'Spline Sans Mono', monospace; font-size: 10.5px; padding: 4px 7px; border-radius: 5px;
        white-space: nowrap;
        cursor: pointer; transition: transform .12s var(--qe);
-       box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 1px 2px rgba(0,0,0,.3); }  /* 深色 letterpress */
-  .b:active { box-shadow: inset 0 1px 3px rgba(0,0,0,.5); }                          /* 按下=盖印 */
+       box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 1px 2px rgba(0,0,0,.3); }  /* dark letterpress */
+  .b:active { box-shadow: inset 0 1px 3px rgba(0,0,0,.5); }                          /* pressed = stamped */
   .b:hover { transform: translateY(-1px); border-color: rgba(138,173,174,.75);
              box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 2px 6px rgba(138,173,174,.22); }
   .b:active { transform: scale(.96); }
   select.b.on { background: linear-gradient(180deg,#3a4a4b,#283334); border-color: var(--teal);
-                color: #bcd2d3; }                                                    /* 已选频段=蓝金 */
+                color: #bcd2d3; }                                                    /* selected band = blue gold */
   select.b { padding: 3px 5px; }
   #hearP { background: linear-gradient(180deg,#caa86b,#9a7c40); color: #1a1208;
-           border-color: #8a6c2e; font-weight: 600; }              /* 试听捕捉=金色主按钮 */
+           border-color: #8a6c2e; font-weight: 600; }              /* preview capture = gold primary button */
   #hearP:hover { border-color: #caa86b; box-shadow: 0 2px 8px rgba(201,168,106,.35); }
   #partials { display: flex; gap: 2px; align-items: flex-end; height: 44px;
               border-bottom: 1px solid var(--line); padding-bottom: 1px; }
   #partials div { flex: 1; background: linear-gradient(rgba(237,175,184,.42), rgba(176,106,114,.2));
                   border: 1px solid rgba(237,175,184,.5); border-bottom: none; border-radius: 2px 2px 0 0;
-                  transform-origin: bottom; animation: barUp .45s var(--qe) both; }   /* 粉金墨染+钢笔描边 */
+                  transform-origin: bottom; animation: barUp .45s var(--qe) both; }   /* rose-gold ink wash + pen outline */
   @keyframes barUp { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 
-  /* FILES(深色窄条:拖放/打开/整歌分离,内容原地切换) */
+  /* FILES (dark strip: drop/open/whole-song separation, content switches in place) */
   .files { flex: 1; min-height: 60px; border: 1px dashed rgba(176,141,79,.35); border-radius: 7px;
            display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 8px; }
   .files .tip { font-size: 12.5px; color: #8a7d5f; font-style: italic; }
@@ -130,7 +130,7 @@
   .shimmer { width: 220px; height: 4px; border-radius: 2px; background: rgba(176,141,79,.18);
              overflow: hidden; position: relative; }
   .shimmer::after { content: ""; position: absolute; top: 0; left: -40%; height: 100%; width: 38%;
-    border-radius: 2px; background: linear-gradient(90deg, transparent, var(--rose2), var(--teal2), transparent);   /* 粉金→蓝金流光 */
+    border-radius: 2px; background: linear-gradient(90deg, transparent, var(--rose2), var(--teal2), transparent);   /* rose gold -> blue gold shimmer */
     animation: slide 1.15s ease-in-out infinite; }
   @keyframes slide { from { left: -40%; } to { left: 105%; } }
 
@@ -154,7 +154,7 @@
     <span class="io mono">44.1 kHz · MONO · INPUT<span class="led" id="led">●</span></span>
   </div>
 
-  <!-- SOURCE:走带 + 电平 + 波形 + 读数(常驻,原地更新) -->
+  <!-- SOURCE: transport + level + waveform + readouts (always visible, updated in place) -->
   <div class="panel">
     <div class="cap">SOURCE<span class="sp"></span>
       <button class="b mono" id="texBtn" title="Texture mode — capture unpitched sounds (rain, wind, machines)"
@@ -192,12 +192,12 @@
     </div>
   </div>
 
-  <!-- ANALYSIS:部分音谱 + 精修 -->
+  <!-- ANALYSIS: partial spectrum + refine -->
   <div class="panel">
     <div class="cap">ANALYSIS<span class="sp"></span><span class="hint">wrong octave? noisy? fix here</span></div>
     <div style="background:radial-gradient(60% 100% at 28% 100%, rgba(209,138,146,.14), transparent),
                            radial-gradient(70% 110% at 76% 100%, rgba(214,160,80,.15), transparent);
-                border-radius:11px;padding:6px 8px 0;">   <!-- 粉金×琥珀晨光 -->
+                border-radius:11px;padding:6px 8px 0;">   <!-- rose gold × amber dawn -->
       <div id="partials"></div>
     </div>
     <div class="ctlrow" style="margin-top:9px;">
@@ -227,7 +227,7 @@
     </div>
   </div>
 
-  <!-- FILES:拖放 / 打开 / 整歌分离(内容原地切换:tip ↔ shimmer ↔ stems) -->
+  <!-- FILES: drop / open / whole-song separation (content switches in place: tip <-> shimmer <-> stems) -->
   <div class="files" id="files">
     <span class="tip">drop audio here — or</span>
     <button class="db" id="openBtn">OPEN FILE…</button>
@@ -247,10 +247,10 @@
     function st(msg, err, poem){ const e=$('status'); e.textContent=msg||'';
       e.classList.toggle('err', !!err);
       e.classList.remove('poem'); if(poem){ void e.offsetWidth; e.classList.add('poem'); } }
-    const POEM='To capture is to remember.';           // 品牌手书行:闲时是诗,忙时是术语
+    const POEM='To capture is to remember.';           // brand handwritten line: poetry when idle, jargon when busy
 
-    // ---- 波形框:空网格 / take 包络 / 拖选段 ----
-    let sel=null, lastTakeS=null;                        // sel=[a,b] 0..1 分数;映射修剪后 take 秒
+    // ---- Waveform box: empty grid / take envelope / drag-selected segment ----
+    let sel=null, lastTakeS=null;                        // sel=[a,b] fractions 0..1; mapped to trimmed take seconds
     function drawWave(env){
       window._lastEnv=env;
       const wh=$('waveHint'); if(wh) wh.style.display=(env&&env.length)?'block':'none';
@@ -264,30 +264,30 @@
       x.beginPath(); x.moveTo(0,H/2); x.lineTo(W,H/2); x.stroke();
       if(!env||!env.length) return;
       const n=env.length;
-      const jit=i=>0.05*Math.sin(i*3.7)+0.035*Math.sin(i*7.3);   // 手绘微抖,确定性
+      const jit=i=>0.05*Math.sin(i*3.7)+0.035*Math.sin(i*7.3);   // hand-drawn micro jitter, deterministic
       const yTop=i=>H/2-(env[i]*(0.44+jit(i)))*H;
       const yBot=i=>H/2+(env[i]*(0.44-jit(i)*0.6))*H;
       const X=i=>i/(n-1)*W;
-      x.beginPath();                                              // 墨水淡染(两线之间)
+      x.beginPath();                                              // light ink wash (between the two lines)
       for(let i=0;i<n;i++){ i?x.lineTo(X(i),yTop(i)):x.moveTo(X(0),yTop(0)); }
       for(let i=n-1;i>=0;i--) x.lineTo(X(i),yBot(i));
-      const wash=x.createLinearGradient(0,0,0,H);                 // 墨染:粉金→金
+      const wash=x.createLinearGradient(0,0,0,H);                 // ink wash: rose gold -> gold
       wash.addColorStop(0,'rgba(237,175,184,.17)'); wash.addColorStop(1,'rgba(201,168,106,.13)');
       x.closePath(); x.fillStyle=wash; x.fill();
-      const roseG=x.createLinearGradient(0,0,W,0);                // 上线=主窗电平表同款粉金渐变
+      const roseG=x.createLinearGradient(0,0,W,0);                // upper line = same rose-gold gradient as the main window meter
       roseG.addColorStop(0,'rgba(176,106,114,.95)'); roseG.addColorStop(.55,'rgba(237,175,184,.92)');
       roseG.addColorStop(1,'rgba(240,210,192,.85)');
       x.lineWidth=1.4*dpr; x.lineJoin='round'; x.lineCap='round';
       x.strokeStyle=roseG;
       x.beginPath(); for(let i=0;i<n;i++){ i?x.lineTo(X(i),yTop(i)):x.moveTo(X(0),yTop(0)); } x.stroke();
-      x.strokeStyle='rgba(224,192,137,.85)';                      // 下线=金
+      x.strokeStyle='rgba(224,192,137,.85)';                      // lower line = gold
       x.beginPath(); for(let i=0;i<n;i++){ i?x.lineTo(X(i),yBot(i)):x.moveTo(X(0),yBot(0)); } x.stroke();
-      if(window._playCursor!=null){                               // 播放游标
+      if(window._playCursor!=null){                               // playback cursor
         const px=window._playCursor*W;
         x.strokeStyle='rgba(240,214,160,.95)'; x.lineWidth=1.6*dpr;
         x.beginPath(); x.moveTo(px,0); x.lineTo(px,H); x.stroke();
       }
-      if(sel){                                                    // 选区:区外压暗 + 粉金边界线
+      if(sel){                                                    // selection: darken outside + rose-gold boundary lines
         const a=sel[0]*W, b=sel[1]*W;
         x.fillStyle='rgba(12,10,7,.62)';
         x.fillRect(0,0,a,H); x.fillRect(b,0,W-b,H);
@@ -295,7 +295,7 @@
         x.beginPath(); x.moveTo(a,0); x.lineTo(a,H); x.moveTo(b,0); x.lineTo(b,H); x.stroke();
       }
     }
-    // 拖选:按下、拖动、松开圈定;双击清除;精修只用选中段
+    // drag select: press, drag, release to mark; double-click clears; refine only uses the selected segment
     (function(){
       const box=$('wavebox'); let dragA=null;
       const fx=e=>Math.max(0, Math.min(1, (e.clientX-box.getBoundingClientRect().left)/box.clientWidth));
@@ -304,20 +304,20 @@
         const b=fx(e); sel=[Math.min(dragA,b), Math.max(dragA,b)]; drawWave(window._lastEnv); segChip(); });
       window.addEventListener('mouseup', e=>{ if(dragA===null) return;
         const b=fx(e), a=dragA; dragA=null;
-        sel = Math.abs(b-a)<0.02 ? null : [Math.min(a,b), Math.max(a,b)];   // 点一下=清除,拖开=选段
+        sel = Math.abs(b-a)<0.02 ? null : [Math.min(a,b), Math.max(a,b)];   // a click clears, a drag selects a segment
         drawWave(window._lastEnv); segChip();
         if(sel&&lastTakeS) st('Span '+(sel[0]*lastTakeS).toFixed(1)+'–'+(sel[1]*lastTakeS).toFixed(1)+' s — ⟳ apply re-analyses it.');
       });
       box.addEventListener('dblclick', ()=>{ sel=null; drawWave(window._lastEnv); segChip(); st(POEM,false,true); });
     })();
-    // SEGMENT 胶囊跟随选区;紧凑格式避免省略号
+    // the SEGMENT chip follows the selection; compact format avoids an ellipsis
     function segChip(){
       const f=v=>v>=9.95?String(Math.round(v)):v.toFixed(1);
       if(sel&&lastTakeS) $('roUsed').textContent=f(sel[0]*lastTakeS)+'–'+f(sel[1]*lastTakeS)+'s';
       else if(window._lastWinUsed!==undefined) $('roUsed').textContent=window._lastWinUsed?'auto-pick':'full take';
     }
 
-    // ---- 电平表:录制中轮询,待命静止 ----
+    // ---- Level meter: polled while recording, still on standby ----
     let levelTimer=null, clockTimer=null, recT0=0, meterHist=[];
     function meterDraw(){
       const cv=$('meter'), x=cv.getContext('2d');
@@ -327,7 +327,7 @@
       const X=i=>i/119*W, Y=v=>H-(0.1+v*0.8)*H;
       x.beginPath();
       meterHist.forEach((v,i)=>{ i?x.lineTo(X(i),Y(v)):x.moveTo(X(0),Y(v)); });
-      const g=x.createLinearGradient(0,0,W,0);                    // 与主窗 meter 同款渐变
+      const g=x.createLinearGradient(0,0,W,0);                    // same gradient as the main window meter
       g.addColorStop(0,'#b06a72'); g.addColorStop(.6,'#edafb8'); g.addColorStop(1,'#f0d2c0');
       x.strokeStyle=meterHist[meterHist.length-1]>0.95?'rgba(224,112,94,.95)':g;
       x.lineWidth=1.6; x.lineJoin='round'; x.stroke();
@@ -350,7 +350,7 @@
     }
     function stopMeter(){ clearInterval(levelTimer); clearInterval(clockTimer); $('led').classList.remove('hot'); }
 
-    // ---- 结果:原地更新读数、谱、波形 ----
+    // ---- Results: update readouts, spectrum and waveform in place ----
     const NOTE=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
     function noteName(f){ if(!f) return '—'; const m=Math.round(69+12*Math.log2(f/440)); return NOTE[((m%12)+12)%12]+(Math.floor(m/12)-1); }
     let lastF0=null, lastHint=null;
@@ -358,15 +358,15 @@
       if(!(r&&r.ok)){ st((r&&r.msg)||'Capture failed.', true); return; }
       if(fresh) lastHint=null;
       lastF0=r.f0||lastF0;
-      lastTakeS=r.take_s||lastTakeS; sel=null;            // 新结果=新坐标系,清选区
-      if(typeof syncBake==='function') syncBake();        // take 时长决定 BAKE DDSP 可用与提示
+      lastTakeS=r.take_s||lastTakeS; sel=null;            // new result = new coordinate system, clear the selection
+      if(typeof syncBake==='function') syncBake();        // take duration decides whether BAKE DDSP is available and its hint
       window._lastWinUsed=!!r.win_used;
-      if(r.disp) $('toneName').placeholder=r.disp+'…';    // 建议名跟随取色结果
+      if(r.disp) $('toneName').placeholder=r.disp+'…';    // suggested name follows the capture result
       $('roPitch').textContent=noteName(r.f0)+' '+(r.f0?Math.round(r.f0):'—')+'Hz';
       $('roPart').textContent=r.n_harm||'—';
       $('roTake').textContent=(r.take_s||'—')+' s';
       $('roUsed').textContent=r.win_used?'auto-pick':'full take';
-      ['roPitch','roPart','roTake','roUsed'].forEach((id,i)=>{     // 读数依次落纸
+      ['roPitch','roPart','roTake','roUsed'].forEach((id,i)=>{     // readouts land one after another
         const e=$(id); e.classList.remove('pop'); void e.offsetWidth;
         e.style.animationDelay=(i*60)+'ms'; e.classList.add('pop'); });
       const pt=$('partials'); pt.innerHTML='';
@@ -374,10 +374,10 @@
         b.style.height=(6+h*38)+'px'; b.style.animationDelay=(i*12)+'ms'; pt.appendChild(b); });
       drawWave(r.wave);
       const wv=$('wave'); wv.classList.remove('reveal'); void wv.offsetWidth; wv.classList.add('reveal');
-      if(r.warn) st(r.warn); else st('To transform is to compose.', false, true);   // 取色成功=品牌第三行
+      if(r.warn) st(r.warn); else st('To transform is to compose.', false, true);   // capture success = third brand line
       showReadiness(r);
     }
-    // ---- 就绪度:这段录音能成为音色、行为库、DDSP 烘焙中的哪些(三者门槛不同)----
+    // ---- Readiness: which of timbre, behaviour library and DDSP bake this recording can become (each has a different threshold) ----
     function showReadiness(r){
       const el=$('ready'); if(!el) return;
       const ok=(t)=>'<span style="color:#6fae7a">✓ '+t+'</span>', no=(t)=>'<span style="color:#b09a6a">○ '+t+'</span>';
@@ -392,7 +392,7 @@
       el.style.display='';
     }
 
-    // ---- 走带 ----
+    // ---- Transport ----
     let recording=false;
     async function startRec(){
       if(!api()){ st('Backend not connected.', true); return; }
@@ -408,7 +408,7 @@
     }
     $('rec').onclick=()=>recording?stopRec():startRec();
 
-    // ---- 试听:播 take(有选区只播选区),波形跑游标,再点即停 ----
+    // ---- Preview: play the take (only the selection if there is one), cursor runs over the waveform, click again to stop ----
     function endPlay(){ window._playing=false; window._playCursor=null; clearTimeout(window._playEndT);
       const b=$('playTk'); b.textContent='▶'; b.classList.remove('playing');
       if(window._lastEnv) drawWave(window._lastEnv); }
@@ -421,7 +421,7 @@
       if(!(r&&r.ok)){ st((r&&r.msg)||'Nothing to play.', true); return; }
       window._playing=true;
       clearTimeout(window._playEndT);
-      // 兜底复位,rAF 被节流时也不会卡在 ■
+      // fallback reset, so it never sticks on ■ even when rAF is throttled
       window._playEndT=setTimeout(()=>{ if(window._playing) endPlay(); }, r.dur*1000+120);
       const b=$('playTk'); b.textContent='■'; b.classList.add('playing');
       st(sel?('Auditioning '+t0.toFixed(1)+'–'+t1.toFixed(1)+' s — drag again to adjust.')
@@ -437,7 +437,7 @@
       })();
     };
 
-    // ---- 命名保存 ----
+    // ---- Name and save ----
     $('saveBtn').onclick=async ()=>{
       if(!api()||!api().save_timbre){ st('Backend not connected.', true); return; }
       const inp=$('toneName');
@@ -447,7 +447,7 @@
       inp.value=''; inp.placeholder=r.disp+'…';
       const extracting=!!(r.behavior&&r.behavior.state==='extracting');
       st('Saved “'+r.disp+'”'+(extracting?' · extracting its behavior library…':'')+' — to preserve is to honor.', false, true);
-      // 同名行为库在后台提取(pYIN 约 1.5 倍实时),轮询到完成再改状态行
+      // the same-named behaviour library is extracted in the background (pYIN about 1.5× real time); poll until done, then update the status line
       if(extracting){
         (async function pollBeh(){
           let d={}; try{ d=await api().behavior_status(); }catch(e){}
@@ -458,7 +458,7 @@
       }
     };
 
-    // ---- BAKE DDSP:用取色 take 在后台微调 DDSP 音色(桌面专属,分钟级),轮询进度 ----
+    // ---- BAKE DDSP: fine-tune a DDSP timbre from the capture take in the background (desktop only, minutes), poll progress ----
     function syncBake(){
       const b=$('bakeBtn'), h=$('bakeHint'); if(!b) return;
       const s=lastTakeS||0;
@@ -484,7 +484,7 @@
       })();
     };
 
-    // ---- Texture 模式:非乐音取色(雨、风、机器),跳过音高守门与选窗,噪声层开大 ----
+    // ---- Texture mode: non-musical capture (rain, wind, machines), skips the pitch gate and window selection, noise layer turned up ----
     let texture=false;
     $('texBtn').onclick=async ()=>{
       texture=!texture;
@@ -496,7 +496,7 @@
       if(texture) st('Texture mode — pitch gate off.'); else st(POEM,false,true);
     };
 
-    // ---- Refine:反复精修不劣化;新 take 重置修正 ----
+    // ---- Refine: repeated refinement does not degrade; a new take resets corrections ----
     async function refine(hint){
       if(!api()) return;
       if(hint!==undefined) lastHint=hint;
@@ -510,7 +510,7 @@
     }
     ['bandLo','bandHi'].forEach(id=>{ $(id).onchange=()=>$(id).classList.toggle('on', !!$(id).value); });
     $('denoise').onchange=()=>$('denoise').classList.toggle('on', $('denoise').value!=='auto');
-    // ---- 试听:A440 纯参考(WebAudio,不经引擎);引擎按检测音高发声,用来核对八度 ----
+    // ---- Preview: A440 pure reference (WebAudio, not through the engine); the engine sounds at the detected pitch, used to check the octave ----
     let _ac=null, _hearing=false;
     $('refA').onclick=()=>{
       try{
@@ -531,7 +531,7 @@
       _hearing=true;
       const m=Math.max(21, Math.min(108, Math.round(69+12*Math.log2(lastF0/440))));
       st('Auditioning your tone at '+noteName(lastF0)+' · '+Math.round(lastF0)+' Hz — compare with ▶ (your recording).');
-      const chip=$('roPitch').closest('.stat');                          // 点亮 PITCH 胶囊
+      const chip=$('roPitch').closest('.stat');                          // light up the PITCH chip
       if(chip){ chip.classList.remove('flash'); void chip.offsetWidth; chip.classList.add('flash'); }
       await api().note_on(m, 100, 'pluck');
       setTimeout(async ()=>{ try{ await api().note_off(m); }catch(e){} _hearing=false; }, 900);
@@ -541,7 +541,7 @@
     $('snapA').onclick=()=>{ const f=lastF0||440; refine(440*Math.pow(2, Math.round(12*Math.log2(f/440))/12)); };
     $('reana').onclick=()=>refine(undefined);
 
-    // ---- FILES:打开 / 整歌分离,区域内容原地切换 ----
+    // ---- FILES: open / whole-song separation, area content switches in place ----
     const ICONS={vocals:'VOX',guitar:'GTR',piano:'PNO',bass:'BASS',drums:'DRUMS',other:'OTHER'};
     function filesIdle(){
       const fb=$('files'); fb.style.display=''; fb.style.gridTemplateColumns=''; fb.style.gap=''; fb.style.alignContent='';
@@ -564,7 +564,7 @@
       const r=await api().pick_song();
       if(!(r&&r.ok)){ filesIdle(); st((r&&r.msg)||'No file.', (r&&r.msg)!=='No file chosen'); return; }
       const box=$('files'); box.innerHTML='';
-      box.style.display='grid'; box.style.gridTemplateColumns='repeat(3,1fr)';   // 3 列网格:6 卡两行,不压状态栏
+      box.style.display='grid'; box.style.gridTemplateColumns='repeat(3,1fr)';   // 3-column grid: 6 cards in two rows, does not squeeze the status bar
       box.style.gap='7px'; box.style.alignContent='center';
       const maxr=Math.max(...r.stems.map(s=>s.rms),1e-9);
       r.stems.forEach((s,i)=>{
@@ -582,7 +582,7 @@
     $('openBtn').onclick=openFile;
     $('songBtn').onclick=fromSong;
 
-    // ---- 拖放 ----
+    // ---- Drag and drop ----
     const veil=$('dropveil'); let dragDepth=0;
     window.addEventListener('dragover', e=>e.preventDefault());
     window.addEventListener('dragenter', e=>{ e.preventDefault(); dragDepth++; veil.style.display='flex'; });

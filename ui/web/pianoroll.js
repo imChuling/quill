@@ -1,33 +1,33 @@
-/* Quill Piano Roll:mini DAW 式可编辑 MIDI 卷帘,桌面版编辑器,后端是 pywebview 注入的 window.pywebview.api。
-   录制(屏幕、电脑键盘、外接 MIDI)实时回显时间与力度;节拍器 click 与预备拍 count-in;BPM 驱动网格。
-   编辑:悬停提示光标,拖动移动、拖右端改长度,右键标注演奏法或删除,双击删除。
-   回放经真实引擎,播放头跟随。
-   视口:时间(横)与音高(纵)双轴可滚动,滚轮改音高,Shift 或横向滚动改时间,全程缓动。 */
+/* Quill Piano Roll: mini-DAW-style editable MIDI piano roll, the desktop editor, backed by window.pywebview.api injected by pywebview.
+   Recording (on-screen, computer keyboard, external MIDI) echoes timing and velocity live; metronome click and count-in; BPM drives the grid.
+   Editing: hover cursor hints, drag to move, drag the right edge to resize, right-click to label articulation or delete, double-click to delete.
+   Playback goes through the real engine, the playhead follows.
+   Viewport: time (horizontal) and pitch (vertical) both scroll; the wheel changes pitch, Shift or horizontal scroll changes time, eased throughout. */
 (function () {
   function init() {
     const cv = document.getElementById('prCanvas');
     if (!cv) return false;
     const ctx = cv.getContext('2d');
     const SNAP = 0.25, KEYW = 42;
-    const PITCH_LO = 21, PITCH_HI = 108;              // 可滚动的总音域 A0..C8
+    const PITCH_LO = 21, PITCH_HI = 108;              // total scrollable range A0..C8
     const dpr = window.devicePixelRatio || 1;
     let bpm = 120;
-    let VIEW_ROWS = 24;                               // 可见音高行数,fit() 按画布高度调整
-    let viewLen = 8;                                  // 可见拍数
-    let BPB = 4;                                       // 每小节拍数(拍号 2/4、3/4、4/4、6/4…)
-    let viewStart = 0, viewStartTarget = 0;          // 横向视口起点(拍):当前/目标
-    let viewLo = 48, viewLoTarget = 48;              // 纵向视口底部 MIDI(浮点,缓动):当前/目标
+    let VIEW_ROWS = 24;                               // number of visible pitch rows, adjusted by fit() to the canvas height
+    let viewLen = 8;                                  // visible beats
+    let BPB = 4;                                       // beats per bar (time signature 2/4, 3/4, 4/4, 6/4...)
+    let viewStart = 0, viewStartTarget = 0;          // horizontal viewport start (beats): current/target
+    let viewLo = 48, viewLoTarget = 48;              // vertical viewport bottom MIDI (float, eased): current/target
     let notes = [], drag = null, preview = -1;
     let playing = false, recording = false, recHeadBeat = -1, playBeat = 0;
     let t0 = 0, recT0 = 0, timers = [], renderRAF = null;
 
     const api = () => window.pywebview && window.pywebview.api;
-    // 通知主页会话已改动(主页去抖落盘)
+    // notify the main page that the session changed (the main page debounces and persists)
     const dirty = () => { if (window.quillSessionDirty) { try { window.quillSessionDirty(); } catch (e) {} } };
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
     const gridX = () => cv.width - KEYW * dpr;
     const rowH = () => cv.height / VIEW_ROWS;
-    const topF = () => viewLo + VIEW_ROWS - 1;        // 顶部可见 MIDI(浮点)
+    const topF = () => viewLo + VIEW_ROWS - 1;        // top visible MIDI (float)
     const yOfMidi = (m) => (topF() - m) * rowH();
     const midiOfY = (py) => Math.round(topF()) - Math.floor(py / rowH());
     const xOfBeat = (b) => KEYW * dpr + ((b - viewStart) / viewLen) * gridX();
@@ -39,19 +39,19 @@
     const timelineBeats = () => Math.max(viewLen, lastEnd() + 4, recHeadBeat + 2);
     const maxViewLo = () => PITCH_HI - VIEW_ROWS + 1;
 
-    // 纵向视口居中到音符所在音域
+    // centre the vertical viewport on the range of the notes
     function centerOnNotes() {
       if (!notes.length) { viewLoTarget = 48; return; }
       const lo = Math.min.apply(null, notes.map(n => n.midi)), hi = Math.max.apply(null, notes.map(n => n.midi));
       viewLoTarget = clamp(Math.round((lo + hi) / 2 - VIEW_ROWS / 2), PITCH_LO, maxViewLo());
     }
-    // 横向跟随播放/录制头:只设目标,由渲染循环缓动
+    // horizontally follow the play/record head: only set the target, the render loop eases toward it
     function followHead(beat) {
       const t = beat - viewLen * 0.6;
       if (t > viewStartTarget) viewStartTarget = Math.max(0, t);
     }
 
-    // ---- 渲染循环:播放头、视口缓动、重绘 ----
+    // ---- Render loop: playhead, viewport easing, redraw ----
     function renderLoop() {
       if (playing) { playBeat = (performance.now() - t0) / 1000 / (60 / bpm); if (playBeat > lastEnd() + 0.12) { if (loopOn && notes.length) { play(); return; } stop(); } else followHead(playBeat); }
       if (recording === true) { recHeadBeat = (performance.now() - recT0) / 1000 / (60 / bpm); followHead(recHeadBeat); }
@@ -66,12 +66,12 @@
     function fit() {
       const r = cv.getBoundingClientRect();
       cv.width = Math.max(1, r.width * dpr); cv.height = Math.max(1, r.height * dpr);
-      VIEW_ROWS = clamp(Math.round((r.height) / 9), 16, 30);   // 行高 ~9px
+      VIEW_ROWS = clamp(Math.round((r.height) / 9), 16, 30);   // row height ~9px
       viewLo = clamp(viewLo, PITCH_LO, maxViewLo()); viewLoTarget = clamp(viewLoTarget, PITCH_LO, maxViewLo());
       draw();
     }
 
-    // 键盘列:白键连续、黑键短且嵌入,配色与底部键盘一致
+    // keyboard column: white keys continuous, black keys short and inset, colours match the bottom keyboard
     function drawKeyboard() {
       const kw = KEYW * dpr, H = cv.height, rh = rowH();
       const wg = ctx.createLinearGradient(0, 0, kw, 0);
@@ -110,7 +110,7 @@
       ctx.clearRect(0, 0, W, H);
       ctx.save(); ctx.beginPath(); ctx.rect(kw, 0, W - kw, H); ctx.clip();
       const m0 = Math.floor(viewLo) - 1, m1 = Math.ceil(topF()) + 1;
-      for (let m = m0; m <= m1; m++) {                          // 行底色,黑键行略深
+      for (let m = m0; m <= m1; m++) {                          // row background, black-key rows slightly darker
         const y = yOfMidi(m);
         ctx.fillStyle = isBlack(m) ? 'rgba(0,0,0,.20)' : 'rgba(255,246,224,.03)';
         ctx.fillRect(kw, y, W - kw, rh);
@@ -125,7 +125,7 @@
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
         if (bar && b >= 0) { ctx.fillStyle = 'rgba(176,141,79,.5)'; ctx.font = '600 ' + (8 * dpr) + 'px ui-sans-serif'; ctx.fillText('' + (b / BPB + 1), x + 3 * dpr, 10 * dpr); }
       }
-      for (let m = m0; m <= m1; m++) if (m % 12 === 0) {        // C 水平参考线
+      for (let m = m0; m <= m1; m++) if (m % 12 === 0) {        // horizontal C reference lines
         const y = yOfMidi(m); ctx.strokeStyle = 'rgba(176,141,79,.12)'; ctx.lineWidth = dpr;
         ctx.beginPath(); ctx.moveTo(kw, y); ctx.lineTo(W, y); ctx.stroke();
       }
@@ -134,7 +134,7 @@
         const x = xOfBeat(n.start), y = yOfMidi(n.midi), w = Math.max(2 * dpr, (n.len / viewLen) * gridX());
         ctx.fillStyle = velColor(n.vel); ctx.fillRect(x, y + dpr, w, rh - 2 * dpr);
         ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(x, y + dpr, w, Math.max(dpr, rh * 0.13));
-        // 演奏法标记:左侧色条,slide 青、vibrato 紫、legato 奶白
+        // articulation marker: left colour bar, slide cyan, vibrato purple, legato cream
         if (n.art === 'slide') { ctx.fillStyle = '#7ec8c9'; ctx.fillRect(x, y + dpr, 2.5 * dpr, rh - 2 * dpr); }
         else if (n.art === 'vibrato') { ctx.fillStyle = '#c9a0e8'; ctx.fillRect(x, y + dpr, 2.5 * dpr, rh - 2 * dpr); }
         else if (n.art === 'legato') { ctx.fillStyle = '#f0e6cc'; ctx.fillRect(x, y + dpr, 2.5 * dpr, rh - 2 * dpr); }
@@ -146,7 +146,7 @@
       drawKeyboard();
     }
 
-    // ---- 编辑 ----
+    // ---- Editing ----
     function evPos(e) { const r = cv.getBoundingClientRect(); return { px: (e.clientX - r.left) * dpr, py: (e.clientY - r.top) * dpr }; }
     function hitNote(beat, midi) { return notes.find(n => n.midi === midi && beat >= n.start && beat <= n.start + n.len); }
     function nearEnd(n, px) { return Math.abs(px - xOfBeat(n.start + n.len)) < 7 * dpr; }
@@ -170,7 +170,7 @@
       draw();
     });
     window.addEventListener('mouseup', () => { if (preview >= 0 && api()) window.pywebview.api.note_off(preview); preview = -1; if (drag) dirty(); drag = null; });
-    cv.addEventListener('mousemove', e => {                     // 悬停光标提示
+    cv.addEventListener('mousemove', e => {                     // hover cursor hint
       if (drag || recording) return;
       const { px, py } = evPos(e);
       if (px < KEYW * dpr) { cv.style.cursor = 'default'; return; }
@@ -180,7 +180,7 @@
     function delAt(e) { const { px, py } = evPos(e); const hit = hitNote(beatOfX(px), midiOfY(py)); if (hit) { notes = notes.filter(n => n !== hit); draw(); dirty(); } return !!hit; }
     cv.addEventListener('dblclick', delAt);
 
-    // ---- 右键菜单:演奏法标注 / 删除 ----
+    // ---- Context menu: articulation label / delete ----
     let ctxMenu = null;
     function closeCtx() { if (ctxMenu) { ctxMenu.remove(); ctxMenu = null; } }
     function showArtMenu(e, note) {
@@ -224,7 +224,7 @@
       if (hit) showArtMenu(e, hit);
       else delAt(e);
     });
-    cv.addEventListener('wheel', e => {                         // 滚轮:纵向音高;Shift 或横向滚动:时间
+    cv.addEventListener('wheel', e => {                         // wheel: vertical pitch; Shift or horizontal scroll: time
       if (recording) return;
       const horiz = e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY);
       if (horiz) { const d = (e.deltaX || e.deltaY) / 45; viewStartTarget = clamp(viewStartTarget + d, 0, Math.max(0, timelineBeats() - viewLen * 0.5)); }
@@ -232,16 +232,16 @@
       kick(); e.preventDefault();
     }, { passive: false });
 
-    // ---- 播放选项与节拍器 ----
-    let metroOn = false, countinOn = false, loopOn = false;   // loop: 播到尾从头再放
-    let neuralInst = '';                              // '' = 关;否则为神经音色名(来自后端 list_instruments)
-    let instruments = ['violin', 'trumpet', 'guitar', 'glass'];   // 后端返回列表前的默认顺序
+    // ---- Playback options and metronome ----
+    let metroOn = false, countinOn = false, loopOn = false;   // loop: restart from the beginning at the end
+    let neuralInst = '';                              // '' = off; otherwise a neural timbre name (from the backend list_instruments)
+    let instruments = ['violin', 'trumpet', 'guitar', 'glass'];   // default order before the backend returns its list
     const neuralMode = () => !!neuralInst;
     const neuralOpts = () => ({ behavior: behaviorSrc || null, traj_gain: trajGain, vibrato_source: vibSource, randomness: vibRandom });
-    let behaviorSrc = '';                             // '' = 跟随 instrument;否则为行为源名称
-    let trajGain = 1.0;                               // 轨迹强度 0.3–2.0
+    let behaviorSrc = '';                             // '' = follow instrument; otherwise a behaviour source name
+    let trajGain = 1.0;                               // trajectory strength 0.3–2.0
     let vibSource = 'retrieval';                      // 'retrieval' / 'model'
-    let vibRandom = 0.3;                              // 颤音随机性 0–1
+    let vibRandom = 0.3;                              // vibrato randomness 0–1
     let _ac = null, _schedTimer = null, _nextClick = 0, _clickBeat = 0;
     function getAC() { if (!_ac) { try { _ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } } if (_ac.state === 'suspended') _ac.resume(); return _ac; }
     function tick(accent, when) {
@@ -253,15 +253,15 @@
     }
     function _sched() { const ac = getAC(); if (!ac) return; const bd = 60 / bpm; while (_nextClick < ac.currentTime + 0.12) { tick((((_clickBeat % BPB) + BPB) % BPB) === 0, _nextClick); _nextClick += bd; _clickBeat++; } _schedTimer = setTimeout(_sched, 25); }
     function startMetro(fromBeat) {
-      if (api() && window.pywebview.api.click_on) { window.pywebview.api.click_on(bpm, BPB); return; }   // 引擎采样级 click
-      const ac = getAC(); if (!ac) return; stopMetro(); _clickBeat = fromBeat || 0; _nextClick = ac.currentTime + 0.06; _sched();   // 浏览器降级:WebAudio
+      if (api() && window.pywebview.api.click_on) { window.pywebview.api.click_on(bpm, BPB); return; }   // sample-accurate engine click
+      const ac = getAC(); if (!ac) return; stopMetro(); _clickBeat = fromBeat || 0; _nextClick = ac.currentTime + 0.06; _sched();   // browser fallback: WebAudio
     }
     function stopMetro() {
       if (api() && window.pywebview.api.click_off) window.pywebview.api.click_off();
       if (_schedTimer) clearTimeout(_schedTimer); _schedTimer = null;
     }
 
-    // ---- 录制 ----
+    // ---- Recording ----
     function recStart() {
       if (!api()) return;
       notes = []; viewStart = 0; viewStartTarget = 0; recHeadBeat = 0;
@@ -290,20 +290,20 @@
       });
     }
 
-    // ---- 回放 ----
+    // ---- Playback ----
     function play() {
       stop(); if (!notes.length) return;
       playing = true; playBeat = 0; viewStart = 0; viewStartTarget = 0;
       const bd = 60 / bpm; t0 = performance.now();
-      if (neuralMode() && api() && window.pywebview.api.play_notes_neural) {  // 神经音色(DDSP)
+      if (neuralMode() && api() && window.pywebview.api.play_notes_neural) {  // neural timbre (DDSP)
         const p = window.pywebview.api.play_notes_neural(
           window.quillPiano.getNotes(), bpm, neuralInst,
           behaviorSrc || null, trajGain, vibSource, vibRandom);
         // A failed render (missing checkpoint, no torch, missing tone file) must not pass for a silent take.
         if (p && p.then) p.then(r => { if (playing && r && r.ok === false) { if (window.quillToast) window.quillToast(r.msg || 'Render failed', 'err'); stop(); } }).catch(() => {});
-      } else if (api() && window.pywebview.api.play_notes) {               // 整段交给引擎采样级调度,音符与 click 共用时钟
+      } else if (api() && window.pywebview.api.play_notes) {               // hand the whole thing to sample-accurate engine scheduling, notes and click share a clock
         window.pywebview.api.play_notes(window.quillPiano.getNotes(), bpm, metroOn, BPB);
-      } else {                                                             // 浏览器降级:setTimeout 逐音触发
+      } else {                                                             // browser fallback: setTimeout triggers each note
         if (metroOn) startMetro(0);
         const seq = notes.slice().sort((a, b) => a.start - b.start);
         seq.forEach((n, i) => {
@@ -317,12 +317,12 @@
     function stop() {
       playing = false; timers.forEach(clearTimeout); timers = [];
       stopMetro();
-      if (api() && window.pywebview.api.stop_playback) window.pywebview.api.stop_playback();   // 取消引擎 plan + 收音
+      if (api() && window.pywebview.api.stop_playback) window.pywebview.api.stop_playback();   // cancel the engine plan + release notes
       else if (api()) notes.forEach(n => window.pywebview.api.note_off(n.midi));
       kick();
     }
 
-    // ---- 工具条与对外接口 ----
+    // ---- Toolbar and external interface ----
     const byId = id => document.getElementById(id);
     function syncRecBtn() { const b = byId('prRec'); if (b) b.style.color = recording ? '#d9544e' : ''; }
     function toggleRec() { recording ? recStop() : recStart(); syncRecBtn(); }
@@ -331,7 +331,7 @@
     if (byId('prPlay')) byId('prPlay').onclick = play;
     if (byId('prStop')) byId('prStop').onclick = stopAll;
     if (byId('prClear')) byId('prClear').onclick = () => { stop(); notes = []; viewStartTarget = 0; centerOnNotes(); kick(); dirty(); };
-    // 导出:MIDI,或用当前音色离线渲染 WAV
+    // export: MIDI, or an offline WAV render with the current timbre
     function exportTake(fmt, btn) {
       if (!api() || !window.pywebview.api.export_take) return;
       const orig = btn.textContent;
@@ -343,7 +343,7 @@
     }
     if (byId('prMidi')) byId('prMidi').onclick = () => exportTake('midi', byId('prMidi'));
     if (byId('prWav')) byId('prWav').onclick = () => exportTake(neuralMode() ? 'wav_neural:' + neuralInst : 'wav', byId('prWav'));
-    // 后端保存音色或烘焙完成后调用
+    // called after the backend saves a timbre or finishes a bake
     window.quillRefreshInstruments = () => {
       if (api() && window.pywebview.api.list_instruments)
         window.pywebview.api.list_instruments().then(l => {
@@ -351,17 +351,17 @@
           if (neuralInst && neuralInst !== '' && instruments.indexOf(neuralInst) < 0) { neuralInst = ''; }
         }).catch(() => {});
     };
-    // ---- 行为源 ----
+    // ---- Behaviour sources ----
     let _behaviorList = [];
     function loadBehaviorList() {
       if (!api() || !window.pywebview.api.list_behavior_sources) return;
       window.pywebview.api.list_behavior_sources().then(list => {
         _behaviorList = list || [];
-        // 主页 BEHAVIOR 面板随之刷新
+        // the main page's BEHAVIOR panel refreshes along with it
         if (window.quillBehaviorsChanged) { try { window.quillBehaviorsChanged(); } catch (e) {} }
       }).catch(() => {});
     }
-    // ---- 导入自定义行为库 ----
+    // ---- Import a custom behaviour library ----
     if (byId('prImport')) {
       byId('prImport').onclick = () => {
         if (!api() || !window.pywebview.api.import_style_wav) return;
@@ -383,7 +383,7 @@
     window.quillPiano = {
       getNotes: () => notes.map(n => ({ midi: n.midi, start: +(n.start * 60 / bpm).toFixed(4), len: +(n.len * 60 / bpm).toFixed(4), vel: n.vel, art: n.art || 'pluck' })),
       setBPM: b => { bpm = +b || 120; draw(); },
-      // 秒制音符转拍制;用于会话恢复和载入示例乐句
+      // convert notes in seconds to beats; used for session restore and loading example phrases
       setNotes: (list) => {
         stop(); const bd = 60 / bpm;
         notes = (list || []).filter(n => n && isFinite(+n.midi) && +n.midi >= PITCH_LO && +n.midi <= PITCH_HI && isFinite(+n.start) && +n.len > 0)
@@ -391,7 +391,7 @@
         viewStartTarget = 0; centerOnNotes(); kick();
       },
       getState: () => ({ bpm, notes: window.quillPiano.getNotes(), neural: neuralInst, behavior: behaviorSrc, traj_gain: trajGain, vib_source: vibSource, vib_random: vibRandom }),
-      // 会话恢复。顺序:先 BPM 再音符(拍制依赖 BPM),选项最后
+      // session restore. Order: BPM first, then notes (beats depend on BPM), options last
       applyState: (st) => {
         if (!st) return;
         if (st.bpm) { bpm = clamp(+st.bpm, 40, 240); }
@@ -414,7 +414,7 @@
       setTrajGain: v => { trajGain = Math.max(0.3, Math.min(2.0, +v || 1.0)); }
     };
 
-    // api 晚于页面注入时补拉列表
+    // re-fetch the lists when the api is injected after the page
     window.addEventListener('pywebviewready', () => { if (window.quillRefreshInstruments) window.quillRefreshInstruments(); loadBehaviorList(); });
     window.addEventListener('resize', fit);
     if (window.ResizeObserver) new ResizeObserver(fit).observe(cv);
