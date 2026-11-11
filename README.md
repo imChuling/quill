@@ -46,10 +46,10 @@ Weights and libraries come from the [v1.0 release](https://github.com/imChuling/
 curl -L https://github.com/imChuling/quill/releases/download/v1.0/quill-checkpoints-v1.0.tar.gz | tar xz --strip-components=1 -C checkpoints/
 ```
 
-| File | SHA-256 prefix | Source |
-|---|---|---|
-| `ddsp_glass.pt`, `glass_style.npz` | `b718be51`, `198675c2` | self-recorded wine glass |
-| `ddsp_guitarset.pt`, `guitarset_trajectories.npz` | `bdc15394`, `ac41f33d` | GuitarSet (CC BY-NC 4.0) |
+| File | Source |
+|---|---|
+| `ddsp_glass.pt`, `glass_style.npz` | self-recorded wine glass |
+| `ddsp_guitarset.pt`, `guitarset_trajectories.npz` | GuitarSet (CC BY-NC 4.0) |
 
 The violin and trumpet models and libraries are derived from URMP, which has no
 redistribution terms, so they are not published. To rebuild them, register for URMP and run
