@@ -336,5 +336,5 @@
     $('version').textContent = s.version ? `render service v${s.version}` : '';
   }).catch(() => { const badge = $('svc-badge'); badge.textContent = 'render service offline'; badge.className = 'badge err'; setStatus('The matrix above still plays; rendering needs the service.', true); });
 
-  window.quillDemo = { parseMidi, autoLabel };   // 调试用
+  window.quillDemo = { parseMidi, autoLabel };   // for debugging
 })();
