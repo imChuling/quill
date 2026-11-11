@@ -1,8 +1,8 @@
-"""音频/MIDI 设备枚举与选择(Bridge 的 mixin)。
+"""Audio/MIDI device enumeration and selection (Bridge mixin).
 
-供设置页的设备面板调用:list_devices 返回 {input, output, midi, engine},set_* 立即生效,
-probe_input 短暂开一条输入流测峰值。rtmidi 在非英文 macOS 上的端口名编码问题由
-_fix_midi_name 还原,打开端口时再换回原始名。
+Called by the device panel on the settings page: list_devices returns {input, output, midi, engine}, set_* take effect immediately,
+probe_input briefly opens an input stream to measure the peak. The port-name encoding issue of rtmidi on non-English macOS is undone by
+_fix_midi_name, and the original name is swapped back when opening the port.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 class BridgeDeviceMixin:
 
     def _open_midi(self, name=None):
-        """打开外接 MIDI 输入(name=None 取第一个),消息直接进引擎队列(没设备就跳过)。"""
+        """Open external MIDI input (name=None takes the first one); messages go straight into the engine queue (skipped if there is no device)."""
         try:
             from runtime.midi_in import MidiInput
 
@@ -22,17 +22,17 @@ class BridgeDeviceMixin:
             m.queue = _MidiRouter(self)
             m.open()
             self._midi = m
-            print(f"[bridge] MIDI 已连接: {m.port_name}", flush=True)
+            print(f"[bridge] MIDI connected: {m.port_name}", flush=True)
             return m.port_name
         except Exception as e:
             self._midi = None
-            print(f"[bridge] 无外接 MIDI: {str(e)[:70]}", flush=True)
+            print(f"[bridge] no external MIDI: {str(e)[:70]}", flush=True)
             return None
 
     @staticmethod
     def _fix_midi_name(name):
-        """rtmidi 在非英文 macOS 上把 CoreMIDI 的 UTF-8 端口名按 MacRoman 误解码
-        (如'蓝牙'→'ËìùÁâô')。重编回 MacRoman 再按 UTF-8 解 = 还原;不是这种情况则原样返回。"""
+        """On non-English macOS rtmidi mis-decodes CoreMIDI's UTF-8 port names as MacRoman
+        (e.g. a Chinese 'Bluetooth' becomes 'ËìùÁâô'). Re-encoding to MacRoman and decoding as UTF-8 restores it; otherwise returned unchanged."""
         if not isinstance(name, str):
             return name
         try:
@@ -49,7 +49,7 @@ class BridgeDeviceMixin:
             return []
 
     def _raw_midi_name(self, disp):
-        """显示名(已修)→ rtmidi 的原始端口名(打开端口要用原始名匹配)。"""
+        """Display name (fixed) -> rtmidi's original port name (opening a port must match on the original name)."""
         try:
             import mido
 
@@ -63,9 +63,9 @@ class BridgeDeviceMixin:
     def midi_name(self):
         return self._fix_midi_name(self._midi.port_name) if self._midi else None
 
-    # ---- 设备面板 ----
+    # ---- Device panel ----
     def list_devices(self):
-        """枚举音频输入/输出 + MIDI + 引擎信息,给设置页渲染。"""
+        """Enumerate audio inputs/outputs + MIDI + engine info for the settings page to render."""
         import sounddevice as sd
 
         try:
@@ -103,12 +103,12 @@ class BridgeDeviceMixin:
         return {"input": ins, "output": outs, "midi": midi, "engine": eng}
 
     def set_input_device(self, idx):
-        """选录音输入设备(下次取色生效)。"""
+        """Select the recording input device (takes effect on the next capture)."""
         self._in_dev = int(idx) if idx is not None else None
         return {"ok": True}
 
     def set_output_device(self, idx):
-        """选输出设备 → 重启引擎输出流到新设备(失败回落系统默认)。"""
+        """Select the output device -> restart the engine output stream on the new device (falls back to the system default on failure)."""
         target = int(idx) if idx is not None else None
         if not self._running:
             self._out_dev = target
@@ -127,7 +127,7 @@ class BridgeDeviceMixin:
             return {"ok": False, "msg": str(e)[:80]}
 
     def probe_input(self, ms=350):
-        """短暂探测当前输入设备峰值电平(设备面板"测试"按钮)。"""
+        """Briefly probe the peak level of the current input device (the "Test" button in the device panel)."""
         import time
 
         import numpy as np
@@ -153,7 +153,7 @@ class BridgeDeviceMixin:
         return {"ok": True, "peak": float(np.abs(y).max())}
 
     def set_midi_input(self, name):
-        """接指定 MIDI 端口(name=None 关闭)。"""
+        """Connect the given MIDI port (name=None closes it)."""
         if self._midi:
             try:
                 self._midi.close()

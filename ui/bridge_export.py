@@ -1,7 +1,7 @@
-"""卷帘导出(MIDI / WAV / 神经 WAV)、节拍器与录制(Bridge 的 mixin)。
+"""Piano-roll export (MIDI / WAV / neural WAV), metronome and recording (Bridge mixin).
 
-录制走引擎事件队列的 arm/disarm:录制中队列记录 (t, event),record_poll 把已记录的事件
-配对成音符供卷帘实时显示,record_stop 配对后把首音对齐到 0。
+Recording uses arm/disarm on the engine event queue: while recording the queue logs (t, event), record_poll pairs the logged events
+into notes for live display in the piano roll, and record_stop pairs them and aligns the first note to 0.
 """
 
 from __future__ import annotations
@@ -12,11 +12,11 @@ import time
 class BridgeExportMixin:
 
     def _take_events(self, notes):
-        """卷帘音符 → 引擎 cooked 事件(秒)。"""
+        """Piano-roll notes -> engine cooked events (seconds)."""
         return self._gi.notes_to_events(notes)
 
     def export_take(self, notes, bpm=120.0, fmt="wav", path=None, neural_opts=None):
-        """卷帘整段导出:fmt='midi' / 'wav' / 'wav_neural:<instrument>'。"""
+        """Export the whole piano roll: fmt='midi' / 'wav' / 'wav_neural:<instrument>'."""
         if str(fmt).startswith("wav_neural"):
             if not notes:
                 return {"ok": False, "msg": "Nothing to export"}
@@ -82,14 +82,14 @@ class BridgeExportMixin:
         self.engine.set_click(None)
         return True
 
-    # ---- 录制 ----
+    # ---- Recording ----
     def record_start(self):
         self._q.arm()
         return True
 
     @staticmethod
     def _pair(log, end_t):
-        """事件流 → 音符:on/slide/legato=起,off=止。"""
+        """Event stream -> notes: on/slide/legato=start, off=end."""
         ART = {"on": "pluck", "slide": "slide", "legato": "legato"}
         notes, open_ = [], {}
 

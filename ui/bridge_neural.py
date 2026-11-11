@@ -1,8 +1,8 @@
-"""神经渲染、DDSP 烘焙与行为库管理(Bridge 的 mixin)。
+"""Neural rendering, DDSP baking and behaviour library management (Bridge mixin).
 
-_render_neural 是卷帘回放与导出共用的入口;"tone:<name>" 形式的乐器用取色音色的离线 L0
-引擎做控制驱动,引擎按文件 mtime 缓存。bake_ddsp 在后台子进程里微调,进度经 JSON 状态文件
-轮询,一次只跑一个。
+_render_neural is the entry point shared by piano-roll playback and export; instruments of the form "tone:<name>" use the offline L0
+engine of the capture timbre in control-driven mode, with engines cached by file mtime. bake_ddsp fine-tunes in a background subprocess, progress is
+polled through a JSON status file, and only one runs at a time.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pathlib import Path
 class BridgeNeuralMixin:
 
     def _neural(self):
-        """懒加载单例:首次调用才 import torch/载 checkpoint。"""
+        """Lazily loaded singleton: torch is imported / the checkpoint loaded only on first call."""
         if not hasattr(self, "_neural_take"):
             from neural.neural_take import get_neural_take
 
@@ -21,14 +21,14 @@ class BridgeNeuralMixin:
         return self._neural_take
 
     def _neural_postfx(self):
-        """桌面旋钮里作用于神经渲染的那几个。"""
+        """The desktop knobs that act on neural rendering."""
         return {
             "brightness": float(self.params.get("brightness", 0.5)),
             "reverb": float(self.params.get("reverb", 0.0)),
         }
 
     def _l0_engine(self, name):
-        """取色音色 → 离线 L0 引擎(控制驱动用),按文件 mtime 缓存。"""
+        """Capture timbre -> offline L0 engine (for control-driven mode), cached by file mtime."""
         from runtime.engine import engine_from_snapshot_file
         from snapshot import load_snapshot
 
@@ -54,10 +54,10 @@ class BridgeNeuralMixin:
         return cache[key]
 
     def _render_neural(self, notes, instrument, opts=None):
-        """卷帘 notes → 神经渲染(回放与导出共用)。
+        """Piano-roll notes -> neural rendering (shared by playback and export).
 
-        守门:有音符却渲染出静音(峰值 < 1e-4,约 -80 dBFS)时,丢掉该音色的缓存 voice 重载
-        一次再渲。"""
+        Guard: if there are notes but the render is silent (peak < 1e-4, about -80 dBFS), drop that timbre's cached voice, reload
+        once and render again."""
         import numpy as np
 
         y, sr = self._render_neural_once(notes, instrument, opts)
@@ -67,7 +67,7 @@ class BridgeNeuralMixin:
             nt = self._neural()
             getattr(nt, "_voices", {}).pop(key, None)
             if key.startswith("tone:"):
-                self._l0_engines = {}  # 取色音色走 L0 引擎缓存,一并重建
+                self._l0_engines = {}  # capture timbres use the L0 engine cache, rebuild it too
             y, sr = self._render_neural_once(notes, instrument, opts)
         return y, sr
 
@@ -104,7 +104,7 @@ class BridgeNeuralMixin:
         timing=0.0,
         continuity=0.0,
     ):
-        """卷帘回放(神经版):离线渲染整段 → sd.play。"""
+        """Piano-roll playback (neural version): render the whole thing offline -> sd.play."""
         import sounddevice as sd
 
         try:
@@ -129,7 +129,7 @@ class BridgeNeuralMixin:
         return {"ok": True, "dur": round(len(y) / sr, 3)}
 
     def list_instruments(self):
-        """卷帘 Neural 列表:内置 + 烘焙 + 取色。"""
+        """Piano-roll Neural list: built-in + baked + captured."""
         from neural.neural_take import available_instruments, user_ddsp_instruments
 
         return (
@@ -138,9 +138,9 @@ class BridgeNeuralMixin:
             + [f"tone:{t['name']}" for t in self.list_tones()]
         )
 
-    # ---- DDSP 烘焙 ----
+    # ---- DDSP baking ----
     def _bake_auto_base(self):
-        """按最近取色的性质选底座。"""
+        """Choose the base by the nature of the latest capture."""
         import numpy as np
 
         inst = self.engine.instrument
@@ -152,7 +152,7 @@ class BridgeNeuralMixin:
         return "glass" if float(getattr(self, "_last_centroid", 6.0)) < 1.6 else "violin"
 
     def bake_ddsp(self, name, base=None, steps=1000):
-        """最近一次取色的 take → 后台子进程微调 DDSP。一次只跑一个。"""
+        """Latest capture take -> fine-tune DDSP in a background subprocess. Only one runs at a time."""
         import subprocess
         import sys as _sys
 
@@ -217,11 +217,11 @@ class BridgeNeuralMixin:
         return d
 
     def list_behavior_sources(self):
-        """列出可用行为源(内置+用户导入)。"""
+        """List available behaviour sources (built-in + user-imported)."""
         return self._neural().list_behavior_sources()
 
     def import_style_from_wav(self, wav_path, name=None, min_notes=2):
-        """从 wav 提取行为库。"""
+        """Extract a behaviour library from a wav."""
         import subprocess
         import sys as _sys
         import tempfile
@@ -258,6 +258,6 @@ class BridgeNeuralMixin:
         return {"ok": True, "name": imported, "n_notes": n}
 
     def delete_behavior_source(self, name):
-        """删除用户导入的行为库。"""
+        """Delete a user-imported behaviour library."""
         self._neural().delete_style(name)
         return {"ok": True}

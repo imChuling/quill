@@ -18,7 +18,7 @@ from pathlib import Path
 
 
 class TakeStore:
-    """落盘 take 仓库:assets/takes/{id}.json + {id}.wav。线程安全(渲染线程写/HTTP 线程读)。"""
+    """On-disk take store: assets/takes/{id}.json + {id}.wav. Thread-safe (render thread writes / HTTP thread reads)."""
 
     def __init__(self, root: Path):
         self.root = Path(root)
@@ -28,8 +28,8 @@ class TakeStore:
     # ----------------------------------------------------------------
     @staticmethod
     def take_id_for(notes, bpm, timbre_name, title, variant="") -> str:
-        """内容哈希。variant 收纳一切影响音频但不在上述字段里的渲染参数(如合成旋钮),
-        否则改参数后的重渲会误命中幂等缓存。"""
+        """Content hash. variant collects every render parameter that affects the audio but is not in the fields above (e.g. synth knobs),
+        otherwise a rerender after changing parameters would wrongly hit the idempotent cache."""
         payload = json.dumps(
             [notes, float(bpm), timbre_name, title, variant], sort_keys=True, separators=(",", ":")
         )
@@ -48,7 +48,7 @@ class TakeStore:
         kind="performance",
         variant="",
     ) -> dict:
-        """登记一个 take(audio.state=pending)。幂等:同内容返回既有 take。"""
+        """Register a take (audio.state=pending). Idempotent: the same content returns the existing take."""
         tid = self.take_id_for(notes, bpm, timbre.get("name", ""), title, variant)
         with self._lock:
             existing = self._read(tid)
@@ -76,8 +76,8 @@ class TakeStore:
             take = self._read(take_id)
             if take is None:
                 return None
-            # 原子落盘:take_id 是内容哈希,并发的同内容渲染会写同一路径,
-            # 而下载走的是无锁读,非原子写会让下载方拿到截断的 WAV。
+            # atomic write: take_id is a content hash, concurrent renders of the same content write the same path,
+            # and downloads use lock-free reads, so a non-atomic write could give the downloader a truncated WAV.
             dst = self.root / f"{take_id}.wav"
             tmp = dst.with_suffix(f".wav.tmp{os.getpid()}")
             tmp.write_bytes(wav_bytes)
@@ -91,7 +91,7 @@ class TakeStore:
             return take
 
     def set_duration(self, take_id: str, seconds: float):
-        """渲染后回填乐句摆位后的真实时间轴长度(DAW 侧据此折算 musicDurationTicks)。"""
+        """After rendering, fill in the real timeline length after phrase placement (the DAW side derives musicDurationTicks from it)."""
         with self._lock:
             take = self._read(take_id)
             if take is None:

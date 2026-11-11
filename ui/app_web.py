@@ -1,11 +1,11 @@
-"""Quill 桌面 app(pywebview):WebView 画 HTML UI,Python 进程内跑实时引擎。
+"""Quill desktop app (pywebview): a WebView draws the HTML UI, the real-time engine runs inside the Python process.
 
-Api 是 pywebview 的 js_api 对象:页面通过 window.pywebview.api.* 调它的方法,pywebview 在
-各自的线程上调用每个方法;Api 只做参数转发与窗口管理,引擎逻辑在 ui/bridge.QuillBridge,
-音频走 sounddevice。Python 反向推送走 main_window.evaluate_js,页面用 window.quill* 钩子
-接收(quillShowArt、quillLiveBehavior、quillRefreshTones、quillTimbreSaved 等)。
+Api is pywebview's js_api object: the page calls its methods through window.pywebview.api.*, and pywebview invokes each method on
+its own thread; Api only forwards arguments and manages windows, the engine logic lives in ui/bridge.QuillBridge,
+and audio goes through sounddevice. Python pushes back to the page via main_window.evaluate_js, and the page receives it through window.quill* hooks
+(quillShowArt, quillLiveBehavior, quillRefreshTones, quillTimbreSaved, etc.).
 
-运行:  python ui/app_web.py
+Run:  python ui/app_web.py
 """
 
 from __future__ import annotations
@@ -16,31 +16,31 @@ from pathlib import Path
 import webview
 
 ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT.parent))  # 以脚本方式运行时把仓库根放进路径,ui/、runtime/ 等包才可导入
-UI_HTML = ROOT / "web" / "quill.dc.html"  # 主窗页面,依赖同目录的 support.js
-CAPTURE_HTML = ROOT / "web" / "capture.html"  # 取色独立小窗
+sys.path.insert(0, str(ROOT.parent))  # when run as a script, put the repo root on the path so ui/, runtime/ etc. can be imported
+UI_HTML = ROOT / "web" / "quill.dc.html"  # main window page, depends on support.js in the same directory
+CAPTURE_HTML = ROOT / "web" / "capture.html"  # standalone capture window
 
 
 class Api:
-    """js_api 桥:UI 通过 window.pywebview.api.* 调这些 Python 方法。"""
+    """js_api bridge: the UI calls these Python methods through window.pywebview.api.*."""
 
     def __init__(self):
         self.bridge = None
         self.err = None
-        self.main_window = None  # 主窗引用(取色后更新色卡)
-        self.capture_window = None  # 取色窗引用(保证只开一个)
+        self.main_window = None  # main window reference (updates the colour card after capture)
+        self.capture_window = None  # capture window reference (ensures only one is open)
         try:
             from ui.bridge import QuillBridge
 
             self.bridge = QuillBridge()
-            self.bridge.start()  # 开实时音频流(sounddevice)
-            self.bridge.on_art = self._push_art  # 外接 MIDI 的演奏法判定 → 主窗标签
-        except Exception as e:  # 音频起不来也别让窗口崩
+            self.bridge.start()  # open the real-time audio stream (sounddevice)
+            self.bridge.on_art = self._push_art  # articulation decisions for external MIDI -> main window label
+        except Exception as e:  # even if audio fails to start, do not crash the window
             self.err = str(e)
-            print("[Api] 引擎启动失败:", e)
+            print("[Api] engine start failed:", e)
 
     def _push_art(self, art):
-        """外接 MIDI 判定结果推回主窗(mido 线程调用;evaluate_js 由 pywebview 编组)。"""
+        """Push external MIDI decisions back to the main window (called on the mido thread; evaluate_js is marshalled by pywebview)."""
         if self.main_window is not None:
             import json
 
@@ -52,7 +52,7 @@ class Api:
                 pass
 
     def note_on(self, midi, vel=110, art="auto", prev=-1):
-        """返回判定出的演奏法字符串(auto 时),UI 拿它点亮标签。"""
+        """Return the decided articulation string (when auto); the UI uses it to light the label."""
         if self.bridge:
             return self.bridge.note_on(midi, vel, art, prev)
         return "pluck"
@@ -68,7 +68,7 @@ class Api:
         return True
 
     def play_notes(self, notes, bpm=120.0, metro=False, bpb=4):
-        """卷帘回放:引擎采样级调度(音符与 click 同一时钟)。"""
+        """Piano-roll playback: sample-accurate engine scheduling (notes and click on the same clock)."""
         return self.bridge.play_notes(notes, bpm, metro, bpb) if self.bridge else False
 
     def stop_playback(self):
@@ -86,8 +86,8 @@ class Api:
         timing=0.0,
         continuity=0.0,
     ):
-        """卷帘回放(神经音色):art 字段 = 演奏法开关(vibrato/slide/plain);
-        instrument = timbre, behavior = style source, traj_gain = trajectory intensity。"""
+        """Piano-roll playback (neural timbre): art field = articulation switch (vibrato/slide/plain);
+        instrument = timbre, behavior = style source, traj_gain = trajectory intensity."""
         return (
             self.bridge.play_notes_neural(
                 notes, bpm, instrument, behavior, traj_gain, vibrato_source, randomness,
@@ -98,7 +98,7 @@ class Api:
         )
 
     def try_demo(self):
-        """一键试听:glass × violin behavior,预渲染优先,回退到实时神经渲染。"""
+        """One-click preview: glass × violin behavior, prerendered first, falls back to real-time neural rendering."""
         from pathlib import Path
 
         demo = Path(__file__).resolve().parent.parent / "assets" / "demos" / "ab_l0ctrl" / "B2b_l0_glass_x_violin_fixed.wav"
@@ -127,7 +127,7 @@ class Api:
         return self.bridge.play_notes_neural(notes, 120.0, "glass", "violin")
 
     def list_instruments(self):
-        """本机可用的神经音色名(UI 的 Neural 按钮据此循环)。"""
+        """Neural timbre names available on this machine (the UI's Neural button cycles through them)."""
         if not self.bridge:
             return []
         try:
@@ -136,7 +136,7 @@ class Api:
             return []
 
     def list_behavior_sources(self):
-        """列出可用行为源(内置乐器 + 用户导入的自定义库)。"""
+        """List available behaviour sources (built-in instruments + user-imported custom libraries)."""
         if not self.bridge:
             return []
         try:
@@ -145,7 +145,7 @@ class Api:
             return []
 
     def import_style_wav(self):
-        """弹文件对话框选 wav → extract_style → 导入为行为源。"""
+        """File dialog to pick a wav -> extract_style -> import as a behaviour source."""
         if not self.bridge:
             return {"ok": False, "msg": "Engine not started"}
         try:
@@ -170,8 +170,8 @@ class Api:
         return self.bridge.delete_behavior_source(name)
 
     def export_take(self, notes, bpm=120.0, fmt="wav", neural_opts=None):
-        """卷帘导出:存盘对话框 → MIDI(.mid 标准文件)或 WAV(当前音色离线渲染)。
-        neural_opts(仅 wav_neural):{behavior, traj_gain, vibrato_source, randomness}。"""
+        """Piano-roll export: save dialog -> MIDI (standard .mid file) or WAV (offline render with the current timbre).
+        neural_opts (wav_neural only): {behavior, traj_gain, vibrato_source, randomness}."""
         if not self.bridge:
             return {"ok": False, "msg": "Engine not started"}
         if not notes:
@@ -214,30 +214,30 @@ class Api:
         return self.bridge.probe_input(ms) if self.bridge else {"ok": False}
 
     def save_session(self, state):
-        """UI 状态(旋钮/ADSR/模式/行为库/卷帘)落盘;UI 负责去抖,这里只校验+原子写。"""
+        """Persist UI state (knobs/ADSR/mode/behaviour library/piano roll); the UI debounces, this only validates + writes atomically."""
         return self.bridge.save_session(state) if self.bridge else {"ok": False, "msg": "Engine not started"}
 
     def load_session(self):
-        """上次会话;缺失/损坏返回 {}。"""
+        """Last session; {} if missing/corrupt."""
         return self.bridge.load_session() if self.bridge else {}
 
     def get_status(self):
-        """状态栏数据:MIDI 设备名与实测的输出流延迟。"""
+        """Status bar data: MIDI device name and measured output stream latency."""
         if not self.bridge:
             return {"midi": None, "latency_ms": None}
         try:
             lat = self.bridge.engine.stream_latency_ms()
-            lat = round(float(lat), 1) if lat == lat else None  # NaN 防护
+            lat = round(float(lat), 1) if lat == lat else None  # NaN guard
         except Exception:
             lat = None
         return {"midi": self.bridge.midi_name(), "latency_ms": lat}
 
     def record_poll(self):
-        """录制中实时取已录音符 + 时长(卷帘轮询用,实现录制跟随滚动)。"""
+        """While recording, fetch the recorded notes + duration so far (polled by the piano roll for follow-scrolling)."""
         return self.bridge.record_poll() if self.bridge else {"notes": [], "t": 0.0}
 
     def record_stop(self):
-        """停录,返回录到的音符 [{midi,start,len,vel}](秒)给卷帘显示。"""
+        """Stop recording and return the recorded notes [{midi,start,len,vel}] (seconds) for the piano roll."""
         return self.bridge.record_stop() if self.bridge else []
 
     def set_param(self, name, value):
@@ -250,14 +250,14 @@ class Api:
             self.bridge.set_adsr(a, d, s, r)
         return True
 
-    # ---- 取色(独立小窗)----
+    # ---- Capture (standalone window) ----
     def open_capture(self, mode=None):
-        """主界面点 Capture → 弹出独立取色小窗。已开着就不再新建(只允许一个)。
-        mode='song':打开后直接进从歌曲提取(选文件 → 分离),对应主窗的 FROM A SONG。"""
-        if self.capture_window is not None:  # 已有取色窗:提到顶上,不新建
+        """Capture clicked in the main UI -> open the standalone capture window. If already open, do not create another (only one allowed).
+        mode='song': go straight into extraction from a song after opening (pick file -> separate), matching FROM A SONG in the main window."""
+        if self.capture_window is not None:  # capture window exists: bring it to the front, do not create a new one
             try:
-                self.capture_window.restore()  # 若最小化先还原
-                self.capture_window.show()  # 置顶/聚焦
+                self.capture_window.restore()  # restore first if minimised
+                self.capture_window.show()  # bring to front/focus
             except Exception:
                 pass
             if mode == "song":
@@ -272,19 +272,19 @@ class Api:
             js_api=self,
             width=400,
             height=612,
-            resizable=False,  # 612:容纳 NOISE 行与选轨区
+            resizable=False,  # 612: fits the NOISE row and the stem picker
             background_color="#15130e",
         )
         self.capture_window = win
 
         def _closed():
-            self.capture_window = None  # 关掉后清引用,可再次打开
+            self.capture_window = None  # clear the reference on close so it can be opened again
 
         try:
             win.events.closed += _closed
         except Exception:
             pass
-        if mode == "song":  # 等页面加载完再触发选歌
+        if mode == "song":  # wait for the page to load before triggering song selection
 
             def _loaded():
                 try:
@@ -305,8 +305,8 @@ class Api:
         return self.bridge.set_voice_mode(mode) if self.bridge else "solo"
 
     def set_live_behavior(self, name=None):
-        """现场弹奏用哪个行为库驱动(空=关,规则路径)。载入在后台,就绪/失败时推给主窗
-        (`window.quillLiveBehavior(name, ready, error)`),期间按键走规则路径。"""
+        """Which behaviour library drives live playing (empty = off, rule path). Loading happens in the background; ready/failure is pushed to the main window
+        (`window.quillLiveBehavior(name, ready, error)`), and key presses use the rule path in the meantime."""
         if not self.bridge:
             return {"ok": False, "msg": "Engine not started"}
         try:
@@ -319,14 +319,14 @@ class Api:
             import time
 
             def _watch():
-                for _ in range(300):  # 最多等 30s
+                for _ in range(300):  # wait at most 30s
                     st = self.bridge.live_behavior_status()
                     if st["ready"] or st["error"] or st["name"] != name:
                         break
                     time.sleep(0.1)
                 if not st["ready"] and not st["error"] and st["name"] == name:
-                    # 预热线程卡住(checkpoint 读不出来 / import 挂起):回到规则路径,
-                    # 把超时当错误推回页面。
+                    # the warm-up thread is stuck (checkpoint unreadable / import hangs): go back to the rule path
+                    # and push the timeout back to the page as an error.
                     try:
                         self.bridge.set_live_behavior(None)
                     except Exception:
@@ -344,29 +344,29 @@ class Api:
         return self.bridge.live_behavior_status() if self.bridge else {"name": None, "ready": False}
 
     def set_capture_mode(self, texture=False):
-        """Texture 模式开关(雨/风/机器等非乐音取色)。"""
+        """Texture mode switch (non-musical capture such as rain/wind/machines)."""
         return self.bridge.set_capture_mode(texture) if self.bridge else False
 
     def capture_level(self):
-        """录制中实时电平(取色小窗电平表轮询)。"""
+        """Live level while recording (polled by the capture window's level meter)."""
         return self.bridge.capture_level() if self.bridge else 0.0
 
     def play_take(self, t0=None, t1=None):
-        """取色窗试听走带:播 take/选区(波形坐标对齐)。"""
+        """Capture window preview transport: play the take/selection (aligned to waveform coordinates)."""
         return self.bridge.play_take(t0, t1) if self.bridge else {"ok": False}
 
     def stop_take(self):
         return self.bridge.stop_take() if self.bridge else True
 
     def capture_meter(self):
-        """主窗 SOURCE 实时波形:电平 + 是否在录(共享 bridge,取色小窗录音时主窗同步)。"""
+        """Main window SOURCE live waveform: level + whether recording (shared bridge, so the main window follows when the capture window records)."""
         return self.bridge.capture_meter() if self.bridge else {"lvl": 0.0, "active": False}
 
     def _push_tone_name(self, r, captured=True):
-        """取色/换音色成功后同步主窗:TONE·COLOUR 名 + 命名框 + 顶部预设名 + SOURCE 真 f0。
+        """Sync the main window after a successful capture/timbre change: TONE·COLOUR name + name field + top preset name + SOURCE true f0.
 
-        captured=True 表示引擎现在弹的是一段未保存的新取色,页面的配对要跟过去;
-        载入已保存音色时传 False,否则配对会被错标成 "(unsaved)"。"""
+        captured=True means the engine is now playing an unsaved new capture and the page's pairing should follow it;
+        pass False when loading a saved timbre, otherwise the pairing would be mislabelled "(unsaved)"."""
         if r.get("ok") and self.main_window is not None:
             import json
             import math
@@ -388,9 +388,9 @@ class Api:
             wave = r.get("wave")
             if wave:
                 js += f"window._quillWave={json.dumps(wave)};window._quillWaveT0=performance.now();"
-            if r.get("noise") is not None:  # 自动噪声底 → Air/Noise 旋钮跟过去
+            if r.get("noise") is not None:  # automatic noise floor -> the Air/Noise knob follows
                 js += f"window.quillSetKnob&&window.quillSetKnob('noise',{float(r['noise']):.3f});"
-            # 动效:名字渐显与音色卡光扫,与取色动作同拍
+            # animation: name fade-in and timbre-card light sweep, in time with the capture action
             js += (
                 "var tn=document.getElementById('quillToneName');"
                 " if(tn){tn.classList.remove('nameSwap'); void tn.offsetWidth; tn.classList.add('nameSwap');}"
@@ -415,7 +415,7 @@ class Api:
         return r
 
     def open_file_capture(self):
-        """OPEN FILE… 按钮:文件对话框 → 直接取色(单音/单乐器素材用;整歌走 pick_song)。"""
+        """OPEN FILE... button: file dialog -> capture directly (for single-note/single-instrument material; whole songs go through pick_song)."""
         if not self.bridge:
             return {"ok": False, "msg": "Engine not started"}
         try:
@@ -432,9 +432,9 @@ class Api:
         self._push_tone_name(r)
         return r
 
-    # ---- 从歌曲提取乐器(Demucs 分离 → 挑轨取色)----
+    # ---- Extract an instrument from a song (Demucs separation -> pick a stem and capture) ----
     def pick_song(self):
-        """文件对话框选歌 → 分离 → 返回可选轨列表。"""
+        """File dialog to pick a song -> separate -> return the list of selectable stems."""
         if not self.bridge:
             return {"ok": False, "msg": "Engine not started"}
         try:
@@ -450,7 +450,7 @@ class Api:
         return self.bridge.separate_stems(p)
 
     def capture_stem(self, path):
-        """从分离出的某一轨取色(键盘立刻弹它)。"""
+        """Capture from one separated stem (the keyboard plays it immediately)."""
         r = self.capture_from_file(path)
         self._push_tone_name(r)
         return r
@@ -460,13 +460,13 @@ class Api:
             return {"ok": False, "msg": "Engine not started"}
         try:
             return self.bridge.capture_from_file(path)
-        except Exception as e:  # 非音频文件、解码失败:页面要拿到 msg,不能收到异常
+        except Exception as e:  # non-audio file, decode failure: the page must get msg, not an exception
             return {"ok": False, "msg": str(e)[:70]}
 
     def refine_capture(
         self, f0_hint=None, lo_hz=None, hi_hz=None, t0=None, t1=None, denoise="auto"
     ):
-        """精修最近捕捉:标准音 / 低切高切 / 拖选段 / 降噪档 → 重分析 → 热切换 + 推动效。"""
+        """Refine the latest capture: reference pitch / low cut high cut / drag-selected segment / denoise level -> reanalyse -> hot swap + push animation."""
         if not self.bridge:
             return {"ok": False, "msg": "Engine not started"}
         try:
@@ -477,13 +477,13 @@ class Api:
         return r
 
     def capture_path(self, path):
-        """拖拽文件取色(pywebview 给真实路径):分析 → 热切换 → 推动效。"""
+        """Capture from a dragged file (pywebview gives the real path): analyse -> hot swap -> push animation."""
         r = self.capture_from_file(path)
         self._push_tone_name(r)
         return r
 
     def capture_bytes(self, b64, name="drop"):
-        """拖拽降级:前端传 base64 字节 → 写临时文件 → 取色。"""
+        """Drag fallback: the front end sends base64 bytes -> write a temp file -> capture."""
         if not self.bridge:
             return {"ok": False, "msg": "Engine not started"}
         import base64
@@ -505,7 +505,7 @@ class Api:
         except Exception as e:
             return {"ok": False, "msg": str(e)[:70]}
 
-    # ---- 音色库(保存/列表/加载/删除)----
+    # ---- Timbre library (save/list/load/delete) ----
     def list_tones(self):
         return self.bridge.list_tones() if self.bridge else []
 
@@ -517,7 +517,7 @@ class Api:
                 pass
 
     def save_timbre(self, name):
-        """保存音色;成功后通知主窗刷新 SAVED TONES 与卷帘 Neural 列表(新 tone: 入口)。"""
+        """Save the timbre; on success tell the main window to refresh SAVED TONES and the piano-roll Neural list (new tone: entry)."""
         r = self.bridge.save_timbre(name) if self.bridge else {"ok": False}
         if r.get("ok"):
             import json
@@ -530,7 +530,7 @@ class Api:
         return r
 
     def behavior_status(self):
-        """保存音色后同名行为库的后台提取进度;完成时刷新卷帘的行为源列表。"""
+        """Background extraction progress of the same-named behaviour library after saving a timbre; refreshes the piano roll's behaviour source list when done."""
         if not self.bridge:
             return {"state": "idle"}
         d = self.bridge.behavior_status()
@@ -546,7 +546,7 @@ class Api:
         return d
 
     def bake_ddsp(self, name, base=None, steps=1000):
-        """取色后烘焙 DDSP 音色(后台子进程);进度用 bake_status 轮询。"""
+        """Bake a DDSP timbre after capture (background subprocess); progress is polled through bake_status."""
         if not self.bridge:
             return {"ok": False, "msg": "Engine not started"}
         return self.bridge.bake_ddsp(name, base or None, steps)
@@ -570,7 +570,7 @@ class Api:
         if not self.bridge:
             return {"ok": False}
         r = self.bridge.load_tone(name)
-        self._push_tone_name(r, captured=False)  # 名字/预设/SOURCE f0 一站式同步;不是新取色
+        self._push_tone_name(r, captured=False)  # name/preset/SOURCE f0 synced in one go; not a new capture
         return r
 
     def delete_tone(self, name):
@@ -578,7 +578,7 @@ class Api:
 
 
 def _set_dock_icon():
-    """macOS Dock 图标 = 品牌 Q 印章(assets/brand);非 macOS / 无 pyobjc 时静默跳过。"""
+    """macOS Dock icon = brand Q seal (assets/brand); silently skipped on non-macOS / without pyobjc."""
     icon = ROOT.parent / "assets" / "brand" / "quill_icon_1024.png"
     if not icon.exists():
         return
@@ -594,10 +594,10 @@ def _set_dock_icon():
 
 def main():
     if not UI_HTML.exists():
-        print(f"UI 缺失: {UI_HTML}")
+        print(f"UI missing: {UI_HTML}")
         return 1
     api = Api()
-    # 页面按固定 1440×900 设计并整体等比缩放:内容不变形,非 1.6 比例的窗口留同色暗边。
+    # the page is designed at a fixed 1440×900 and scaled uniformly: content does not distort, windows not at a 1.6 ratio get same-coloured dark margins.
     api.main_window = webview.create_window(
         "Quill",
         str(UI_HTML),

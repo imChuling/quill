@@ -1,20 +1,20 @@
-"""渲染服务:take_schema_v1 契约的 FastAPI 实现。
+"""Render service: FastAPI implementation of the take_schema_v1 contract.
 
-web 页(web_demo/)的渲染后端,可本地跑也可托管:
+Render backend for the web page (web_demo/); can run locally or hosted:
 
-  GET  /status                 版本/可用音色/行为源
-  POST /capture                一段录音 → 音色快照 + 行为库(双资产)
-  GET  /assets                 已捕获资产列表
-  POST /render                 notes+bpm+title(+timbre/behavior/synth_params) → 同步渲染 → take_id
-  GET  /takes/{id}             take 元数据
-  GET  /takes/{id}/audio.wav   WAV 字节
+  GET  /status                 version/available timbres/behaviour sources
+  POST /capture                one recording -> timbre snapshot + behaviour library (two assets)
+  GET  /assets                 list of captured assets
+  POST /render                 notes+bpm+title(+timbre/behavior/synth_params) -> synchronous render -> take_id
+  GET  /takes/{id}             take metadata
+  GET  /takes/{id}/audio.wav   WAV bytes
 
-渲染走神经路径(ConditionedNN 检索 + DDSP 音色),不依赖实时引擎;取色音色走离线 L0 引擎。
-POST /render 同步完成(短 region 秒级)并返回 state=ready,无状态容器上没有后台线程或轮询
-竞态。NeuralTake 的 voice 缓存与 L0 引擎缓存跨请求共享,渲染全部在 _render_lock 下进行。
-CORS 由 QUILL_ALLOWED_ORIGINS 环境变量控制(缺省 *)。
+Rendering uses the neural path (ConditionedNN retrieval + DDSP timbre) and does not depend on the real-time engine; capture timbres use the offline L0 engine.
+POST /render completes synchronously (seconds for a short region) and returns state=ready, so a stateless container has no background threads or polling
+races. NeuralTake's voice cache and the L0 engine cache are shared across requests, and all rendering happens under _render_lock.
+CORS is controlled by the QUILL_ALLOWED_ORIGINS environment variable (default *).
 
-本地试跑: QUILL_WEB_DIR=$PWD/web_demo uvicorn ui.render_service:app --port 8726
+Local trial run: QUILL_WEB_DIR=$PWD/web_demo uvicorn ui.render_service:app --port 8726
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ from fastapi import FastAPI, HTTPException, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
 
-from neural.neural_take import (  # noqa: E402  音色表/渲染器与桌面版同一份
+from neural.neural_take import (  # noqa: E402  same timbre table/renderer as the desktop version
     DISTILLED_BEHAVIORS,
     INSTRUMENTS,
     UI_RENDER_DEFAULTS,
@@ -44,27 +44,27 @@ from neural.neural_take import (  # noqa: E402  音色表/渲染器与桌面版�
     get_neural_take,
 )
 from runtime.gesture import GestureInterpreter  # noqa: E402
-from ui.take_store import TakeStore  # noqa: E402  落盘 take 仓库
+from ui.take_store import TakeStore  # noqa: E402  on-disk take store
 
 TAKES_DIR = Path(os.environ.get("QUILL_TAKES_DIR", "/tmp/quill_takes"))
 ASSETS = Path(os.environ.get("QUILL_ASSETS_DIR", "/tmp/quill_assets"))
 TONES_DIR, BEHS_DIR = ASSETS / "tones", ASSETS / "behaviors"
 VERSION = "render-service/2.1"
 
-# ---- 渲染/输入契约常量 ----
-SR_OUT = 16000  # DDSP 输出采样率
-TAIL_S = 0.05  # 末音后保留的尾长:写回 DAW 的 musicDurationTicks 按它折算,须贴紧时间轴
-MAX_RENDER_S = 120.0  # 单次渲染时间轴上限
-MAX_UPLOAD_BYTES = 30_000_000  # /capture 单次上传上限
+# ---- Render/input contract constants ----
+SR_OUT = 16000  # DDSP output sample rate
+TAIL_S = 0.05  # tail kept after the last note: musicDurationTicks written back to the DAW is derived from it, so it must hug the timeline
+MAX_RENDER_S = 120.0  # timeline cap per render
+MAX_UPLOAD_BYTES = 30_000_000  # upload cap per /capture
 CAPTURE_MIN_S, CAPTURE_MAX_S = 1.0, 90.0
-BEH_CACHE_MAX = 8  # 行为库 LRU 上限(容器内存有限)
-MAX_STORED_TONES = int(os.environ.get("QUILL_MAX_ASSETS", "60"))  # 资产总量上限
+BEH_CACHE_MAX = 8  # behaviour library LRU cap (container memory is limited)
+MAX_STORED_TONES = int(os.environ.get("QUILL_MAX_ASSETS", "60"))  # cap on the total number of assets
 
 
 def _persist(warnings: list | None = None):
-    """Modal Volume 显式落盘(本地跑时为 no-op)。
+    """Explicit Modal Volume commit (no-op when running locally).
 
-    失败要可见:静默吞掉会让 /capture 返回 ok 而资产在下一个容器里消失。
+    Failures must be visible: silently swallowing them would let /capture return ok while the asset vanishes in the next container.
     """
     if not os.environ.get("QUILL_VOLUME_NAME"):
         return
@@ -80,7 +80,7 @@ def _persist(warnings: list | None = None):
 
 
 def _evict_assets(warnings: list | None = None):
-    """资产目录按 mtime 淘汰最旧的,防持久卷无限增长(/capture 无鉴权)。"""
+    """Evict the oldest assets in the asset directory by mtime, preventing unbounded growth of the persistent volume (/capture has no auth)."""
     for d in (TONES_DIR, BEHS_DIR):
         if not d.is_dir():
             continue
@@ -94,31 +94,31 @@ def _evict_assets(warnings: list | None = None):
                 pass
 
 
-# 只有这些旋钮作用于渲染,未列出的键一律丢弃。
-#   noise→DDSP 噪声端  master→输出增益  reverb→算法混响
-#   brightness→谱倾斜  artint→traj_gain(轨迹作用强度)
-#   vibmodel→颤音来源(≥0.5 用学习的颤音模型,否则检索)  randomness→颤音随机性
-#   timing→expressive timing 强度  continuity→拼接代价重排序 λ
+# only these knobs act on rendering; any key not listed is dropped.
+#   noise->DDSP noise side  master->output gain  reverb->algorithmic reverb
+#   brightness->spectral tilt  artint->traj_gain (trajectory strength)
+#   vibmodel->vibrato source (≥0.5 uses the learned vibrato model, otherwise retrieval)  randomness->vibrato randomness
+#   timing->expressive timing strength  continuity->concatenation-cost reranking λ
 SYNTH_KEYS = {
     "noise", "master", "reverb", "brightness", "artint",
     "vibmodel", "randomness", "timing", "continuity",
 }
-DISTILLED_NAME = "mididdsp_distilled"  # neural_take 里的键;对外契约仍叫 "distilled"
-_render_lock = threading.Lock()  # NeuralTake 的 voice 缓存不是线程安全的
+DISTILLED_NAME = "mididdsp_distilled"  # key in neural_take; the external contract still calls it "distilled"
+_render_lock = threading.Lock()  # NeuralTake's voice cache is not thread-safe
 
 
 def _render_tone_l0(notes: list, eng):
-    """取色音色 → L0 引擎离线渲染(与桌面版同一链路)。
+    """Capture timbre -> offline rendering with the L0 engine (the same chain as the desktop version).
 
-    Engine 事件带绝对时间,时间轴天然保真;slide/legato 沿用桌面语义。
+    Engine events carry absolute time, so the timeline is preserved by construction; slide/legato keep the desktop semantics.
     """
     import io as _io
 
     import soundfile as sf
 
-    evs = _GI.notes_to_events(notes)  # 与桌面卷帘同一函数:力度→滑速、strum 错峰
+    evs = _GI.notes_to_events(notes)  # same function as the desktop piano roll: velocity -> slide speed, strum staggering
     dur = max(t for t, kind, *_ in evs if kind == "off") + 0.5
-    with _render_lock:  # 缓存引擎跨请求共享,同一把锁
+    with _render_lock:  # the cached engine is shared across requests, same lock
         y = np.asarray(eng.render_offline(evs, dur), np.float32)
     peak = float(np.max(np.abs(y))) if y.size else 0.0
     if peak > 0:
@@ -136,27 +136,27 @@ def _render_tone_l0(notes: list, eng):
 def _render_audio(
     notes: list, timbre: str, behavior: str | None = None, synth_params: dict | None = None
 ) -> tuple[bytes, float, float]:
-    """notes({midi,start,len,vel,art}) → NeuralTake.render → WAV。
+    """notes({midi,start,len,vel,art}) -> NeuralTake.render -> WAV.
 
-    返回 (wav_bytes, peak_dbfs, duration_s)。
+    Returns (wav_bytes, peak_dbfs, duration_s).
 
-    和弦/重叠单声部化、乐句切分、时间轴摆位、边缘淡化、后处理都在
-    NeuralTake.render 里(桌面版同一函数),本层只做名字解析与旋钮映射。
-    behavior 取值:
-      内置音色名      该音色的轨迹库(跨乐器迁移,如 violin 音色 × guitar 行为)
-      "beh:<id>"     /capture 得到的行为库
-      "distilled"    蒸馏残差学生模型(MIDI-DDSP 教师 → Quill 行为残差)
+    Chord/overlap monophonisation, phrase splitting, timeline placement, edge fades and post-processing all happen in
+    NeuralTake.render (the same function as the desktop version); this layer only resolves names and maps knobs.
+    behavior values:
+      built-in timbre name   that timbre's trajectory library (cross-instrument transfer, e.g. violin timbre × guitar behaviour)
+      "beh:<id>"     behaviour library obtained from /capture
+      "distilled"    distilled residual student model (MIDI-DDSP teacher -> Quill behaviour residual)
     """
     import soundfile as sf
 
     sp = synth_params or {}
     if timbre.startswith("tone:"):
         eng = _l0_engine(timbre[5:])
-        if "noise" in sp and not eng._texture:  # Air/Noise 旋钮同样作用于取色音色(与桌面一致)
+        if "noise" in sp and not eng._texture:  # the Air/Noise knob also acts on capture timbres (consistent with the desktop)
             eng.instrument.noise_level = float(sp["noise"])
         if not behavior:
-            return _render_tone_l0(notes, eng)  # 无行为库:走事件路径
-        timbre = eng  # 取色音色 × 行为库:L0 控制驱动(与桌面同一路径)
+            return _render_tone_l0(notes, eng)  # no behaviour library: event path
+        timbre = eng  # capture timbre × behaviour library: L0 control-driven (same path as the desktop)
     if behavior == "distilled":
         behav = DISTILLED_NAME
     elif behavior and behavior.startswith("beh:"):
@@ -170,7 +170,7 @@ def _render_audio(
             instrument=timbre,
             behavior=behav,
             noise_gain=float(sp.get("noise", 0.6)),
-            # INTENSITY 旋钮 → traj_gain:检索轨迹的作用强度(0.3 收敛 … 2.0 夸张)
+            # INTENSITY knob -> traj_gain: strength of the retrieved trajectory (0.3 subdued ... 2.0 exaggerated)
             traj_gain=0.3 + float(sp.get("artint", 0.41)) * 1.7,
             vibrato_source="model" if float(sp.get("vibmodel", 0.0)) >= 0.5 else "retrieval",
             randomness=float(sp.get("randomness", 0.3)),
@@ -190,11 +190,11 @@ def _render_audio(
 
 _beh_cache: collections.OrderedDict[str, object] = collections.OrderedDict()
 _l0_cache: dict = {}
-_GI = GestureInterpreter()  # 卷帘/DAW 音符 → 引擎事件的唯一语义来源(与桌面同一类)
+_GI = GestureInterpreter()  # single semantic source for piano-roll/DAW notes -> engine events (same class as the desktop)
 
 
 def _l0_engine(tone_id: str):
-    """captured tone → 离线 L0 引擎(控制驱动),按文件 mtime 缓存一个。"""
+    """captured tone -> offline L0 engine (control-driven), one cached by file mtime."""
     from runtime.engine import engine_from_snapshot_file
     from snapshot import load_snapshot
 
@@ -207,12 +207,12 @@ def _l0_engine(tone_id: str):
         _l0_cache[key] = engine_from_snapshot_file(
             str(p), eval_mode=True, noise_level=0.6 if tex else float(meta.get("noise_level") or 0.02)
         )
-        _l0_cache[key]._texture = tex  # 纹理音色的噪声层不受 Air/Noise 旋钮覆盖(与桌面一致)
+        _l0_cache[key]._texture = tex  # the noise layer of texture timbres is not overridden by the Air/Noise knob (consistent with the desktop)
     return _l0_cache[key]
 
 
 def _load_behavior_nn(beh_id: str):
-    """captured behavior npz → ConditionedNN(LRU 缓存,容器内存有限)。"""
+    """captured behavior npz -> ConditionedNN (LRU cache, container memory is limited)."""
     if beh_id in _beh_cache:
         _beh_cache.move_to_end(beh_id)
         return _beh_cache[beh_id]
@@ -237,7 +237,7 @@ def _slug(name: str, blob: bytes) -> str:
 
 
 def _decode_audio(blob: bytes):
-    """任意常见格式 → mono float32。写临时文件让 ffmpeg 后端正常工作。"""
+    """Any common format -> mono float32. Writes a temp file so the ffmpeg backend works properly."""
     import tempfile
 
     import librosa
@@ -266,7 +266,7 @@ def _get_extract_mod():
     return _extract_mod
 
 def _extract_behavior(blob: bytes, out_npz: Path):
-    """extract_style 管线(路径进出);返回 (n_notes, art_counts) 或 None。"""
+    """extract_style pipeline (paths in and out); returns (n_notes, art_counts) or None."""
     import tempfile
 
     mod = _get_extract_mod()
@@ -309,7 +309,7 @@ _takes = TakeStore(TAKES_DIR)
 
 @app.middleware("http")
 async def _no_cache_html(request: Request, call_next):
-    """入口 HTML 禁缓存,重新部署后浏览器不会拿着旧页面;静态资产照常缓存。"""
+    """Disable caching for the entry HTML so browsers do not keep the old page after a redeploy; static assets are cached as usual."""
     resp = await call_next(request)
     if request.url.path in ("/", "/index.html"):
         resp.headers["Cache-Control"] = "no-cache"
@@ -327,13 +327,13 @@ def status():
         "version": VERSION,
         "engine": "neural-ddsp",
         "timbres": builtin,
-        "behaviors": behaviors,  # 音色名 = 该音色的轨迹库;"distilled" = 蒸馏学生模型
+        "behaviors": behaviors,  # timbre name = that timbre's trajectory library; "distilled" = distilled student model
     }
 
 
 @app.post("/capture")
 async def capture(request: Request, name: str = "capture"):
-    """一段录音 → 双资产:音色快照(tone)+ 演奏法风格库(behavior)。"""
+    """One recording -> two assets: timbre snapshot (tone) + articulation style library (behavior)."""
     blob = await request.body()
     if not blob or len(blob) < 1000:
         raise HTTPException(400, "empty audio")
@@ -362,7 +362,7 @@ async def capture(request: Request, name: str = "capture"):
         from snapshot import save_snapshot
 
         snap = analyze_timbre(y, sr, name=name)
-        snap.setdefault("meta", {})["disp"] = name  # 资产列表用显示名
+        snap.setdefault("meta", {})["disp"] = name  # display name for the asset list
         save_snapshot(str(TONES_DIR / aid), snap)
         f0 = float(snap.get("f0_ref", 0.0))
         midi = 69 + 12 * np.log2(f0 / 440.0) if f0 > 0 else 0
@@ -407,7 +407,7 @@ def _reload_vol():
 
 @app.get("/assets")
 def assets():
-    """已捕获资产列表(tones + behaviors)。"""
+    """List of captured assets (tones + behaviors)."""
     _reload_vol()
     tones, behs = [], []
     if TONES_DIR.is_dir():
@@ -432,7 +432,7 @@ def assets():
                 )
             except Exception:
                 continue
-    # 蒸馏行为学生与 captured 行为库并列,可直接换上对比
+    # the distilled behaviour student sits alongside captured behaviour libraries and can be swapped in directly for comparison
     if DISTILLED_BEHAVIORS[DISTILLED_NAME].exists():
         behs.insert(
             0, {"id": "distilled", "name": "MIDI-DDSP distilled", "n_notes": 0, "kind": "model"}
@@ -484,7 +484,7 @@ def render(body: dict):
             end = max(end, s + ln)
     except HTTPException:
         raise
-    except (KeyError, TypeError, ValueError) as e:  # 缺字段/类型错是 400 不是 500
+    except (KeyError, TypeError, ValueError) as e:  # missing fields/wrong types are 400, not 500
         raise HTTPException(400, f"malformed notes: {str(e)[:50]}") from None
     if end > MAX_RENDER_S:
         raise HTTPException(400, f">{MAX_RENDER_S:.0f}s")
@@ -521,11 +521,11 @@ def render(body: dict):
             "atlas": None,
             "source_region": None,
         },
-        # 旋钮影响音频却不在其余字段里,必须进 take 身份,否则改完旋钮
-        # 重渲会误命中幂等缓存、返回旧音频(旋钮看起来"没作用")。
+        # knobs affect the audio but are not in the other fields, so they must be part of the take identity, otherwise after changing a knob
+        # a rerender would wrongly hit the idempotent cache and return the old audio (the knob would seem to "do nothing").
         variant=json.dumps(synth_params, sort_keys=True, separators=(",", ":")),
     )
-    if take["audio"]["state"] == "ready":  # 幂等命中
+    if take["audio"]["state"] == "ready":  # idempotent hit
         return {"ok": True, "take_id": take["take_id"], "state": "ready"}
     try:
         wav, peak_db, audio_s = _render_audio(clean, timbre, behavior or None, synth_params)
@@ -535,8 +535,8 @@ def render(body: dict):
         _takes.fail(take["take_id"], str(e))
         raise HTTPException(500, f"render_failed: {str(e)[:60]}") from None
     _takes.attach_audio(take["take_id"], wav, peak_db)
-    # duration_s 改为乐句摆位后的真实时间轴长度,DAW 侧据此折算 musicDurationTicks,
-    # 与源 region 的节奏严格同长,不被拉伸。
+    # duration_s becomes the real timeline length after phrase placement; the DAW side derives musicDurationTicks from it,
+    # so it matches the source region's rhythm exactly and is not stretched.
     _takes.set_duration(take["take_id"], audio_s)
     return {"ok": True, "take_id": take["take_id"], "state": "ready"}
 
@@ -547,7 +547,7 @@ def takes_list():
 
 
 def _valid_tid(tid: str) -> bool:
-    """take_id 是内容哈希 tk_+12hex;路径拼接前先验格式(纵深防御)。"""
+    """take_id is a content hash tk_+12hex; validate the format before path joining (defence in depth)."""
     import re
 
     return bool(re.fullmatch(r"tk_[0-9a-f]{12}", tid))
@@ -571,8 +571,8 @@ def take_audio(tid: str):
     return FileResponse(_takes.wav_path(tid), media_type="audio/wav")
 
 
-# ---- 同源托管 web 页(QUILL_WEB_DIR 指向 web_demo/)----
-# mount 在路由之后注册,/status 等 API 优先匹配;页面与 API 同源 → 零 CORS。
+# ---- Same-origin hosting of the web page (QUILL_WEB_DIR points to web_demo/) ----
+# the mount is registered after the routes, so /status and other APIs match first; page and API share an origin -> zero CORS.
 _web = os.environ.get("QUILL_WEB_DIR", "")
 if _web and Path(_web).is_dir():
     from fastapi.staticfiles import StaticFiles

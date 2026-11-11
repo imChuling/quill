@@ -1,9 +1,9 @@
-"""麦克风取色、Demucs 分离与音色库管理(Bridge 的 mixin)。
+"""Microphone capture, Demucs separation and timbre library management (Bridge mixin).
 
-取色流程:capture_start 开一条独立的 InputStream(44.1 kHz 单声道,最多缓存 65 s),
-capture_stop 或 capture_from_file 把音频交给 _capture_audio:去静音、谱门限降噪、
-analyze_timbre 得快照,build_instrument 后热切换进引擎。用户音色是 USER_TONES 下的 .npz,
-_tone_path 保证名字不会逃出该目录。
+Capture flow: capture_start opens its own InputStream (44.1 kHz mono, buffers at most 65 s);
+capture_stop or capture_from_file hands the audio to _capture_audio: silence trimming, spectral-gate denoising,
+analyze_timbre gives the snapshot, and after build_instrument it is hot-swapped into the engine. User timbres are .npz files under USER_TONES;
+_tone_path ensures names cannot escape that directory.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ class BridgeCaptureMixin:
             self._cap_stream = None
 
     def capture_start(self):
-        """开麦克风录音(独立 InputStream)。"""
+        """Start microphone recording (its own InputStream)."""
         import sounddevice as sd
 
         self._close_cap_stream()
@@ -43,7 +43,7 @@ class BridgeCaptureMixin:
             self._cap_frames.append(indata[:, 0].copy())
 
     def capture_level(self):
-        """录制中实时电平(~50ms RMS → 0..1)。"""
+        """Live level while recording (~50ms RMS -> 0..1)."""
         fr = getattr(self, "_cap_frames", None)
         if not fr:
             return 0.0
@@ -53,7 +53,7 @@ class BridgeCaptureMixin:
         return float(min(1.0, np.sqrt(float((x**2).mean())) * 4.0))
 
     def capture_active(self):
-        """录音流是否在跑。"""
+        """Whether the recording stream is running."""
         st = getattr(self, "_cap_stream", None)
         try:
             return bool(st is not None and st.active)
@@ -61,11 +61,11 @@ class BridgeCaptureMixin:
             return False
 
     def capture_meter(self):
-        """一次拿实时电平 + 是否在录。"""
+        """Get the live level + whether recording in one call."""
         return {"lvl": self.capture_level(), "active": self.capture_active()}
 
     def capture_stop(self):
-        """停录 → analyze_timbre 取色 → 热切换当前乐器。"""
+        """Stop recording -> analyze_timbre capture -> hot-swap the current instrument."""
         import numpy as np
 
         try:
@@ -91,7 +91,7 @@ class BridgeCaptureMixin:
         return self._capture_audio(y, 44100, name="capture")
 
     def separate_stems(self, path):
-        """从一首歌里分离乐器:Demucs htdemucs_6s,取前 30 s 在 CPU 上跑,静音 stem 不返回。"""
+        """Separate instruments from a song: Demucs htdemucs_6s on the first 30 s on CPU; silent stems are not returned."""
         import tempfile
 
         import numpy as np
@@ -140,7 +140,7 @@ class BridgeCaptureMixin:
             return {"ok": False, "msg": str(e)[:80]}
 
     def capture_from_file(self, path):
-        """拖入文件取色。"""
+        """Capture from a dropped file."""
         from analysis.io import load
 
         y, sr = load(str(path), sr=44100)
@@ -314,7 +314,7 @@ class BridgeCaptureMixin:
         }
 
     def play_take(self, t0=None, t1=None):
-        """试听最近的 take。"""
+        """Preview the latest take."""
         import sounddevice as sd
         import soundfile as sf
 
@@ -349,7 +349,7 @@ class BridgeCaptureMixin:
     def refine_capture(
         self, f0_hint=None, lo_hz=None, hi_hz=None, t0=None, t1=None, denoise="auto"
     ):
-        """精修最近一次捕捉。"""
+        """Refine the latest capture."""
         import numpy as np
         import soundfile as sf
 
@@ -388,7 +388,7 @@ class BridgeCaptureMixin:
             gate=gate,
         )
 
-    # ---- 音色库 ----
+    # ---- Timbre library ----
     @staticmethod
     def _tone_css(c, name=""):
         t = max(0.0, min(1.0, (float(c) - 2) / 12.0))
@@ -412,7 +412,7 @@ class BridgeCaptureMixin:
         )
 
     def list_tones(self):
-        """默认音色 + 用户保存的音色。"""
+        """Default timbre + user-saved timbres."""
         from .bridge import USER_TONES
 
         out = [
@@ -444,7 +444,7 @@ class BridgeCaptureMixin:
         return out
 
     def save_timbre(self, name):
-        """把最近取色的音色命名保存。"""
+        """Save the most recently captured timbre under a name."""
         from snapshot import save_snapshot
 
         from .bridge import USER_TONES
@@ -495,7 +495,7 @@ class BridgeCaptureMixin:
         return {"state": job["state"], "name": job["name"], "result": job["result"]}
 
     def load_tone(self, name):
-        """从库加载音色 → 热切换。"""
+        """Load a timbre from the library -> hot swap."""
         import numpy as np
 
         from snapshot import load_snapshot
