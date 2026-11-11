@@ -1,8 +1,8 @@
-"""DDSP 多音泛化训练:给一件音源纯净的乐器学 (f0, loudness) → 音色的映射。
+"""DDSP multi-note generalisation training: learn the (f0, loudness) -> timbre mapping for one clean-sourced instrument.
 
-输入是同一件乐器(电贝斯 / clean 电吉他 / 木吉他)的多个音,产出一个能被演奏法层
-ControlFrame 驱动、跨音域发声的神经音色;失真等留给下游 FX。特征缓存到 .npz,避免重复
-跑 PESTO。
+Input is several notes of the same instrument (electric bass / clean electric guitar / acoustic guitar); the output is a neural timbre that can be driven by
+the articulation layer's ControlFrame across the range; distortion etc. is left to downstream FX. Features are cached to .npz to avoid rerunning
+PESTO.
 
   python -W ignore -m neural.train_ddsp --glob "<dir>/*.wav" --name electric_bass --steps 4000
 """
@@ -24,7 +24,7 @@ from neural.ddsp import DDSP, HOP, SR, extract_features, multiscale_spectral_los
 
 
 def _trim_silence(y, sr, thresh_db=-40.0, pad_s=0.03):
-    """裁掉首尾静音/低能量段(静音帧会教会 DDSP 噪声分支学底噪)。"""
+    """Trim leading/trailing silence/low-energy segments (silent frames would teach the DDSP noise branch the noise floor)."""
     y = np.asarray(y, dtype=np.float32)
     e = np.abs(y)
     pk = float(e.max())
@@ -34,12 +34,12 @@ def _trim_silence(y, sr, thresh_db=-40.0, pad_s=0.03):
     if above.size < 2:
         return y
     s = max(0, above[0] - int(pad_s * sr))
-    t = min(len(y), above[-1] + int(pad_s * 2 * sr))  # 尾部多留一点衰减
+    t = min(len(y), above[-1] + int(pad_s * 2 * sr))  # keep a bit more decay at the tail
     return y[s:t]
 
 
 def build_dataset(files, sr_in=44100, cache=None, min_s=0.9, verbose=True, trim=True):
-    """[(f0[1,T,1], loud[1,T,1], audio[1,T*HOP])],整段、变长;训练时随机裁剪增强。"""
+    """[(f0[1,T,1], loud[1,T,1], audio[1,T*HOP])], whole and variable length; randomly cropped for augmentation during training."""
     if cache and Path(cache).exists():
         d = np.load(cache)
         n = int(d["n"])
@@ -48,7 +48,7 @@ def build_dataset(files, sr_in=44100, cache=None, min_s=0.9, verbose=True, trim=
             for i in range(n)
         ]
         if verbose:
-            print(f"  载入缓存 {n} 音 <- {cache}")
+            print(f"  loaded cache of {n} notes <- {cache}")
         return out
     Tmin = int(min_s * SR / HOP)
     out = []
@@ -64,7 +64,7 @@ def build_dataset(files, sr_in=44100, cache=None, min_s=0.9, verbose=True, trim=
             continue
         out.append((f0, loud, au))
         if verbose and (k + 1) % 25 == 0:
-            print(f"  特征 {k + 1}/{len(files)} ...")
+            print(f"  features {k + 1}/{len(files)} ...")
     if cache:
         save = {"n": len(out)}
         for i, (a, b, c) in enumerate(out):
@@ -76,7 +76,7 @@ def build_dataset(files, sr_in=44100, cache=None, min_s=0.9, verbose=True, trim=
 
 
 def _crop_batch(data, idx, Tc, rng, device, rand=True):
-    """对一批音随机裁 Tc 帧窗口(增强:每步看不同片段)。"""
+    """Randomly crop a Tc-frame window from a batch of notes (augmentation: each step sees a different segment)."""
     f0s, los, aus = [], [], []
     for i in idx:
         f0, lo, au = data[i]
@@ -105,9 +105,9 @@ def train(
     n_layers=2,
     on_step=None,
 ):
-    """随机裁剪增强 + weight decay + dropout + 早停 + 断点续训。
+    """Random-crop augmentation + weight decay + dropout + early stopping + resumable checkpoints.
 
-    on_step(it, train_loss_avg, best_val) 每 25 步回调一次(桌面烘焙进度用)。
+    on_step(it, train_loss_avg, best_val) is called every 25 steps (used for desktop bake progress).
     """
     import copy
 
@@ -121,7 +121,7 @@ def train(
     model = DDSP(dropout=dropout, temporal=temporal, n_layers=n_layers).to(device)
     if init_state is not None:
         model.load_state_dict(init_state)
-        print("  从断点续训")
+        print("  resuming from checkpoint")
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, steps)
     losses, best_val, best_state = [], float("inf"), None
@@ -146,10 +146,10 @@ def train(
                 yv = model(f0v, lov)
                 m = min(yv.shape[1], auv.shape[1])
                 vl = float(multiscale_spectral_loss(yv[:, :m], auv[:, :m]).item())
-            if vl < best_val:  # 早停:记最优 val 的权重
+            if vl < best_val:  # early stopping: keep the weights with the best val
                 best_val = vl
                 best_state = copy.deepcopy({k: v.cpu() for k, v in model.state_dict().items()})
-                if ckpt_path:  # 断点:被 kill 也能续训
+                if ckpt_path:  # checkpoint: training can resume even if killed
                     torch.save(best_state, ckpt_path)
             if verbose:
                 print(
@@ -157,13 +157,13 @@ def train(
                     f"  best={best_val:.2f}"
                 )
     if best_state is not None:
-        model.load_state_dict(best_state)  # 回到 val 最优
+        model.load_state_dict(best_state)  # return to the best val
     return model, losses, best_val, vi
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--glob", required=True, help="一件乐器的音 glob")
+    ap.add_argument("--glob", required=True, help="glob for the notes of one instrument")
     ap.add_argument("--name", default="instrument")
     ap.add_argument("--max-notes", type=int, default=120)
     ap.add_argument("--steps", type=int, default=4000)
@@ -173,11 +173,11 @@ def main(argv=None):
     import soundfile as sf
 
     files = sorted(glob.glob(args.glob, recursive=True))[: args.max_notes]
-    print(f"{args.name}: {len(files)} 音 -> 特征中…")
-    cache = f"/tmp/ddsp_{args.name}_full.npz"  # 整段特征缓存
+    print(f"{args.name}: {len(files)} notes -> extracting features...")
+    cache = f"/tmp/ddsp_{args.name}_full.npz"  # whole-recording feature cache
     data = build_dataset(files, cache=cache)
     print(
-        f"  数据集 {len(data)} 音；随机裁剪增强 + 早停 + wd + dropout + 断点续训，训 {args.steps} 步"
+        f"  dataset of {len(data)} notes; random-crop augmentation + early stopping + wd + dropout + resumable, training {args.steps} steps"
     )
     ckpt = f"/tmp/ddsp_{args.name}.ckpt"
     init = torch.load(ckpt, map_location="cpu") if Path(ckpt).exists() else None
@@ -185,7 +185,7 @@ def main(argv=None):
     Path(ckpt).unlink(missing_ok=True)
     dev = next(model.parameters()).device
     Path(args.out).mkdir(parents=True, exist_ok=True)
-    # 重建 3 个持出音整段(泛化检验)
+    # reconstruct 3 held-out notes in full (generalisation check)
     with torch.no_grad():
         for j, i in enumerate(vi[:3]):
             f0, lo, au = data[i]
@@ -203,7 +203,7 @@ def main(argv=None):
             )
     torch.save(model.state_dict(), f"{args.out}/ddsp_{args.name}.pt")
     print(
-        f"  train≈{np.mean(losses[-100:]):.2f}  best_val={best_val:.2f}；持出重建 -> ddsp_{args.name}_val*_recon.wav"
+        f"  train≈{np.mean(losses[-100:]):.2f}  best_val={best_val:.2f}; held-out reconstruction -> ddsp_{args.name}_val*_recon.wav"
     )
     return 0
 

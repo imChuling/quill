@@ -1,4 +1,4 @@
-"""神经渲染后处理:谱倾斜 + 算法混响。桌面版与网页版共用,保证同一旋钮同一声音。"""
+"""Neural post-render processing: spectral tilt + algorithmic reverb. Shared by desktop and web so the same knob gives the same sound."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def apply_reverb(y: np.ndarray, sr: int, wet: float) -> np.ndarray:
 
 
 def apply_tilt(y: np.ndarray, sr: int, brightness: float) -> np.ndarray:
-    """一阶谱倾斜(brightness 0.5=直通,>0.5 提高频 <0.5 提低频)。"""
+    """First-order spectral tilt (brightness 0.5=pass-through, >0.5 boosts highs, <0.5 boosts lows)."""
     from scipy.signal import butter, sosfilt
 
     tilt = (float(brightness) - 0.5) * 2.0

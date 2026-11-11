@@ -1,14 +1,14 @@
-"""桌面"烘焙":一段取色录音 → 从预训练底座微调出一个 DDSP 音色(子进程,MPS)。
+"""Desktop "bake": one capture recording -> a DDSP timbre fine-tuned from the pretrained base (subprocess, MPS).
 
-L0 取色秒级、实时,是默认路径;DDSP 能学到摩擦噪声、幅度起伏这类单条稳态谱抓不到的
-质感,但要分钟级训练,所以做成取色之后可选的后台任务。只做桌面,不做网页(网页渲染
-容器无 GPU)。
+L0 capture takes seconds and is real-time, so it is the default path; DDSP can learn textures such as friction noise and amplitude fluctuation
+that a single steady spectrum cannot capture, but it needs minutes of training, so it is an optional background job after capture. Desktop only,
+not web (the web render container has no GPU).
 
   python -m neural.bake_ddsp --wav take.wav --name myglass --base glass --steps 1500 \
       --out assets/user_ddsp --status assets/user_ddsp/_bake_status.json
 
-产出 <out>/<name>.pt + <name>.json(底座/包络/步数/val)。NeuralTake 以 "ddsp:<name>"
-加载,行为库缺省用底座的轨迹库(或同名 user_styles/<name>.npz)。
+Produces <out>/<name>.pt + <name>.json (base/envelope/steps/val). NeuralTake loads it as "ddsp:<name>";
+the behaviour library defaults to the base's trajectory library (or a user_styles/<name>.npz of the same name).
 """
 
 from __future__ import annotations
@@ -29,14 +29,14 @@ from neural.ddsp import HOP, SR, extract_features  # noqa: E402
 from neural.neural_take import INSTRUMENTS  # noqa: E402
 from neural.train_ddsp import _trim_silence, train  # noqa: E402
 
-MIN_TAKE_S = 8.0  # 再短数据不够切验证集;20s 以下 UI 会提示可能过拟合
+MIN_TAKE_S = 8.0  # any shorter and there is not enough data for a validation split; below 20s the UI warns about possible overfitting
 
 
 def chunk_dataset(y, sr_in, chunk_s=3.0, hop_s=1.5, min_s=0.9):
-    """整段录音 → 重叠切片当"音"(train() 按音随机裁剪增强 + 切验证集)。
+    """Whole recording -> overlapping slices treated as "notes" (train() random-crops per note for augmentation + validation split).
 
-    特征(PESTO f0 / log-RMS)对整段只提一次再按帧切,比逐片提快一个量级;
-    loudness 的标准化因此按整段算,与训练口径一致。
+    Features (PESTO f0 / log-RMS) are extracted once for the whole recording and then sliced by frame, an order of magnitude faster than per slice;
+    loudness standardisation is therefore computed over the whole recording, consistent with training.
     """
     y = _trim_silence(np.asarray(y, np.float32), sr_in)
     f0, loud, au = extract_features(y, sr_in)
@@ -67,17 +67,17 @@ def bake(wav, name, base="violin", steps=1500, out_dir="assets/user_ddsp", statu
         d.update(kw)
         tmp = status_p.with_suffix(".tmp")
         tmp.write_text(json.dumps(d))
-        tmp.replace(status_p)  # 原子写,UI 轮询不会读到半截
+        tmp.replace(status_p)  # atomic write, the UI polling never reads a partial file
 
     try:
         write("preparing", step=0)
-        # 取色 take 本身 ≤60 s;CLI 喂长文件时多给一些
+        # a capture take itself is ≤60 s; allow more when the CLI is fed a long file
         y, sr = load(str(wav), sr=44100, max_seconds=120.0)
         take_s = len(y) / sr
         if take_s < MIN_TAKE_S:
             write("failed", msg=f"take {take_s:.1f}s < {MIN_TAKE_S:.0f}s")
             return 1
-        # PESTO 音高跟踪约 1× 实时(CPU),是 preparing 阶段的主要耗时,UI 据此给预期
+        # PESTO pitch tracking runs at about 1× real time (CPU) and dominates the preparing stage; the UI sets expectations from this
         write("preparing", step=0, take_s=round(take_s, 1), eta_s=round(take_s * 1.1))
         data = chunk_dataset(y, sr)
         if len(data) < 2:
@@ -127,7 +127,7 @@ def bake(wav, name, base="violin", steps=1500, out_dir="assets/user_ddsp", statu
         write("done", step=steps, best_val=bv)
         return 0
     except Exception as e:
-        # 子进程里的失败要落到状态文件,UI 才看得见
+        # failures in the subprocess must land in the status file so the UI can see them
         write("failed", msg=str(e)[:120])
         return 1
 

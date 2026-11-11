@@ -1,8 +1,8 @@
-"""演奏法 × 神经音色:把乐句谱转成 250 Hz 的 (f0, loudness) 控制轨迹,喂给 DDSP 音色。
+"""Articulation × neural timbre: turn a phrase score into a 250 Hz (f0, loudness) control trajectory and feed it to a DDSP timbre.
 
-control_from_behavior 是渲染主路径(neural_take 调用):微观动态来自行为库检索的 4×48 轨迹。
+control_from_behavior is the main render path (called by neural_take): micro-dynamics come from 4×48 trajectories retrieved from the behaviour library.
 control_from_score / render_midi / render_strum / control_from_cooked / render_performance
-是手编规则版的控制轨迹与渲染,供 eval 脚本和本模块的 demo 使用。
+are the hand-written rule versions of control trajectories and rendering, used by eval scripts and this module's demo.
 
   python -W ignore -m neural.perform
 """
@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from neural.ddsp import DDSP, HOP, SR  # noqa: E402
 
-FPS = SR / HOP  # 250 Hz 帧率
+FPS = SR / HOP  # 250 Hz frame rate
 
 
 def _m2f(midi):
@@ -28,20 +28,20 @@ def _m2f(midi):
 
 
 def _is_new_arch(path):
-    """checkpoint 是否匹配当前 DDSPDecoder 结构(inp.4 是第二个 Linear);不匹配的权重不能加载。"""
+    """Whether the checkpoint matches the current DDSPDecoder structure (inp.4 is the second Linear); mismatched weights cannot be loaded."""
     if not Path(path).exists():
         return False
     try:
         w = torch.load(path, map_location="cpu").get("dec.inp.4.weight")
-        return w is not None and w.dim() == 2  # Linear 权重 2D;不兼容的结构此处是 LayerNorm(1D)
+        return w is not None and w.dim() == 2  # Linear weights are 2D; in the incompatible structure this is LayerNorm (1D)
     except Exception:
         return False
 
 
 def note_template(real_note_path, sr_in=44100, pre=3):
-    """从一个干净真实乐器音抽 loudness 包络模板,裁到主起音,去掉预触发的"双音头"。
+    """Extract a loudness envelope template from one clean real instrument note, cropped to the main attack, removing the pre-triggered "double head".
 
-    MIDI 每个音套这个真实包络,音头/衰减真实且无预触发双起音。
+    Every MIDI note uses this real envelope, so heads/decays are realistic with no pre-triggered double attack.
     """
     from scipy.signal import find_peaks
 
@@ -53,20 +53,20 @@ def note_template(real_note_path, sr_in=44100, pre=3):
     t = loud[0, :, 0].numpy()
     pks, _ = find_peaks(t, prominence=0.8, distance=20)
     if len(pks):
-        t = t[max(0, int(pks[0]) - pre) :]  # 裁到主起音 = 一次拨弦
+        t = t[max(0, int(pks[0]) - pre) :]  # crop to the main attack = one pluck
     return t
 
 
 def control_from_score(score, vib_rate=5.5, template=None):
-    """score: [{midi, dur, slide?, vibrato?(cents), decay?}] -> (f0[1,T,1], loud[1,T,1], onsets)。
+    """score: [{midi, dur, slide?, vibrato?(cents), decay?}] -> (f0[1,T,1], loud[1,T,1], onsets).
 
-    slide=True:从上一音滑到本音(前 40%);vibrato=cents:本音正弦揉弦;
-    loudness:每音拨弦包络(瞬起+指数衰减),log 后逐音标准化(对齐训练口径)。
+    slide=True: slide from the previous note into this one (first 40%); vibrato=cents: sinusoidal vibrato on this note;
+    loudness: per-note pluck envelope (instant attack + exponential decay), log then standardised per note (matches training).
     """
     f0_segs, loud_segs, onsets, prev, cum = [], [], [], None, 0
     for seg in score:
         n = max(2, int(seg["dur"] * FPS))
-        onsets.append((cum * HOP, not seg.get("slide")))  # (样本位, 是否拨弦起音)
+        onsets.append((cum * HOP, not seg.get("slide")))  # (sample position, whether it is a plucked attack)
         cum += n
         f0_t = _m2f(seg["midi"])
         f0 = np.full(n, f0_t, dtype=np.float64)
@@ -75,12 +75,12 @@ def control_from_score(score, vib_rate=5.5, template=None):
             f0[:sl] = _m2f(prev) * (f0_t / _m2f(prev)) ** np.linspace(0, 1, sl)
         if seg.get("vibrato"):
             t = np.arange(n) / FPS
-            u = np.clip((t - 0.11) / 0.22, 0.0, 1.0)  # 揉弦绽放:延迟 110ms + 渐入 220ms
-            venv = u * u * (3.0 - 2.0 * u)  # smoothstep 渐入
+            u = np.clip((t - 0.11) / 0.22, 0.0, 1.0)  # vibrato bloom: 110ms delay + 220ms fade-in
+            venv = u * u * (3.0 - 2.0 * u)  # smoothstep fade-in
             f0 = f0 * 2.0 ** (venv * seg["vibrato"] * np.sin(2 * np.pi * vib_rate * t) / 1200.0)
-        if template is not None:  # 真实包络模板:动态真实、无双音头
+        if template is not None:  # real envelope template: realistic dynamics, no double head
             loge = np.interp(np.linspace(0, 1, n), np.linspace(0, 1, len(template)), template)
-        else:  # 兜底:合成拨弦包络
+        else:  # fallback: synthetic pluck envelope
             t = np.arange(n) / FPS
             env = np.exp(-t / seg.get("tau", 0.45))
             a = max(1, int(0.010 * FPS))
@@ -113,39 +113,39 @@ def control_from_behavior(
     contiguity=0.0,
     extra_dims=False,
 ):
-    """score + 行为模型 → (f0[1,T,1], loud[1,T,1]) 控制流。
+    """score + behaviour model -> (f0[1,T,1], loud[1,T,1]) control stream.
 
-    微观动态(pitch vibrato/bend、energy envelope)来自行为模型预测的 4×48 轨迹,
-    而不是手编规则。
+    Micro-dynamics (pitch vibrato/bend, energy envelope) come from 4×48 trajectories predicted by the behaviour model,
+    not from hand-written rules.
 
-    score: [{midi, dur, art?}]  art: 0=plain 1=vibrato 2=slide,缺省 0
-    behavior_model: 有 .predict(feat) -> (4,48) 的对象;若其 use_art=True,
-                    feat 会带上第 7 维演奏法标签(条件化检索)。
-    pitch_glide: True 时 f0 在音符边界 crossfade(会产生滑音感);
-                 False 时 f0 在重叠区中点硬切换,只有 loudness 平滑过渡。
-    envelope: "pluck"(指数衰减,拨弦) / "sustain"(起音-保持-释放,弓弦/管乐)
-    traj_gain: 轨迹作用强度(1.0=原样;>1 夸张微观动态,跨乐器迁移听感更明显)
-    vibrato_source: "retrieval"(默认,pitch 全部来自检索轨迹) /
-                    "model"(vibrato 音符的 pitch 由学习模型合成,plain/slide 不变)
-    vibrato_predictor: VibratoPredictor 实例(vibrato_source="model" 时必须提供)
-    instrument_idx: 乐器索引(0=violin 1=cello 2=guitar),传给 vibrato model
-    randomness: 颤音随机性 0–1(仅 vibrato_source="model" 时有效)
-    label_processing: "full"(默认,按标签后处理:plain 低通/钳制,vibrato 去漂移/钳制/AM) /
-                      "none"(检索轨迹原样,不做标签后处理;消融用) /
-                      "uniform"(所有音符统一去漂移+钳制 ±50c,不看标签;消融用)
-    concat_lambda / contiguity: 拼接代价重排序与连续检索奖励(见 ConditionedNN.predict)
-    extra_dims: True 时额外返回 (bright[T], noise[T]) 两条 numpy 轨迹(库的第 3/4 维:
-                log2 质心残差、log10 平坦度残差),同样按 traj_gain 缩放、同样 crossfade,
-                给能吃它们的解码器(L0 控制驱动)。
+    score: [{midi, dur, art?}]  art: 0=plain 1=vibrato 2=slide, default 0
+    behavior_model: object with .predict(feat) -> (4,48); if its use_art=True,
+                    feat carries a 7th articulation-label dimension (conditioned retrieval).
+    pitch_glide: if True, f0 crossfades at note boundaries (gives a sliding feel);
+                 if False, f0 switches hard at the midpoint of the overlap and only loudness transitions smoothly.
+    envelope: "pluck" (exponential decay, plucked strings) / "sustain" (attack-hold-release, bowed strings/winds)
+    traj_gain: trajectory strength (1.0=unchanged; >1 exaggerates micro-dynamics, making cross-instrument transfer more audible)
+    vibrato_source: "retrieval" (default, pitch entirely from retrieved trajectories) /
+                    "model" (pitch of vibrato notes synthesised by the learned model, plain/slide unchanged)
+    vibrato_predictor: VibratoPredictor instance (required when vibrato_source="model")
+    instrument_idx: instrument index (0=violin 1=cello 2=guitar), passed to the vibrato model
+    randomness: vibrato randomness 0–1 (only with vibrato_source="model")
+    label_processing: "full" (default, label-based post-processing: plain lowpass/clamp, vibrato detrend/clamp/AM) /
+                      "none" (retrieved trajectories as is, no label post-processing; for ablation) /
+                      "uniform" (every note detrended + clamped to ±50c regardless of label; for ablation)
+    concat_lambda / contiguity: concatenation-cost reranking and continuous retrieval bonus (see ConditionedNN.predict)
+    extra_dims: if True, also return two numpy trajectories (bright[T], noise[T]) (the library's 3rd/4th dims:
+                log2 centroid residual, log10 flatness residual), scaled by traj_gain and crossfaded the same way,
+                for decoders that can use them (L0 control-driven).
     """
     cf = max(1, int(crossfade_ms / 1000.0 * FPS))
     use_art = bool(getattr(behavior_model, "use_art", False))
     segs_f0, segs_loud = [], []
     segs_bright, segs_noise = [], []
     if hasattr(behavior_model, "last_idx"):
-        behavior_model.last_idx = None  # 新乐句:连续检索从头算
+        behavior_model.last_idx = None  # new phrase: continuous retrieval starts over
 
-    # 预先累出各音 onset,间隙计算每音 O(1)
+    # accumulate each note's onset in advance, so the gap computation is O(1) per note
     _onsets = []
     _cum = 0.0
     for s in score:
@@ -196,47 +196,47 @@ def control_from_behavior(
             segs_noise.append(
                 np.interp(np.linspace(0, 1, n), np.linspace(0, 1, 48), traj[3]) * traj_gain
             )
-        # 音准锚定:真实轨迹带演奏者的音准误差(均值≠0),gain 会放大跑调。
-        # plain/vibrato 减全轨迹均值(保形状去偏);slide 锚尾段(滑完落在目标音上)。
+        # intonation anchoring: real trajectories carry the performer's intonation error (mean≠0), and gain would amplify being out of tune.
+        # plain/vibrato subtract the whole-trajectory mean (keep shape, remove bias); slide anchors the tail (landing on the target note after the slide).
         art_i = int(note.get("art", 0))
         anchor = pitch_d[-max(1, n // 4) :].mean() if art_i == 2 else pitch_d.mean()
         pitch_d = (pitch_d - anchor) * traj_gain
 
-        # slide 音程对齐:检索特征里没有音程方向,检索到的滑音轨迹方向/幅度可能与实际
-        # 旋律音程不符。分解:滑音的时机(何时滑、滑多快)取自检索轨迹的位移进度曲线,
-        # 幅度与方向由旋律真实音程决定,从上一个音出发、精确落到本音。
+        # slide interval alignment: the retrieval features have no interval direction, so the direction/size of a retrieved slide trajectory may not match the
+        # actual melodic interval. Decomposition: the slide timing (when and how fast) comes from the displacement progress curve of the retrieved trajectory,
+        # while size and direction come from the real melodic interval, starting from the previous note and landing exactly on this one.
         if art_i == 2 and i > 0:
             interval = (float(score[i - 1]["midi"]) - float(midi)) * 100.0
             if abs(interval) > 1.0:
-                # 滑音进度 = 向终点的净位移比例(单调化+钳制)。不用累积 |位移|:轨迹尾部
-                # release 的小抖动会稀释进度,滑到 85% 就平台,音准悬空 interval×15%。
+                # slide progress = net displacement fraction toward the end point (made monotonic + clamped). Not cumulative |displacement|: small release
+                # jitter at the trajectory tail dilutes progress, plateauing at 85% and leaving the pitch hanging by interval×15%.
                 s = pitch_d - float(np.median(pitch_d[:3]))
-                # 分母用保持段(50%–85% 区间)中位值而非末帧:有的库轨迹整个保持段都偏 50 c、
-                # 到 release 才修正,按末帧归一会复现这个走音平台;按保持段归一则滑完即落准。
+                # the denominator uses the median of the hold section (50%–85%) rather than the last frame: some library trajectories sit 50 c off for the whole hold
+                # and only correct at release; normalising by the last frame would reproduce that off-pitch plateau, normalising by the hold section lands in tune.
                 hold = float(np.median(s[int(0.5 * n) : max(int(0.5 * n) + 2, int(0.85 * n))]))
                 u = None
                 if abs(hold) > 5.0:
                     u = np.clip(np.maximum.accumulate(s / hold), 0.0, 1.0)
-                    # 滑得太早(前 15% 就完成 = 硬跳)或起步太晚(60% 处还没开始 =
-                    # held-then-jump)都是库里的假滑音轨迹,弃用
+                    # sliding too early (done within the first 15% = a hard jump) or starting too late (not started at 60% =
+                    # held-then-jump) are fake slide trajectories in the library, discard them
                     t95 = int(np.argmax(u >= 0.95))
                     t05 = int(np.argmax(u >= 0.05))
                     if t95 < max(2, int(0.15 * n)) or t05 > int(0.6 * n):
                         u = None
                 if u is None:
-                    # 兜底:快速换把式滑入(小提琴 shift 约 50–120 ms,不是匀速 portamento)
+                    # fallback: a fast shift-style slide (a violin shift is about 50–120 ms, not a uniform portamento)
                     sl = max(2, min(int(0.12 * FPS), int(n * 0.4)))
                     u = np.ones(n)
                     t01 = np.linspace(0.0, 1.0, sl)
                     u[:sl] = t01 * t01 * (3.0 - 2.0 * t01)
-                    resid = np.zeros(n)  # 假轨迹的纹理含跳变本身,不可回叠
+                    resid = np.zeros(n)  # the texture of a fake trajectory contains the jump itself, cannot be added back
                 else:
-                    # 残差 = 检索轨迹刨掉它自己的宏观滑线后剩下的微观纹理
-                    # (过冲回稳、滑后接揉弦、收尾抖动),按轨迹自己的节奏定义。
+                    # residual = the micro texture left after removing the retrieved trajectory's own macro slide line
+                    # (overshoot and settle, vibrato after the slide, tail jitter), defined by the trajectory's own timing.
                     resid_raw = s - hold * u
-                    # 宏观滑线不直接用检索进度曲线:抖动轨迹经单调化会变阶梯(每次回抖出
-                    # 一个平台),整音连滑的轨迹又慢成抹音。只取滑音时长(t95,钳到换把范围
-                    # 50–200 ms),形状用 smoothstep:一次干净加速滑到位,即弓弦换把的听感。
+                    # the macro slide line does not use the retrieved progress curve directly: a jittery trajectory becomes a staircase after being made monotonic (each
+                    # back-jitter adds a plateau), and whole-tone slides become smeary. Only the slide duration is taken (t95, clamped to the shift range
+                    # 50–200 ms), with a smoothstep shape: one clean accelerating slide into place, which sounds like a string shift.
                     sl = int(
                         np.clip(t95, max(2, int(0.05 * FPS)), min(int(0.2 * FPS), max(2, n // 2)))
                     )
@@ -244,9 +244,9 @@ def control_from_behavior(
                     t01 = np.linspace(0.0, 1.0, sl)
                     u[:sl] = t01 * t01 * (3.0 - 2.0 * t01)
                     t95 = sl
-                    # 落地后重新锚零 + 线性去趋势(人声轨迹落地后仍持续上漂,尾部悬 +30 c;
-                    # 去趋势保留抖动、去掉漂移),钳 ±40 c 防宏观泄漏,随进度渐入(滑行中
-                    # 不干扰音准)。
+                    # re-anchor to zero after landing + linear detrend (vocal trajectories keep drifting up after landing, hanging +30 c at the tail;
+                    # detrending keeps the jitter and removes the drift), clamp to ±40 c to prevent macro leakage, fade in with progress (no interference
+                    # with intonation during the slide).
                     land = resid_raw[t95:]
                     if len(land) >= 4:
                         x01 = np.arange(len(land), dtype=np.float64)
@@ -255,16 +255,16 @@ def control_from_behavior(
                     resid = np.clip(resid_raw, -40.0, 40.0) * u
                 pitch_d = interval * (1.0 - u) + resid
 
-        # 起音稳定:轨迹开头几帧可能带演奏者的 pitch 不稳(尤其弓弦咬弦瞬间),前 30 ms
-        # 把 pitch_d 从 0 淡入,让音头音准干净。slide 除外:滑音的头部偏移正是"从上一个
-        # 音出发",不能抹掉。
+        # attack stabilisation: the first few frames of a trajectory may carry the performer's pitch instability (especially the moment a bow bites), so over the first 30 ms
+        # pitch_d fades in from 0 to keep the attack in tune. Slides excepted: the head offset of a slide is exactly "starting from the previous
+        # note" and must not be erased.
         onset_frames = max(1, int(0.030 * FPS))
         if art_i != 2 and onset_frames < n:
             fade = np.linspace(0.0, 1.0, onset_frames)
             pitch_d[:onset_frames] *= fade
 
-        # plain 音符抑振:URMP "plain" 池的轨迹常含自然揉弦,不压制则 plain/vibrato 无对比度。
-        # 低通去掉 >3 Hz 的 pitch 振荡(保留慢速漂移,去掉 vibrato 频段)。
+        # plain-note vibrato suppression: trajectories in the URMP "plain" pool often contain natural vibrato; without suppression plain/vibrato have no contrast.
+        # Lowpass removes pitch oscillation >3 Hz (keeps slow drift, removes the vibrato band).
         if label_processing == "full" and art_i == 0 and n >= 8:
             from scipy.signal import butter, sosfiltfilt
 
@@ -273,12 +273,12 @@ def control_from_behavior(
             if cutoff < nyq:
                 sos = butter(2, cutoff / nyq, btype="low", output="sos")
                 pitch_d = sosfiltfilt(sos, pitch_d)
-            # 人声库的起音上挑(scoop)可达 ±400 c,快音里前 1/3 都走音。
-            # 钳 ±50 c:保留慢速漂移,掐掉大幅起音挑滑。
+            # the attack scoop of the vocal library can reach ±400 c, so the first third of fast notes is out of tune.
+            # Clamp to ±50 c: keeps slow drift, cuts large attack scoops.
             pitch_d = np.clip(pitch_d, -50.0, 50.0)
 
-        # vibrato 去漂移 + 幅度钳制:揉弦是绕稳定中心的振荡;库轨迹(尤其人声)常带 <2 Hz
-        # 慢漂移,减掉它保住音准中心,5–7 Hz 振荡原样保留;再钳 ±35 c 防过宽揉弦。
+        # vibrato detrend + amplitude clamp: vibrato is an oscillation around a stable centre; library trajectories (especially vocal) often carry <2 Hz
+        # slow drift; subtracting it keeps the pitch centre, the 5–7 Hz oscillation is kept as is; then clamp to ±35 c to prevent overly wide vibrato.
         if label_processing == "full" and art_i == 1:
             if n >= 8:
                 from scipy.signal import butter, sosfiltfilt
@@ -288,7 +288,7 @@ def control_from_behavior(
                 pitch_d = pitch_d - sosfiltfilt(sos_d, pitch_d)
             pitch_d = np.clip(pitch_d, -35.0, 35.0)
 
-        # uniform 模式:所有音符统一去漂移+钳 ±50 c,不看标签(消融用)
+        # uniform mode: every note detrended + clamped to ±50 c regardless of label (for ablation)
         if label_processing == "uniform" and art_i != 2:
             if n >= 8:
                 from scipy.signal import butter, sosfiltfilt
@@ -298,7 +298,7 @@ def control_from_behavior(
                 pitch_d = pitch_d - sosfiltfilt(sos_u, pitch_d)
             pitch_d = np.clip(pitch_d, -50.0, 50.0)
 
-        # vibrato model 分支:art=1 时用学习模型替代检索的 pitch 轨迹
+        # vibrato model branch: for art=1 the learned model replaces the retrieved pitch trajectory
         if vibrato_source == "model" and art_i == 1 and vibrato_predictor is not None:
             prev_gap_v = prev_gap
             next_gap_v = next_gap
@@ -320,21 +320,21 @@ def control_from_behavior(
 
         t = np.arange(n) / FPS
         if envelope == "sustain":
-            # 弓弦包络按乐句位置分角色:句内音符是连弓,不能每音都重起音
-            # (否则每个边界一个 -13 dB 深坑,听感断/卡;滑音内的坑最刺耳)。
+            # bowed-string envelope assigns roles by position in the phrase: notes inside a phrase are slurred and must not each re-attack
+            # (otherwise every boundary has a -13 dB pit and sounds broken/stuttering; pits inside slides are the most grating).
             base = np.ones(n)
             if i == 0:
                 a = max(1, int(0.03 * FPS))
-                base[:a] = np.linspace(0.05, 1.0, a)  # 句首:真起音
+                base[:a] = np.linspace(0.05, 1.0, a)  # phrase start: a real attack
             elif art_i == 2:
                 a = max(1, int(0.02 * FPS))
-                base[:a] = np.linspace(0.9, 1.0, a)  # 滑音:连弓滑入,近无缝
+                base[:a] = np.linspace(0.9, 1.0, a)  # slide: slurred slide-in, nearly seamless
             else:
                 a = max(1, int(0.02 * FPS))
-                base[:a] = np.linspace(0.6, 1.0, a)  # 句内换音:轻起音
+                base[:a] = np.linspace(0.6, 1.0, a)  # note change within the phrase: light attack
             if i == len(score) - 1:
                 r = max(1, int(min(0.06, dur * 0.2) * FPS))
-                base[-r:] *= np.linspace(1.0, 0.3, r)  # 句尾:收弓
+                base[-r:] *= np.linspace(1.0, 0.3, r)  # phrase end: bow release
             else:
                 nxt_slide = int(score[i + 1].get("art", 0)) == 2
                 r = max(1, int(min(0.04, dur * 0.15) * FPS))
@@ -345,14 +345,14 @@ def control_from_behavior(
             base[:a] *= np.linspace(0.01, 1.0, a)
         log_e = np.log(base + 1e-7)
         log_e = (log_e - log_e.mean()) / (log_e.std() + 1e-5)
-        # 句内音符 z-score 后加谷底下限:逐音标准化保住每音的动态弧度,但句内边界
-        # 不许跌成深坑(断/卡感);句首起音、句尾收弓保留全深度。
+        # after z-scoring notes within the phrase, add a floor at the troughs: per-note standardisation keeps each note's dynamic arc, but boundaries inside the phrase
+        # must not drop into deep pits (broken/stuttering feel); the phrase-start attack and phrase-end release keep full depth.
         if 0 < i < len(score) - 1:
             log_e = np.maximum(log_e, -1.0)
         loud_seg = log_e + energy_d * 0.5
 
-        # vibrato 幅度调制:真实弓弦揉弦的响度随揉弦频率起伏(谐波进出琴体共振)。
-        # 从 pitch_d 取出振荡,耦合约 15% 到 loudness。
+        # vibrato amplitude modulation: in real bowed vibrato the loudness rises and falls at the vibrato rate (harmonics moving in and out of body resonances).
+        # Take the oscillation from pitch_d and couple about 15% into loudness.
         if label_processing == "full" and art_i == 1 and n >= 8:
             from scipy.signal import detrend as _detrend
 
@@ -386,12 +386,12 @@ def control_from_behavior(
         if pitch_glide:
             env_f0 = env
         else:
-            # f0 不参与 crossfade:重叠区前半归上一个音,后半归当前音,没有插值滑音
+            # f0 is not crossfaded: the first half of the overlap belongs to the previous note, the second half to the current note, no interpolated slide
             env_f0 = np.ones(n)
             if fi:
                 env_f0[: fi // 2] = 0.0
             if fo:
-                keep = fo - fo // 2  # 尾部重叠的前半仍归本音
+                keep = fo - fo // 2  # the first half of the tail overlap still belongs to this note
                 env_f0[n - fo + keep :] = 0.0
 
         if i > 0:
@@ -406,7 +406,7 @@ def control_from_behavior(
         w_loud[pos:end] += env
         pos = end
     T = pos
-    # f0 权重为 0 的帧(硬切换边界的空隙)用前值填充
+    # frames where the f0 weight is 0 (gaps at hard-switch boundaries) are filled with the previous value
     sw_f0 = w_f0[:T].copy()
     f0_n = f0_out[:T] / np.maximum(sw_f0, 1e-8)
     hole = sw_f0 < 1e-8
@@ -432,7 +432,7 @@ def render(model_path, f0, loud, device=None, noise_gain=1.0):
 
 
 def _mute_template(template, tau=0.15):
-    """闷音(palm mute):在真实模板上叠快速衰减 → 短促闷响。"""
+    """Palm mute: overlay a fast decay on the real template -> a short muted sound."""
     t = np.arange(len(template)) / FPS
     lin = np.exp(template) * np.exp(-t / tau)
     lg = np.log(lin + 1e-6)
@@ -440,57 +440,57 @@ def _mute_template(template, tau=0.15):
 
 
 def render_midi(model_path, score, template, device=None, vib_rate=5.5):
-    """MIDI 单声部乐句 -> 神经音色。控制曲线类演奏法(f0/响度轨迹):
+    """MIDI monophonic phrase -> neural timbre. Control-curve articulations (f0/loudness trajectories):
 
-    f0 类:pluck/legato/slide/bend/vibrato/trill(颤指,两音方波交替)/gliss(长滑奏);
-    响度类:mute(闷)/tremolo(震音,快速反复起音)/swell(音量渐入,无拨弦头)。
-    起音类各自落 loudness 模板;legato/slide 不重起音(续衰减只滑 f0)。
+    f0 type: pluck/legato/slide/bend/vibrato/trill (square-wave alternation of two notes)/gliss (long glissando);
+    loudness type: mute (muted)/tremolo (fast repeated attacks)/swell (volume fade-in, no pluck head).
+    Attack types each place a loudness template; legato/slide do not re-attack (continue the decay, only slide f0).
     """
     frames = [max(2, int(s["dur"] * FPS)) for s in score]
     total = sum(frames)
     f0 = np.zeros(total, np.float64)
-    loud = np.full(total, float(template[-1]), np.float64)  # 默认=模板尾(续衰减)
+    loud = np.full(total, float(template[-1]), np.float64)  # default = template tail (continued decay)
     cum, prev = 0, None
     for seg, n in zip(score, frames):
         midi = seg["midi"]
         art = seg.get("art", "pluck")
         tt = np.arange(n) / FPS
         sf0 = np.full(n, _m2f(midi))
-        if art in ("legato", "slide") and prev is not None:  # 续奏:滑 f0,不重起音
+        if art in ("legato", "slide") and prev is not None:  # continuation: slide f0, no re-attack
             sl = max(2, int(n * (0.22 if art == "legato" else 0.4)))
             sf0[:sl] = _m2f(prev) * (_m2f(midi) / _m2f(prev)) ** np.linspace(0, 1, sl)
-        elif art == "trill":  # 颤指:本音↔本音+iv 方波交替
+        elif art == "trill":  # trill: square-wave alternation between this note and this note+iv
             iv = seg.get("trill", 2)
             rate = seg.get("trill_rate", 8.0)
             sf0 = _m2f(midi) * 2 ** ((np.sin(2 * np.pi * rate * tt) > 0) * iv / 12.0)
-        elif art == "gliss":  # 长滑奏:整音滑到目标
+        elif art == "gliss":  # long glissando: slide the whole note to the target
             tgt = seg.get("gliss_to", midi + 7)
             sf0 = _m2f(midi) * (_m2f(tgt) / _m2f(midi)) ** np.linspace(0, 1, n)
-        if art == "bend":  # 推弦:~bend_ms 内快速升到 +bend 半音再保持
+        if art == "bend":  # string bend: rise quickly to +bend semitones within ~bend_ms, then hold
             b = seg.get("bend", 2.0)
             h = max(2, min(n - 1, int(seg.get("bend_ms", 170) / 1000.0 * FPS)))
             sf0[:h] *= 2 ** (np.linspace(0, b, h) / 12.0)
             sf0[h:] *= 2 ** (b / 12.0)
         if seg.get("vibrato"):
-            vu = np.clip((tt - 0.07) / 0.16, 0.0, 1.0)  # 揉弦绽放(solo:更早起振、更快渐入)
+            vu = np.clip((tt - 0.07) / 0.16, 0.0, 1.0)  # vibrato bloom (solo: earlier onset, faster fade-in)
             ve = vu * vu * (3.0 - 2.0 * vu)
             sf0 *= 2 ** (ve * seg["vibrato"] * np.sin(2 * np.pi * vib_rate * tt) / 1200.0)
         f0[cum : cum + n] = sf0
-        # ---- 响度 ----
-        if art in ("legato", "slide"):  # 续衰减,不动 loud
+        # ---- Loudness ----
+        if art in ("legato", "slide"):  # continued decay, loud untouched
             pass
-        elif art == "tremolo":  # 震音:快速反复落模板
+        elif art == "tremolo":  # tremolo: place the template repeatedly and fast
             period = max(2, int(FPS / seg.get("trem_rate", 10.0)))
             for st in range(0, n, period):
                 m = min(len(template), n - st)
                 loud[cum + st : cum + st + m] = template[:m]
-        elif art == "swell":  # 渐入:升余弦淡入,无拨弦头
+        elif art == "swell":  # swell: raised-cosine fade-in, no pluck head
             r = min(n, max(2, int(n * seg.get("swell_frac", 0.5))))
             base, peak = float(template[-1]), float(np.percentile(template, 75))
             seg_loud = np.full(n, peak)
             seg_loud[:r] = base + (peak - base) * 0.5 * (1 - np.cos(np.linspace(0, np.pi, r)))
             loud[cum : cum + n] = seg_loud
-        else:  # pluck/bend/trill/gliss/mute:单次起音
+        else:  # pluck/bend/trill/gliss/mute: single attack
             tpl = _mute_template(template) if art == "mute" else template
             m = min(len(tpl), total - cum)
             loud[cum : cum + m] = tpl[:m]
@@ -502,9 +502,9 @@ def render_midi(model_path, score, template, device=None, vib_rate=5.5):
 
 
 def render_strum(model_path, chord, template, dur=1.6, spread_ms=110, device=None):
-    """扫弦:和弦各音错开 spread_ms 触发(神经音色单声部,音频级错峰叠加)。
+    """Strum: chord notes triggered spread_ms apart (the neural timbre is monophonic, so staggered layers are summed at audio level).
 
-    spread_ms 即扫弦速度:小=快扫紧,大=慢扫逐根进。
+    spread_ms is the strum speed: small = fast tight strum, large = slow string-by-string.
     """
     offs = np.linspace(0, spread_ms, len(chord))
     parts = []
@@ -521,10 +521,10 @@ def render_strum(model_path, chord, template, dur=1.6, spread_ms=110, device=Non
 def control_from_cooked(
     cooked, template, tail_s=1.0, vib_rate=5.5, vib_max_cents=50.0, bend_is_semitones=True
 ):
-    """手势引擎的 cooked 事件 -> 250 Hz (f0, loudness) 控制轨(ControlFrame)。
+    """Cooked events from the gesture engine -> 250 Hz (f0, loudness) control track (ControlFrame).
 
-    单声部:on=拨弦(落模板)、legato/slide=续衰减只滑 f0、bend/vibrato=按时间起作用的 f0 调制。
-    (和弦扫弦是复音,走 render_strum;这里按时间线建单声部控制。)
+    Monophonic: on=pluck (place template), legato/slide=continued decay with only f0 sliding, bend/vibrato=time-based f0 modulation.
+    (Chord strums are polyphonic and go through render_strum; here a monophonic control is built along the timeline.)
     """
     events = sorted(cooked, key=lambda e: e[0])
     onsets = [
@@ -540,7 +540,7 @@ def control_from_cooked(
     loud = np.full(n, float(template[-1]), np.float64)
     first = onsets[0][0]
     if first > 0:
-        loud[:first] = float(template[-1]) - 6.0  # 首音前压低(近静音)
+        loud[:first] = float(template[-1]) - 6.0  # attenuate before the first note (near silence)
     for k, (fr, art, note, frm) in enumerate(onsets):
         nxt = onsets[k + 1][0] if k + 1 < len(onsets) else n
         nxt = max(nxt, fr + 2)
@@ -549,10 +549,10 @@ def control_from_cooked(
             r = min(nxt - fr, max(2, int((nxt - fr) * (0.22 if art == "legato" else 0.4))))
             seg[:r] = _m2f(frm) * (_m2f(note) / _m2f(frm)) ** np.linspace(0, 1, r)
         f0[fr:nxt] = seg
-        if art == "on":  # 拨弦:落模板(续衰减留给后续)
+        if art == "on":  # pluck: place the template (continued decay left to later)
             m = min(len(template), n - fr)
             loud[fr : fr + m] = template[:m]
-    # bend / vibrato:按事件时间起,持续到下个同类事件(stream 用 0 关闭)
+    # bend / vibrato: start at the event time, last until the next event of the same kind (stream uses 0 to switch off)
     bend = np.zeros(n)
     vib = np.zeros(n)
     for e in events:
@@ -567,10 +567,10 @@ def control_from_cooked(
 
 
 def render_performance(model_path, raw_events, template, library=None, device=None):
-    """真实 MIDI 演奏 -> 神经音色。raw:[(t,kind,note,vel[,val])] 经手势引擎判演奏法再渲染。
+    """Real MIDI performance -> neural timbre. raw: [(t,kind,note,vel[,val])] is classified into articulations by the gesture engine, then rendered.
 
-    闭环:弹 MIDI(音符+手势) -> GestureInterpreter 判 pluck/legato/slide/bend/vibrato
-    -> control_from_cooked 建 (f0,loudness) -> DDSP 神经音色发声。
+    Closed loop: play MIDI (notes + gestures) -> GestureInterpreter classifies pluck/legato/slide/bend/vibrato
+    -> control_from_cooked builds (f0,loudness) -> the DDSP neural timbre sounds.
     """
     from runtime.gesture import GestureInterpreter
 
@@ -588,7 +588,7 @@ def main(argv=None):
     out.mkdir(parents=True, exist_ok=True)
     dev = "mps" if torch.backends.mps.is_available() else "cpu"
 
-    # 吉他乐句:拨几个音 → 滑音 → 末音揉弦
+    # guitar phrase: a few plucked notes -> slide -> vibrato on the last note
     guitar_score = [
         {"midi": 60, "dur": 0.5},
         {"midi": 64, "dur": 0.5},
@@ -598,7 +598,7 @@ def main(argv=None):
         {"midi": 64, "dur": 1.2, "vibrato": 30},
     ]
     f0, lo, onsets = control_from_score(guitar_score)
-    # 有木吉他模型优先用,否则退回 Fender
+    # prefer the acoustic guitar model if available, otherwise fall back to the Fender
     g_model = (
         "assets/demos/ddsp_acoustic_guitar.pt"
         if Path("assets/demos/ddsp_acoustic_guitar.pt").exists()
@@ -608,11 +608,11 @@ def main(argv=None):
     try:
         y = render(g_model, f0, lo, dev)
         sf.write(out / "perform_guitar_neural.wav", y, SR)
-        print(f"演奏法×神经吉他({Path(g_model).stem}) -> perform_guitar_neural.wav")
+        print(f"articulation × neural guitar ({Path(g_model).stem}) -> perform_guitar_neural.wav")
     except Exception as e:
-        print(f"  吉他渲染跳过: {str(e)[:60]}")
+        print(f"  guitar render skipped: {str(e)[:60]}")
 
-    # 贝斯线:根-五-八 → 滑音 → 揉弦
+    # bass line: root-fifth-octave -> slide -> vibrato
     bass_score = [
         {"midi": 40, "dur": 0.45, "decay": 2.5},
         {"midi": 40, "dur": 0.45, "decay": 2.5},
@@ -624,13 +624,13 @@ def main(argv=None):
     f0b, lob, onb = control_from_score(bass_score)
     try:
         if not _is_new_arch("assets/demos/ddsp_electric_bass.pt"):
-            raise RuntimeError("电贝斯模型是旧架构,等新训练器重训完")
+            raise RuntimeError("the electric bass model uses the old architecture; wait for the retrain with the new trainer")
         yb = render("assets/demos/ddsp_electric_bass.pt", f0b, lob, dev)
         sf.write(out / "perform_bass_neural.wav", yb, SR)
-        print("演奏法×神经电贝斯 -> perform_bass_neural.wav")
+        print("articulation × neural electric bass -> perform_bass_neural.wav")
     except Exception as e:
-        print(f"  贝斯渲染跳过: {str(e)[:60]}")
-    # ---- 逐个演奏法 demo(MIDI 驱动,真实 Fender 音做 loudness 模板)----
+        print(f"  bass render skipped: {str(e)[:60]}")
+    # ---- per-articulation demo (MIDI-driven, real Fender note as the loudness template) ----
     fender = "assets/demos/ddsp_fender_strat.pt"
     datasets = os.environ.get("QUILL_DATASETS", str(Path.home() / "Desktop/MT/datasets"))
     note_src = (
@@ -640,12 +640,12 @@ def main(argv=None):
     if Path(fender).exists() and Path(note_src).exists():
         tmpl = note_template(note_src)
         arts = {
-            "pluck": [{"midi": 64, "dur": 1.4}],  # 单拨弦
+            "pluck": [{"midi": 64, "dur": 1.4}],  # single pluck
             "legato": [
                 {"midi": 60, "dur": 0.45},
                 {"midi": 64, "dur": 0.45, "art": "legato"},
                 {"midi": 67, "dur": 1.0, "art": "legato"},
-            ],  # 锤勾连奏(一拨)
+            ],  # hammer-on/pull-off legato (one pluck)
             "slide": [{"midi": 60, "dur": 0.5}, {"midi": 67, "dur": 1.2, "art": "slide"}],
             "mute": [
                 {"midi": 52, "dur": 0.4, "art": "mute"},
@@ -653,7 +653,7 @@ def main(argv=None):
                 {"midi": 52, "dur": 0.4, "art": "mute"},
                 {"midi": 52, "dur": 0.4, "art": "mute"},
             ],
-            "bend": [{"midi": 67, "dur": 1.6, "art": "bend", "bend": 2.0}],  # 推弦 +全音
+            "bend": [{"midi": 67, "dur": 1.6, "art": "bend", "bend": 2.0}],  # string bend + whole tone
             "vibrato": [{"midi": 64, "dur": 1.6, "vibrato": 35}],
         }
         for name, sc in arts.items():
@@ -661,50 +661,50 @@ def main(argv=None):
                 y = render_midi(fender, sc, tmpl, dev)
                 y = (y / (np.max(np.abs(y)) + 1e-9) * 0.9).astype(np.float32)
                 sf.write(out / f"art_{name}.wav", y, SR)
-                print(f"  演奏法[{name}] -> art_{name}.wav")
+                print(f"  articulation[{name}] -> art_{name}.wav")
             except Exception as e:
-                print(f"  演奏法[{name}] 跳过: {str(e)[:60]}")
-        try:  # 扫弦 E 大和弦
+                print(f"  articulation[{name}] skipped: {str(e)[:60]}")
+        try:  # strum an E major chord
             ys = render_strum(fender, [40, 47, 52, 56, 59, 64], tmpl, device=dev)
             sf.write(out / "art_strum.wav", ys, SR)
-            print("  演奏法[strum] -> art_strum.wav")
+            print("  articulation[strum] -> art_strum.wav")
         except Exception as e:
-            print(f"  演奏法[strum] 跳过: {str(e)[:60]}")
+            print(f"  articulation[strum] skipped: {str(e)[:60]}")
 
-    # ---- 闭环 demo:真实 MIDI 事件 -> 手势引擎判演奏法 -> 神经音色 ----
+    # ---- closed-loop demo: real MIDI events -> gesture engine classifies articulation -> neural timbre ----
     if Path(fender).exists() and Path(note_src).exists():
-        # 一段表情乐句:拨弦 60 -> 锤勾 62(+2半音=legato) -> 滑音 67(+5=slide) -> 揉弦 CC
+        # an expressive phrase: pluck 60 -> hammer-on 62 (+2 semitones=legato) -> slide 67 (+5=slide) -> vibrato CC
         raw = [
             (0.00, "on", 60, 100),
             (0.45, "on", 62, 96),
             (0.50, "off", 60, 0),
             (0.90, "on", 67, 100),
             (0.95, "off", 62, 0),
-            (1.40, "cc", 1, 0, 110),  # 揉弦深度 110/127
+            (1.40, "cc", 1, 0, 110),  # vibrato depth 110/127
             (2.40, "off", 67, 0),
         ]
         try:
             y = render_performance(fender, raw, tmpl, device=dev)
             y = (y / (np.max(np.abs(y)) + 1e-9) * 0.9).astype(np.float32)
             sf.write(out / "perform_midi_gesture.wav", y, SR)
-            print("  闭环[MIDI→手势引擎→神经音色] -> perform_midi_gesture.wav")
+            print("  closed loop [MIDI->gesture engine->neural timbre] -> perform_midi_gesture.wav")
         except Exception as e:
-            print(f"  闭环 demo 跳过: {str(e)[:80]}")
+            print(f"  closed-loop demo skipped: {str(e)[:80]}")
 
-    # ---- 电贝斯:演奏法 + 闭环 ----
+    # ---- electric bass: articulations + closed loop ----
     bass_model = "assets/demos/ddsp_electric_bass.pt"
     bass_note = datasets + "/IDMT-SMT-BASS/ES/NO/BS_1_EQ_1_FS_NO_1_0.wav"
     if Path(bass_model).exists() and _is_new_arch(bass_model) and Path(bass_note).exists():
         btmpl = note_template(bass_note)
-        bass_arts = {  # 贝斯音域(E1=28..G2=43)
-            "pluck": [{"midi": 33, "dur": 1.4}],  # A1 指弹
+        bass_arts = {  # bass range (E1=28..G2=43)
+            "pluck": [{"midi": 33, "dur": 1.4}],  # A1 fingerstyle
             "legato": [
                 {"midi": 28, "dur": 0.5},
                 {"midi": 31, "dur": 0.5, "art": "legato"},
                 {"midi": 33, "dur": 1.0, "art": "legato"},
             ],
             "slide": [{"midi": 28, "dur": 0.5}, {"midi": 35, "dur": 1.2, "art": "slide"}],
-            "mute": [{"midi": 33, "dur": 0.35, "art": "mute"}] * 4,  # 闷音断奏
+            "mute": [{"midi": 33, "dur": 0.35, "art": "mute"}] * 4,  # muted staccato
             "vibrato": [{"midi": 33, "dur": 1.6, "vibrato": 25}],
         }
         for name, sc in bass_arts.items():
@@ -712,21 +712,21 @@ def main(argv=None):
                 y = render_midi(bass_model, sc, btmpl, dev)
                 y = (y / (np.max(np.abs(y)) + 1e-9) * 0.9).astype(np.float32)
                 sf.write(out / f"bass_art_{name}.wav", y, SR)
-                print(f"  贝斯演奏法[{name}] -> bass_art_{name}.wav")
+                print(f"  bass articulation[{name}] -> bass_art_{name}.wav")
             except Exception as e:
-                print(f"  贝斯演奏法[{name}] 跳过: {str(e)[:60]}")
-        # 闭环 bassline:拨根 → 锤勾 → 八度 → 滑回(真 MIDI → 手势引擎 → 神经贝斯)
+                print(f"  bass articulation[{name}] skipped: {str(e)[:60]}")
+        # closed-loop bassline: pluck root -> hammer-on -> octave -> slide back (real MIDI -> gesture engine -> neural bass)
         raw_bass = [
             (0.00, "on", 28, 110),
-            (0.50, "off", 28, 0),  # E1 拨
+            (0.50, "off", 28, 0),  # E1 pluck
             (0.50, "on", 28, 100),
-            (0.95, "on", 31, 90),  # 锤勾 +3(legato)
+            (0.95, "on", 31, 90),  # hammer-on +3 (legato)
             (1.00, "off", 28, 0),
             (1.40, "off", 31, 0),
             (1.40, "on", 40, 105),
-            (1.90, "off", 40, 0),  # E2 八度
+            (1.90, "off", 40, 0),  # E2 octave
             (1.90, "on", 40, 100),
-            (2.30, "on", 35, 95),  # 滑到 B1(-5=slide)
+            (2.30, "on", 35, 95),  # slide to B1 (-5=slide)
             (2.35, "off", 40, 0),
             (3.10, "off", 35, 0),
         ]
@@ -734,11 +734,11 @@ def main(argv=None):
             yb = render_performance(bass_model, raw_bass, btmpl, device=dev)
             yb = (yb / (np.max(np.abs(yb)) + 1e-9) * 0.9).astype(np.float32)
             sf.write(out / "perform_midi_bass.wav", yb, SR)
-            print("  闭环[MIDI→手势引擎→神经贝斯] -> perform_midi_bass.wav")
+            print("  closed loop [MIDI->gesture engine->neural bass] -> perform_midi_bass.wav")
         except Exception as e:
-            print(f"  贝斯闭环 跳过: {str(e)[:80]}")
+            print(f"  bass closed loop skipped: {str(e)[:80]}")
 
-    print("\nControlFrame → DDSP 集成：手势谱(音符+滑音+揉弦) -> 神经音色发声。")
+    print("\nControlFrame -> DDSP integration: gesture score (notes + slides + vibrato) -> neural timbre.")
     return 0
 
 

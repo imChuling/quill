@@ -1,1 +1,1 @@
-"""Quill 神经表现力层:行为检索、DDSP 神经音色与渲染后处理。"""
+"""Quill neural expression layer: behaviour retrieval, DDSP neural timbre and post-render processing."""

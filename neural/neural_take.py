@@ -1,19 +1,19 @@
-"""神经渲染 take:卷帘音符(绝对时间) → 行为检索 + DDSP → 整段音频。
+"""Neural render take: piano-roll notes (absolute time) -> behaviour retrieval + DDSP -> full audio.
 
-app 与神经管线的适配层:
-  - 卷帘 notes [{midi,start,len,vel,art}] → 按间隙切乐句(phrase)
-  - 每个乐句转成 control_from_behavior 的顺序 score [{midi,dur,art}]
-  - 逐乐句渲染,再按绝对 start 摆回时间线
+Adapter layer between the app and the neural pipeline:
+  - piano-roll notes [{midi,start,len,vel,art}] -> split into phrases at gaps
+  - each phrase becomes a sequential score [{midi,dur,art}] for control_from_behavior
+  - render phrase by phrase, then place back on the timeline at the absolute start
 
-乐器注册表 INSTRUMENTS:每个乐器 = 轨迹库 + DDSP checkpoint + 包络/滑音策略。
-  violin   URMP 小提琴,7 维特征(带演奏法标签,条件化检索),sustain 包络
-  trumpet  URMP 小号,sustain 包络
-  guitar   GuitarSet,6 维特征(无演奏法标签,普通最近邻),pluck 包络
-  glass    rubbed-glass:DDSP 用 82 s 录音训,轨迹库 = 24 音 style 库
-桌面版与网页版(ui/render_service.py)共用这张表,两边音色集合一致。
+Instrument registry INSTRUMENTS: each instrument = trajectory library + DDSP checkpoint + envelope/slide strategy.
+  violin   URMP violin, 7-dim features (with articulation labels, conditioned retrieval), sustain envelope
+  trumpet  URMP trumpet, sustain envelope
+  guitar   GuitarSet, 6-dim features (no articulation labels, plain nearest neighbour), pluck envelope
+  glass    rubbed-glass: DDSP trained on an 82 s recording, trajectory library = 24-note style library
+The desktop and web versions (ui/render_service.py) share this table, so both have the same set of timbres.
 
-演奏法映射(上游把 art 字符串填好即可):
-  "vibrato" -> 1   "slide" -> 2   其余("pluck"/"legato"/缺省) -> 0 plain
+Articulation mapping (upstream just fills in the art string):
+  "vibrato" -> 1   "slide" -> 2   everything else ("pluck"/"legato"/missing) -> 0 plain
 """
 
 from __future__ import annotations
@@ -27,9 +27,9 @@ CKPT_DIR = QUILL_DIR / "checkpoints"
 USER_STYLES_DIR = QUILL_DIR / "assets" / "user_styles"
 
 ART_MAP = {"vibrato": 1, "slide": 2}
-PHRASE_GAP = 0.08  # 音符间隙超过 80 ms 视为乐句边界(之内算 legato 连奏)
-EDGE_FADE_S = 0.005  # 乐句边缘淡入淡出,防拼接咔哒
-SLIDE_RANGE_CAP = 400.0  # slide 轨迹 pitch 超此 cents 视为离群(修八度跳)
+PHRASE_GAP = 0.08  # a note gap above 80 ms is a phrase boundary (within it counts as legato)
+EDGE_FADE_S = 0.005  # fade in/out at phrase edges, prevents splice clicks
+SLIDE_RANGE_CAP = 400.0  # slide trajectories whose pitch exceeds this many cents are outliers (octave-jump fix)
 
 INSTRUMENTS = {
     "violin": {
@@ -54,31 +54,31 @@ INSTRUMENTS = {
     },
 }
 
-# 仅行为源(有轨迹库、无 DDSP 音色):可作 behavior,不可作 instrument。
+# behaviour-only sources (trajectory library, no DDSP timbre): usable as behavior, not as instrument.
 BEHAVIOR_ONLY: dict = {}
 
-# vibrato 模型的 instrument one-hot 槽位按 tools/train_vibrato.py 的训练顺序
-# (violin=0, cello=1, guitar=2),与 INSTRUMENTS 的字典顺序无关。未训过的音色落到
-# violin 槽(同为持续类乐器)。
+# the instrument one-hot slot of the vibrato model follows the training order in tools/train_vibrato.py
+# (violin=0, cello=1, guitar=2), unrelated to the dict order of INSTRUMENTS. Untrained timbres fall into
+# the violin slot (also a sustained instrument).
 VIBRATO_INST_IDX = {"violin": 0, "guitar": 2}
 
 
-# UI 层(桌面卷帘/网页)的默认演奏参数。不做成 render() 的默认值,是为了让 eval 脚本
-# 保持 λ=0 / timing=0 的基线口径。
+# default performance parameters for the UI layer (desktop piano roll / web). They are not render() defaults so that eval scripts
+# keep the λ=0 / timing=0 baseline.
 UI_RENDER_DEFAULTS = {"timing": 0.5, "continuity": 1.0, "contiguity": 1.0, "motion": 1.0}
 
 
 def available_instruments():
-    """checkpoint 与轨迹库都在本机的音色名(UI 列表与服务端 /status 共用)。"""
+    """Timbre names whose checkpoint and trajectory library are both present locally (shared by the UI list and the server /status)."""
     return [k for k, s in INSTRUMENTS.items() if s["ckpt"].exists() and s["traj"].exists()]
 
 
-# 桌面烘焙出的用户 DDSP 音色(neural/bake_ddsp.py):<name>.pt + <name>.json
+# user DDSP timbres baked on the desktop (neural/bake_ddsp.py): <name>.pt + <name>.json
 USER_DDSP_DIR = QUILL_DIR / "assets" / "user_ddsp"
 
 
 def user_ddsp_instruments():
-    """"ddsp:<name>" 列表(有 .pt 且 .json 可读)。"""
+    """List of "ddsp:<name>" (with a .pt and a readable .json)."""
     import json
 
     out = []
@@ -95,32 +95,32 @@ def user_ddsp_instruments():
 
 
 def _user_ddsp_spec(name):
-    """烘焙音色的 _Voice 规格:自己的 .pt;轨迹库 = 同名 user_styles 库(若有)否则底座的。"""
+    """_Voice spec for a baked timbre: its own .pt; trajectory library = user_styles library of the same name if present, otherwise the base's."""
     import json
 
     meta = json.loads((USER_DDSP_DIR / f"{name}.json").read_text())
     base = INSTRUMENTS.get(meta.get("base", "violin"), INSTRUMENTS["violin"])
-    own = USER_STYLES_DIR / f"{name}.npz"  # 保存音色/烘焙用同一条命名规则(bridge._safe_name)
+    own = USER_STYLES_DIR / f"{name}.npz"  # saving a timbre and baking use the same naming rule (bridge._safe_name)
     return {
         "ckpt": USER_DDSP_DIR / f"{name}.pt",
         "traj": own if own.exists() else base["traj"],
         "envelope": meta.get("envelope", base["envelope"]),
     }
 
-# 学习型行为源仍只提供 behavior,音色继续由 instrument 的 Quill DDSP 解码器提供。
-# 文件由 tools/train_distilled_behavior.py 生成;不存在时不出现在 UI 列表中。
+# learned behaviour sources still only provide behavior; the timbre still comes from the instrument's Quill DDSP decoder.
+# Files are generated by tools/train_distilled_behavior.py; when missing they do not appear in the UI list.
 DISTILLED_BEHAVIORS = {
     "mididdsp_distilled": CKPT_DIR / "behavior_distilled.pt",
 }
 
 
 class ConditionedNN:
-    """演奏法条件化最近邻。
+    """Articulation-conditioned nearest neighbour.
 
-    7 维特征(最后一维=art)时条件化检索;6 维特征(库未标演奏法)时退化为普通最近邻
-    (use_art=False)。timing 表 (N,2):每条 entry 的 [articulation ratio, agogic ratio],
-    从 features 的 dur/next_gap(和可选 meta 的 track 分组)派生,不需要重新提取库。
-    predict_timing() 与轨迹检索同池。
+    With 7-dim features (last dim=art) retrieval is conditioned; with 6-dim features (library without articulation labels) it degrades to a plain nearest neighbour
+    (use_art=False). timing table (N,2): [articulation ratio, agogic ratio] per entry,
+    derived from the features' dur/next_gap (and the optional meta track grouping), no need to re-extract the library.
+    predict_timing() shares the pool with trajectory retrieval.
     """
 
     def __init__(self, features, trajectories, slide_cap=SLIDE_RANGE_CAP, meta=None):
@@ -129,7 +129,7 @@ class ConditionedNN:
         self.use_art = self.features.shape[1] >= 7
         if self.use_art:
             art = self.features[:, 6].astype(np.int64)
-            # 离群过滤:slide 池里 pitch range 过大的轨迹(库里有 >700 c 的极端滑音,即八度跳)
+            # outlier filter: trajectories with too large a pitch range in the slide pool (the library has extreme slides >700 c, i.e. octave jumps)
             rng = self.trajectories[:, 0].max(axis=1) - self.trajectories[:, 0].min(axis=1)
             keep = (art != 2) | (rng <= slide_cap)
             self.features, self.trajectories, art = (
@@ -145,7 +145,7 @@ class ConditionedNN:
         self._std = self.base.std(axis=0) + 1e-8
         self._norm = self.base / self._std
         self.timing = self._compute_timing(self.features, meta)
-        # 连续检索索引:(track, note_idx) → 库索引,predict(contiguity>0) 用它找"上一音的下一音"
+        # continuous retrieval index: (track, note_idx) -> library index, used by predict(contiguity>0) to find "the note after the previous note"
         self.meta = meta if (meta is not None and len(meta) == len(self.features)) else None
         self.last_idx = None
         self._contig_index = {}
@@ -155,12 +155,12 @@ class ConditionedNN:
                 if k is not None:
                     self._contig_index[k] = i
 
-    supports_concat = True  # predict() 接受 prev_traj/concat_lambda/contiguity(蒸馏模型不接受)
+    supports_concat = True  # predict() accepts prev_traj/concat_lambda/contiguity (the distilled model does not)
 
     def clone(self):
-        """共享全部数组、只有自己 last_idx 的浅副本。
+        """Shallow copy sharing all arrays, with only its own last_idx.
 
-        实时弹奏(MIDI 线程)与离线渲染(UI 线程)各拿一个,连续检索的"上一音"记忆互不串。
+        Real-time playing (MIDI thread) and offline rendering (UI thread) each get one, so the "previous note" memory of continuous retrieval does not cross over.
         """
         import copy
 
@@ -170,12 +170,12 @@ class ConditionedNN:
 
     @staticmethod
     def _compute_timing(features, meta):
-        """每条 entry 的 [articulation ratio, agogic]。
+        """[articulation ratio, agogic] per entry.
 
-        articulation ratio = 发声时长 / IOI(IOI = dur + next_gap):连奏≈1,断奏<1。
-        guitar 库有余音重叠(dur>IOI),钳到 1;next_gap>0.5 视为句尾,不缩短。
-        agogic = 本音 IOI / 同曲邻域 IOI 中位(需要 meta 的 track 分组):
-        rubato 式局部伸缩,钳到 0.7–1.4;无 meta 时恒 1(退化为只有 articulation)。
+        articulation ratio = sounding duration / IOI (IOI = dur + next_gap): legato≈1, staccato<1.
+        The guitar library has overlapping ring-out (dur>IOI), clamped to 1; next_gap>0.5 is treated as phrase end, not shortened.
+        agogic = this note's IOI / median IOI of the neighbourhood in the same piece (needs the meta track grouping):
+        rubato-style local stretching, clamped to 0.7–1.4; without meta it is always 1 (degrades to articulation only).
         """
         dur = features[:, 1].astype(np.float64)
         nxt = features[:, 3].astype(np.float64)
@@ -190,22 +190,22 @@ class ConditionedNN:
             by_track = {}
             for i, t in enumerate(track_of):
                 by_track.setdefault(t, []).append(i)
-            W = 4  # 邻域半径(±4 音 → 9 音窗口)
+            W = 4  # neighbourhood radius (±4 notes -> 9-note window)
             for idxs in by_track.values():
                 seq_ioi = ioi[idxs]
                 for j, i in enumerate(idxs):
                     if nxt[i] > 0.5:
-                        continue  # 句尾 IOI 无意义,保持 1
+                        continue  # IOI at phrase end is meaningless, keep 1
                     lo, hi = max(0, j - W), min(len(idxs), j + W + 1)
                     local = float(np.median(seq_ioi[lo:hi]))
                     if local > 1e-6:
                         agogic[i] = np.clip(ioi[i] / local, 0.7, 1.4)
         return np.stack([art_ratio, agogic], axis=1).astype(np.float32)
 
-    _CONCAT_EDGE = 4  # 端点取几帧均值算拼接代价
+    _CONCAT_EDGE = 4  # number of edge frames averaged for the concatenation cost
 
     def _pool_and_dist(self, feat):
-        """给定特征向量,返回 (pool indices, context distances)。"""
+        """Given a feature vector, return (pool indices, context distances)."""
         feat = np.asarray(feat, dtype=np.float32)
         if self.use_art:
             a = int(round(float(feat[6]))) if len(feat) >= 7 else 0
@@ -223,7 +223,7 @@ class ConditionedNN:
         return int(pool[int(np.argmin(dist))])
 
     def _contig_key(self, idx):
-        """(track, note_idx) 供"同一源乐句的下一个音"判定;无 meta 时 None。"""
+        """(track, note_idx) for deciding "the next note in the same source phrase"; None without meta."""
         m = self.meta[idx] if self.meta and idx < len(self.meta) else None
         if not m:
             return None
@@ -232,11 +232,11 @@ class ConditionedNN:
         return (str(tr), int(ni)) if tr is not None and ni is not None else None
 
     def predict(self, feat, prev_traj=None, concat_lambda=0.0, contiguity=0.0):
-        """检索一条 (4,48) 轨迹。
+        """Retrieve one (4,48) trajectory.
 
-        concat_lambda>0:在 top-8 里按与上一音端点的拼接代价重排序;contiguity>0:候选若
-        正好是上一音所选源音的下一个音(同 track、note_idx+1),代价再减 contiguity,让整句
-        尽量取自同一真实乐句。选中的库索引记在 self.last_idx。
+        concat_lambda>0: rerank the top-8 by concatenation cost against the previous note's endpoint; contiguity>0: if a candidate
+        is exactly the note after the source note chosen for the previous note (same track, note_idx+1), its cost is reduced by contiguity, so the whole phrase
+        tends to come from the same real phrase. The chosen library index is stored in self.last_idx.
         """
         last = getattr(self, "last_idx", None)
         if prev_traj is None or (concat_lambda <= 0 and contiguity <= 0):
@@ -254,7 +254,7 @@ class ConditionedNN:
             pk = self._contig_key(last)
             if pk is not None:
                 want = (pk[0], pk[1] + 1)
-                # 下一个音不一定在 top-8 里:只要同标签池里有,就把它加进候选
+                # the next note is not necessarily in the top-8: if it is in the same-label pool, add it to the candidates
                 nxt = self._contig_index.get(want) if hasattr(self, "_contig_index") else None
                 if nxt is not None and nxt in set(pool.tolist()) and nxt not in pool[top_k]:
                     j_extra = int(np.where(pool == nxt)[0][0])
@@ -275,14 +275,14 @@ class ConditionedNN:
         self.last_idx = int(pool[best_j])
         return self.trajectories[self.last_idx]
 
-    # timing 检索的距离掩码:掐掉 prev_gap/next_gap 两维。gap 是 timing 行为的输出,
-    # 不是检索条件:按连奏 query 的 gap=0 检索只会检回连奏音符,timing 永远迁移不出来。
+    # distance mask for timing retrieval: drop the prev_gap/next_gap dims. gap is the output of timing behaviour,
+    # not a retrieval condition: retrieving with a legato query's gap=0 only returns legato notes, so timing would never transfer.
     _TIMING_MASK = np.array([1.0, 1.0, 0.0, 0.0, 1.0, 1.0], np.float32)
 
     def predict_timing(self, feat):
-        """检索最近 entry 的 (articulation ratio, agogic ratio)。
+        """Retrieve the (articulation ratio, agogic ratio) of the nearest entry.
 
-        与轨迹检索同池,但距离只看 [midi, dur, 句首/句尾旗标]。
+        Same pool as trajectory retrieval, but the distance only uses [midi, dur, phrase-start/phrase-end flags].
         """
         feat = np.asarray(feat, dtype=np.float32)
         if self.use_art:
@@ -298,16 +298,16 @@ class ConditionedNN:
         return float(r), float(g)
 
 
-TIMING_MAX_SHIFT = 0.08  # agogic onset 偏移上限(秒):微观 rubato,不动宏观节奏
+TIMING_MAX_SHIFT = 0.08  # agogic onset shift cap (seconds): micro rubato, the macro rhythm is untouched
 
 
 def apply_timing(notes, behavior_model, strength=1.0):
-    """卷帘音符表 → 带检索 timing 行为的新表(原表不改)。
+    """Piano-roll note table -> new table with retrieved timing behaviour (the original is not modified).
 
-    每个音符按与轨迹检索相同的特征找库里最近的源音符,取其 articulation ratio(缩短发声
-    时长,在 IOI 内制造真实空隙,经 _phrases 的 80 ms 规则变成断奏起音)和 agogic ratio
-    (onset 微偏移,钳 ±80 ms)。strength=0 原样返回;1 = 库里的 timing 原强度。
-    behavior_model 无 predict_timing(如蒸馏模型)时原样返回。
+    Each note finds the nearest source note in the library using the same features as trajectory retrieval, and takes its articulation ratio (shortens the sounding
+    duration, creating a real gap within the IOI that the 80 ms rule in _phrases turns into a staccato attack) and agogic ratio
+    (onset micro-shift, clamped to ±80 ms). strength=0 returns the input unchanged; 1 = the library's timing at full strength.
+    Returns the input unchanged when behavior_model has no predict_timing (e.g. the distilled model).
     """
     if not notes or strength <= 0 or not hasattr(behavior_model, "predict_timing"):
         return notes
@@ -347,7 +347,7 @@ def apply_timing(notes, behavior_model, strength=1.0):
 
 
 def _load_meta(d):
-    """npz 里的 meta(json 字符串)→ list;没有则 None。"""
+    """meta in the npz (json string) -> list; None if absent."""
     if "meta" not in getattr(d, "files", []):
         return None
     try:
@@ -359,7 +359,7 @@ def _load_meta(d):
 
 
 class _Voice:
-    """单个乐器:轨迹库 NN + DDSP 模型 + 包络策略。"""
+    """A single instrument: trajectory library NN + DDSP model + envelope strategy."""
 
     def __init__(self, spec, device):
         import torch
@@ -377,7 +377,7 @@ class _Voice:
 
 
 class NeuralTake:
-    """按需加载乐器(首次 ~1s/个),之后 render() 复用。CPU 即可(~80x 实时)。"""
+    """Load instruments on demand (~1s each the first time), then render() reuses them. CPU is enough (~80x real time)."""
 
     def __init__(self, device=None):
         import threading
@@ -396,7 +396,7 @@ class NeuralTake:
         if str(instrument).startswith("ddsp:"):
             key = str(instrument)
             spec = _user_ddsp_spec(key[5:])
-            mt = spec["ckpt"].stat().st_mtime  # 同名音色重新烘焙后要换权重
+            mt = spec["ckpt"].stat().st_mtime  # weights must be swapped after a timbre of the same name is rebaked
             if key not in self._voices or self._voices[key]._mtime != mt:
                 v = _Voice(spec, self.device)
                 v._mtime = mt
@@ -409,7 +409,7 @@ class NeuralTake:
         return self._voices[instrument]
 
     def _custom_nn(self, name):
-        """加载仅行为源(BEHAVIOR_ONLY)或用户自定义库(user_styles)→ ConditionedNN。"""
+        """Load a behaviour-only source (BEHAVIOR_ONLY) or a user-defined library (user_styles) -> ConditionedNN."""
         with self._style_lock:
             return self._custom_nn_unlocked(name)
 
@@ -436,11 +436,11 @@ class NeuralTake:
         return self._custom_nns[name]
 
     def resolve_behavior(self, behavior, timbre_voice=None, instrument_name=None):
-        """行为源 → (行为模型, 包络策略)。render 与桌面实时行为模式共用这一个解析。
+        """Behaviour source -> (behaviour model, envelope strategy). render and the desktop real-time behaviour mode share this one resolver.
 
-        behavior: 带 .predict 的对象 → 直接用;None/""/与音色同名 → 音色自己的轨迹库
-        (无音色声部时,如 L0 取色音色,抛 ValueError);内置乐器名 → 其轨迹库;其余 →
-        user_styles / 蒸馏模型,找不到时退回音色自己的库,退无可退则抛 ValueError。
+        behavior: object with .predict -> used directly; None/""/same name as the timbre -> the timbre's own trajectory library
+        (raises ValueError when there is no timbre voice, e.g. an L0 capture timbre); built-in instrument name -> its trajectory library; otherwise ->
+        user_styles / distilled model, falling back to the timbre's own library if not found, and raising ValueError when there is nothing left.
         """
         if hasattr(behavior, "predict"):
             return behavior, "sustain"
@@ -459,7 +459,7 @@ class NeuralTake:
         return timbre_voice.nn, timbre_voice.envelope
 
     def list_behavior_sources(self):
-        """列出所有可用行为源:内置乐器 + 仅行为源 + 用户导入的自定义库。"""
+        """List all available behaviour sources: built-in instruments + behaviour-only sources + user-imported custom libraries."""
         sources = []
         for k in INSTRUMENTS:
             sources.append(
@@ -498,7 +498,7 @@ class NeuralTake:
         return sources
 
     def import_style(self, npz_path):
-        """导入一个 style.npz(extract_style.py 产出)到 user_styles,返回名称。"""
+        """Import a style.npz (produced by extract_style.py) into user_styles, return its name."""
         p = Path(npz_path)
         if not p.exists():
             raise FileNotFoundError(npz_path)
@@ -514,7 +514,7 @@ class NeuralTake:
         return name
 
     def delete_style(self, name):
-        """删除用户自定义行为库(名字只允许落在 USER_STYLES_DIR 内,防 ../ 逃逸)。"""
+        """Delete a user-defined behaviour library (the name must resolve inside USER_STYLES_DIR, prevents ../ escapes)."""
         nm = str(name or "")
         if not nm or "/" in nm or "\\" in nm or nm in (".", ".."):
             return
@@ -526,7 +526,7 @@ class NeuralTake:
         with self._style_lock:
             self._custom_nns.pop(name, None)
 
-    # ---- 卷帘 notes → 乐句列表 ----
+    # ---- piano-roll notes -> list of phrases ----
     @staticmethod
     def _phrases(notes):
         seq = sorted(notes, key=lambda x: float(x["start"]))
@@ -539,7 +539,7 @@ class NeuralTake:
                     phrases.append(cur)
                     cur = []
                 else:
-                    cur[-1]["dur"] = max(0.05, t0 - cur[-1]["t0"])  # 单音化:截到下一音起点
+                    cur[-1]["dur"] = max(0.05, t0 - cur[-1]["t0"])  # make monophonic: truncate at the next note's start
             cur.append(
                 {
                     "t0": t0,
@@ -555,7 +555,7 @@ class NeuralTake:
 
     @staticmethod
     def _monophonize(notes):
-        """同 onset 的和弦只保最高音(DAW region / 卷帘手画都会出现),引擎是单声部的。"""
+        """For chords at the same onset keep only the highest note (happens in DAW regions / hand-drawn piano rolls); the engine is monophonic."""
         from analysis.midi_dialect import ImportReport, _monophonize
 
         events = [
@@ -593,24 +593,24 @@ class NeuralTake:
         postfx=None,
         tail_s=0.5,
     ):
-        """[{midi,start,len,vel,art}] → (float32 audio, sr)。空输入返回 0.1s 静音。
+        """[{midi,start,len,vel,art}] -> (float32 audio, sr). Empty input returns 0.1s of silence.
 
-        instrument: 音色(哪个 DDSP 模型发声)。
-        behavior:   行为(从哪个乐器的轨迹库检索微观动态 + 用谁的包络);
-                    缺省 = 同 instrument。跨乐器迁移 = 两者不同,
-                    如 behavior="guitar", instrument="violin" → 小提琴音色按吉他行为演奏。
-                    也可直接传一个带 .predict 的行为模型对象(服务端 captured 库)。
-        traj_gain:  轨迹强度(1.0 = 原样;越大微观动态越夸张,音准偏差也随之放大)。
-        noise_gain / noise_gate_db: DDSP 噪声分支音量与响度门限(压底噪)。
-        vibrato_source: "retrieval"(默认) / "model"(用学习的颤音模型合成 pitch vibrato)。
-        randomness: 颤音随机性 0–1(仅 vibrato_source="model" 时生效)。
-        timing: 0(默认,关) / 0–1 强度:渲染前对音符表施加从行为源检索的
-                expressive timing(articulation 缩短 + agogic onset 微偏移)。
-        continuity: 拼接代价重排序的 concat_lambda(0=关)。
-        contiguity: 连续检索奖励(0=off):优先取上一音在源乐句里的下一个音。
-        motion: L0 音色吃行为库第 3/4 维(亮度/气声运动)的强度,0=关;DDSP 忽略。
-        postfx: {"brightness": 0–1, "reverb": 0–1} 后处理(见 neural/postfx.py)。
-        tail_s: 末音之后保留的尾音长度;网页端写回 DAW 用 0.05 保时间轴严格同长。
+        instrument: timbre (which DDSP model sounds).
+        behavior:   behaviour (which instrument's trajectory library supplies micro-dynamics + whose envelope);
+                    defaults to the same as instrument. Cross-instrument transfer = the two differ,
+                    e.g. behavior="guitar", instrument="violin" -> violin timbre played with guitar behaviour.
+                    Can also be a behaviour model object with .predict (the server's captured library).
+        traj_gain:  trajectory strength (1.0 = unchanged; larger exaggerates micro-dynamics, and intonation deviations grow with it).
+        noise_gain / noise_gate_db: DDSP noise-branch level and loudness gate (suppresses the noise floor).
+        vibrato_source: "retrieval" (default) / "model" (synthesise pitch vibrato with the learned vibrato model).
+        randomness: vibrato randomness 0–1 (only with vibrato_source="model").
+        timing: 0 (default, off) / 0–1 strength: before rendering, apply expressive timing retrieved from the behaviour
+                source to the note table (articulation shortening + agogic onset micro-shift).
+        continuity: concat_lambda for concatenation-cost reranking (0=off).
+        contiguity: continuous retrieval bonus (0=off): prefer the note that follows the previous note in its source phrase.
+        motion: strength with which L0 timbres use the behaviour library's 3rd/4th dims (brightness/breath motion), 0=off; ignored by DDSP.
+        postfx: {"brightness": 0–1, "reverb": 0–1} post-processing (see neural/postfx.py).
+        tail_s: tail length kept after the last note; the web side writes back to the DAW with 0.05 to keep the timeline exactly the same length.
         """
         import torch
 
@@ -620,8 +620,8 @@ class NeuralTake:
         if not notes:
             return np.zeros(int(0.1 * self.sr), np.float32), self.sr
         notes = self._monophonize(notes)
-        # 音色解码器:内置名 → DDSP;带 render_control 的对象(runtime.engine.Engine,
-        # 取色 L0 音色)→ 同一 (f0, loudness) 接口的加法合成。两者共用下面全部行为逻辑。
+        # timbre decoder: built-in name -> DDSP; object with render_control (runtime.engine.Engine,
+        # L0 capture timbre) -> additive synthesis with the same (f0, loudness) interface. Both share all the behaviour logic below.
         l0 = hasattr(instrument, "render_control")
         v_timbre = None if l0 else self.voice(instrument)
         sr = int(instrument.sr) if l0 else self.sr
@@ -657,13 +657,13 @@ class NeuralTake:
             )
             f0, loud = ctl[0], ctl[1]
             if l0:
-                # 乐句内音符起点(控制流坐标):逐音时长累加,减去 crossfade 重叠
+                # note starts within the phrase (control-stream coordinates): cumulative note durations minus crossfade overlap
                 cf_s = 0.02
                 ons, acc = [], 0.0
                 for k, p in enumerate(ph):
                     ons.append(max(0.0, acc - k * cf_s))
                     acc += p["dur"]
-                # 0.1 s 尾 = 80 ms 释放,乐句间隙 ≥80 ms 放得下
+                # 0.1 s tail = 80 ms release, fits in a phrase gap of ≥80 ms
                 y = instrument.render_control(
                     f0.numpy()[0, :, 0],
                     loud.numpy()[0, :, 0],
@@ -716,7 +716,7 @@ _instance = None
 
 
 def get_neural_take():
-    """进程级单例(bridge 懒加载用)。"""
+    """Process-wide singleton (lazily loaded by bridge)."""
     global _instance
     if _instance is None:
         _instance = NeuralTake()
